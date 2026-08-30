@@ -1,7 +1,4 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiComputerLine,
   RiGlobalLine,
@@ -10,10 +7,12 @@ import {
   RiSave3Line,
   RiUserSettingsLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { PageHeading } from "@/components/dashboard/page-heading";
+import { useReportingTimeZone } from "@/components/time-zone-provider";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,7 +39,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { requestAdminService } from "@/lib/admin-service-client";
 import { intlLocale } from "@/lib/dashboard/format";
+import type { AccountNotificationPreferencesInitialData } from "@/lib/dashboard/management-data";
 import {
   buildTimeZoneOptions,
   FALLBACK_TIME_ZONE,
@@ -50,29 +51,22 @@ import {
 } from "@/lib/dashboard/time-zone";
 import {
   type AccountUserData,
-  fetchNotificationPreferences,
   normalizeNotificationPreferencesData,
   type NotificationPreferencesData,
-  updateNotificationPreferences,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { useRouter } from "@/lib/router";
 
 interface AccountSettingsClientProps {
   locale: Locale;
   messages: AppMessages;
   user: AccountUserData;
+  initialData?: AccountNotificationPreferencesInitialData | null;
 }
 
 type TimeZoneMode = "browser" | "custom";
-type PreferredLocale = "" | "en" | "zh";
-
-interface ProfileResponse {
-  ok?: boolean;
-  data?: AccountUserData;
-  error?: string;
-  message?: string;
-}
+type PreferredLocale = "" | "en" | "zh" | "ja";
 
 function sameNotificationPreferences(
   left: NotificationPreferencesData | null,
@@ -98,6 +92,7 @@ export function AccountSettingsClient({
   locale,
   messages,
   user,
+  initialData = null,
 }: AccountSettingsClientProps) {
   const copy = messages.accountSettings;
   const notificationCopy = messages.notificationCenter;
@@ -107,7 +102,7 @@ export function AccountSettingsClient({
     timeZonePreference,
     browserTimeZone,
     setTimeZonePreference,
-  } = useDashboardQueryControls();
+  } = useReportingTimeZone();
   const [profileUser, setProfileUser] = useState(user);
   const [profileName, setProfileName] = useState(user.name || "");
   const [profileUsername, setProfileUsername] = useState(user.username || "");
@@ -122,13 +117,28 @@ export function AccountSettingsClient({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [notificationPreferences, setNotificationPreferences] =
-    useState<NotificationPreferencesData | null>(null);
+    useState<NotificationPreferencesData | null>(
+      initialData?.preferences ?? null,
+    );
   const [draftNotificationPreferences, setDraftNotificationPreferences] =
-    useState<NotificationPreferencesData | null>(null);
-  const [notificationPreferencesLoading, setNotificationPreferencesLoading] =
-    useState(true);
+    useState<NotificationPreferencesData | null>(
+      initialData?.preferences ?? null,
+    );
   const [notificationPreferencesSaving, setNotificationPreferencesSaving] =
     useState(false);
+  const appliedNotificationPreferencesUserIdRef = useRef<string | null>(null);
+  const notificationPreferencesQuery = useQuery({
+    queryKey: ["dashboard", "notification-preferences", user.id],
+    queryFn: ({ signal }) =>
+      requestAdminService<NotificationPreferencesData>(
+        "notifications/preferences",
+        { signal },
+      ).then(normalizeNotificationPreferencesData),
+    initialData: initialData?.preferences,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const notificationPreferencesLoading = notificationPreferencesQuery.isPending;
   const timeZones = useMemo(() => supportedTimeZones(), []);
   const [mode, setMode] = useState<TimeZoneMode>(
     timeZonePreference ? "custom" : "browser",
@@ -207,30 +217,30 @@ export function AccountSettingsClient({
   }, [timeZone, timeZonePreference]);
 
   useEffect(() => {
-    let active = true;
-
-    setNotificationPreferencesLoading(true);
-    fetchNotificationPreferences()
-      .then((nextPreferences) => {
-        if (!active) return;
-        const normalized =
-          normalizeNotificationPreferencesData(nextPreferences);
-        setNotificationPreferences(normalized);
-        setDraftNotificationPreferences(normalized);
-      })
-      .catch(() => {
-        if (!active) return;
-        toast.error(notificationCopy.preferencesSaveFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setNotificationPreferencesLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [notificationCopy.preferencesSaveFailed]);
+    if (
+      notificationPreferencesQuery.isPending ||
+      appliedNotificationPreferencesUserIdRef.current === user.id
+    ) {
+      return;
+    }
+    if (notificationPreferencesQuery.isError) {
+      toast.error(notificationCopy.preferencesSaveFailed);
+      appliedNotificationPreferencesUserIdRef.current = user.id;
+      return;
+    }
+    const normalized = normalizeNotificationPreferencesData(
+      notificationPreferencesQuery.data,
+    );
+    setNotificationPreferences(normalized);
+    setDraftNotificationPreferences(normalized);
+    appliedNotificationPreferencesUserIdRef.current = user.id;
+  }, [
+    notificationCopy.preferencesSaveFailed,
+    notificationPreferencesQuery.data,
+    notificationPreferencesQuery.isError,
+    notificationPreferencesQuery.isPending,
+    user.id,
+  ]);
 
   const nextPreference = mode === "browser" ? "" : selectedCustomTimeZone;
   const canSavePreferredLocale =
@@ -297,27 +307,15 @@ export function AccountSettingsClient({
 
     setProfileSaving(true);
     try {
-      const response = await fetch("/api/private/admin/profile", {
+      const data = await requestAdminService<AccountUserData>("profile", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           username: normalizedProfileUsername,
           email: normalizedProfileEmail,
           name: normalizedProfileName,
-        }),
+        },
       });
-      const payload = (await response
-        .json()
-        .catch(() => ({}))) as ProfileResponse;
-      if (!response.ok || payload.ok === false || !payload.data) {
-        throw new Error(
-          payload.message || payload.error || copy.profileSaveFailed,
-        );
-      }
-      applySavedUser(payload.data);
+      applySavedUser(data);
       toast.success(copy.profileSaved);
       router.refresh();
     } catch (error) {
@@ -347,26 +345,14 @@ export function AccountSettingsClient({
 
     setPasswordSaving(true);
     try {
-      const response = await fetch("/api/private/admin/profile", {
+      const data = await requestAdminService<AccountUserData>("profile", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           currentPassword,
           password: nextPassword,
-        }),
+        },
       });
-      const payload = (await response
-        .json()
-        .catch(() => ({}))) as ProfileResponse;
-      if (!response.ok || payload.ok === false || !payload.data) {
-        throw new Error(
-          payload.message || payload.error || copy.passwordSaveFailed,
-        );
-      }
-      applySavedUser(payload.data);
+      applySavedUser(data);
       setCurrentPassword("");
       setNextPassword("");
       setConfirmPassword("");
@@ -389,8 +375,12 @@ export function AccountSettingsClient({
 
     setNotificationPreferencesSaving(true);
     try {
-      const saved = await updateNotificationPreferences(
-        draftNotificationPreferences,
+      const saved = await requestAdminService<NotificationPreferencesData>(
+        "notifications/preferences",
+        {
+          method: "PATCH",
+          body: draftNotificationPreferences,
+        },
       );
       const normalized = normalizeNotificationPreferencesData(saved);
       setNotificationPreferences(normalized);
@@ -420,23 +410,11 @@ export function AccountSettingsClient({
 
     setPreferredLocaleSaving(true);
     try {
-      const response = await fetch("/api/private/admin/profile", {
+      const data = await requestAdminService<AccountUserData>("profile", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ preferredLocale }),
+        body: { preferredLocale },
       });
-      const payload = (await response
-        .json()
-        .catch(() => ({}))) as ProfileResponse;
-      if (!response.ok || payload.ok === false || !payload.data) {
-        throw new Error(
-          payload.message || payload.error || copy.preferredLanguageSaveFailed,
-        );
-      }
-      applySavedUser(payload.data);
+      applySavedUser(data);
       toast.success(copy.preferredLanguageSaved);
       router.refresh();
     } catch (error) {
@@ -460,28 +438,17 @@ export function AccountSettingsClient({
 
     setSaving(true);
     try {
-      const response = await fetch("/api/private/admin/profile", {
+      const data = await requestAdminService<AccountUserData>("profile", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ timeZone: nextPreference }),
+        body: { timeZone: nextPreference },
       });
-      const payload = (await response
-        .json()
-        .catch(() => ({}))) as ProfileResponse;
-      if (!response.ok || payload.ok === false) {
-        throw new Error(payload.message || payload.error || copy.saveFailed);
-      }
-      const savedTimeZone = normalizeTimeZone(payload.data?.timeZone) || "";
+      const savedTimeZone = normalizeTimeZone(data.timeZone) || "";
       setTimeZonePreference(savedTimeZone);
       setMode(savedTimeZone ? "custom" : "browser");
       if (savedTimeZone) {
         setCustomTimeZone(savedTimeZone);
       }
       toast.success(copy.saved);
-      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : copy.saveFailed);
     } finally {
@@ -682,132 +649,155 @@ export function AccountSettingsClient({
             </CardDescription>
           </CardHeader>
           <CardContent className="flex h-full flex-col">
-            {notificationPreferencesLoading || !draftNotificationPreferences ? (
-              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground">
-                <Spinner className="mr-2 size-4" />
-                {messages.common.loading}
-              </div>
-            ) : (
-              <form
-                className="flex h-full flex-col gap-5"
-                onSubmit={handleNotificationPreferencesSubmit}
+            <AutoResizer initial duration={0.28} ease={[0.22, 1, 0.36, 1]}>
+              <AutoTransition
+                initial={false}
+                duration={0.2}
+                type="fade"
+                presenceMode="wait"
+                transitionKey={
+                  notificationPreferencesLoading ||
+                  !draftNotificationPreferences
+                    ? "loading"
+                    : "preferences"
+                }
               >
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field>
-                    <FieldLabel>
-                      {notificationCopy.emailNotificationsLabel}
-                    </FieldLabel>
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={draftNotificationPreferences.email}
-                        disabled={notificationPreferencesSaving}
-                        onCheckedChange={(checked) =>
-                          updateDraftNotificationPreferences({
-                            email: !!checked,
-                          })
-                        }
-                      />
-                      <FieldDescription>
-                        {notificationCopy.emailNotificationsDescription}
-                      </FieldDescription>
-                    </div>
-                  </Field>
-                  <Field>
-                    <FieldLabel>
-                      {notificationCopy.reportsUnreadLabel}
-                    </FieldLabel>
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={
-                          draftNotificationPreferences.attention
-                            .reportsCreateUnread
-                        }
-                        disabled={notificationPreferencesSaving}
-                        onCheckedChange={(checked) =>
-                          updateDraftNotificationPreferences({
-                            attention: { reportsCreateUnread: !!checked },
-                          })
-                        }
-                      />
-                      <FieldDescription>
-                        {notificationCopy.reportsUnreadDescription}
-                      </FieldDescription>
-                    </div>
-                  </Field>
-                  <Field>
-                    <FieldLabel>
-                      {notificationCopy.milestonesUnreadLabel}
-                    </FieldLabel>
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={
-                          draftNotificationPreferences.attention
-                            .milestonesCreateUnread
-                        }
-                        disabled={notificationPreferencesSaving}
-                        onCheckedChange={(checked) =>
-                          updateDraftNotificationPreferences({
-                            attention: { milestonesCreateUnread: !!checked },
-                          })
-                        }
-                      />
-                      <FieldDescription>
-                        {notificationCopy.milestonesUnreadDescription}
-                      </FieldDescription>
-                    </div>
-                  </Field>
-                  <Field>
-                    <FieldLabel>
-                      {notificationCopy.alertsUnreadLabel}
-                    </FieldLabel>
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={
-                          draftNotificationPreferences.attention
-                            .alertsCreateUnread
-                        }
-                        disabled={notificationPreferencesSaving}
-                        onCheckedChange={(checked) =>
-                          updateDraftNotificationPreferences({
-                            attention: { alertsCreateUnread: !!checked },
-                          })
-                        }
-                      />
-                      <FieldDescription>
-                        {notificationCopy.alertsUnreadDescription}
-                      </FieldDescription>
-                    </div>
-                  </Field>
-                </div>
-
-                <div className="mt-auto flex justify-start">
-                  <Button
-                    type="submit"
-                    disabled={!canSaveNotificationPreferences}
+                {notificationPreferencesLoading ||
+                !draftNotificationPreferences ? (
+                  <div
+                    key="loading"
+                    className="flex h-32 items-center justify-center text-sm text-muted-foreground"
+                    aria-busy="true"
                   >
-                    <AutoTransition className="inline-flex items-center gap-2">
-                      {notificationPreferencesSaving ? (
-                        <span
-                          key="notification-preferences-saving"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <Spinner className="size-4" />
-                          {copy.saving}
-                        </span>
-                      ) : (
-                        <span
-                          key="notification-preferences-save"
-                          className="inline-flex items-center gap-2"
-                        >
-                          <RiSave3Line className="size-4" />
-                          {copy.save}
-                        </span>
-                      )}
-                    </AutoTransition>
-                  </Button>
-                </div>
-              </form>
-            )}
+                    <Spinner className="mr-2 size-4" />
+                    {messages.common.loading}
+                  </div>
+                ) : (
+                  <form
+                    key="preferences"
+                    className="flex h-full flex-col gap-5"
+                    onSubmit={handleNotificationPreferencesSubmit}
+                  >
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel>
+                          {notificationCopy.emailNotificationsLabel}
+                        </FieldLabel>
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={draftNotificationPreferences.email}
+                            disabled={notificationPreferencesSaving}
+                            onCheckedChange={(checked) =>
+                              updateDraftNotificationPreferences({
+                                email: !!checked,
+                              })
+                            }
+                          />
+                          <FieldDescription>
+                            {notificationCopy.emailNotificationsDescription}
+                          </FieldDescription>
+                        </div>
+                      </Field>
+                      <Field>
+                        <FieldLabel>
+                          {notificationCopy.reportsUnreadLabel}
+                        </FieldLabel>
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={
+                              draftNotificationPreferences.attention
+                                .reportsCreateUnread
+                            }
+                            disabled={notificationPreferencesSaving}
+                            onCheckedChange={(checked) =>
+                              updateDraftNotificationPreferences({
+                                attention: { reportsCreateUnread: !!checked },
+                              })
+                            }
+                          />
+                          <FieldDescription>
+                            {notificationCopy.reportsUnreadDescription}
+                          </FieldDescription>
+                        </div>
+                      </Field>
+                      <Field>
+                        <FieldLabel>
+                          {notificationCopy.milestonesUnreadLabel}
+                        </FieldLabel>
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={
+                              draftNotificationPreferences.attention
+                                .milestonesCreateUnread
+                            }
+                            disabled={notificationPreferencesSaving}
+                            onCheckedChange={(checked) =>
+                              updateDraftNotificationPreferences({
+                                attention: {
+                                  milestonesCreateUnread: !!checked,
+                                },
+                              })
+                            }
+                          />
+                          <FieldDescription>
+                            {notificationCopy.milestonesUnreadDescription}
+                          </FieldDescription>
+                        </div>
+                      </Field>
+                      <Field>
+                        <FieldLabel>
+                          {notificationCopy.alertsUnreadLabel}
+                        </FieldLabel>
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={
+                              draftNotificationPreferences.attention
+                                .alertsCreateUnread
+                            }
+                            disabled={notificationPreferencesSaving}
+                            onCheckedChange={(checked) =>
+                              updateDraftNotificationPreferences({
+                                attention: { alertsCreateUnread: !!checked },
+                              })
+                            }
+                          />
+                          <FieldDescription>
+                            {notificationCopy.alertsUnreadDescription}
+                          </FieldDescription>
+                        </div>
+                      </Field>
+                    </div>
+
+                    <div className="mt-auto flex justify-start">
+                      <Button
+                        type="submit"
+                        disabled={!canSaveNotificationPreferences}
+                      >
+                        <AutoTransition className="inline-flex items-center gap-2">
+                          {notificationPreferencesSaving ? (
+                            <span
+                              key="notification-preferences-saving"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <Spinner className="size-4" />
+                              {copy.saving}
+                            </span>
+                          ) : (
+                            <span
+                              key="notification-preferences-save"
+                              className="inline-flex items-center gap-2"
+                            >
+                              <RiSave3Line className="size-4" />
+                              {copy.save}
+                            </span>
+                          )}
+                        </AutoTransition>
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </AutoTransition>
+            </AutoResizer>
           </CardContent>
         </Card>
 
@@ -835,7 +825,7 @@ export function AccountSettingsClient({
                   disabled={preferredLocaleSaving}
                   onValueChange={(value) => {
                     if (value === "default") setPreferredLocale("");
-                    if (value === "en" || value === "zh") {
+                    if (value === "en" || value === "zh" || value === "ja") {
                       setPreferredLocale(value);
                     }
                   }}
@@ -855,6 +845,9 @@ export function AccountSettingsClient({
                     </SelectItem>
                     <SelectItem value="zh">
                       {copy.preferredLanguageChinese}
+                    </SelectItem>
+                    <SelectItem value="ja">
+                      {copy.preferredLanguageJapanese}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -951,33 +944,43 @@ export function AccountSettingsClient({
                 <FieldLabel htmlFor="account-timezone-select">
                   {copy.customTimeZoneLabel}
                 </FieldLabel>
-                <FieldContent>
-                  <Select
-                    value={selectedCustomTimeZone}
-                    disabled={mode === "browser"}
-                    onValueChange={(value) => {
-                      setCustomTimeZone(value);
-                      if (mode !== "custom") setMode("custom");
-                    }}
+                <AutoResizer initial duration={0.24} ease={[0.22, 1, 0.36, 1]}>
+                  <AutoTransition
+                    initial={false}
+                    duration={0.18}
+                    type="fade"
+                    presenceMode="wait"
+                    transitionKey={mode}
                   >
-                    <SelectTrigger
-                      id="account-timezone-select"
-                      className="w-full"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-80">
-                      {timeZoneOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FieldDescription>
-                    {copy.customTimeZoneDescription}
-                  </FieldDescription>
-                </FieldContent>
+                    <FieldContent key={mode}>
+                      <Select
+                        value={selectedCustomTimeZone}
+                        disabled={mode === "browser"}
+                        onValueChange={(value) => {
+                          setCustomTimeZone(value);
+                          if (mode !== "custom") setMode("custom");
+                        }}
+                      >
+                        <SelectTrigger
+                          id="account-timezone-select"
+                          className="w-full"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-80">
+                          {timeZoneOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FieldDescription>
+                        {copy.customTimeZoneDescription}
+                      </FieldDescription>
+                    </FieldContent>
+                  </AutoTransition>
+                </AutoResizer>
               </Field>
 
               <div className="mt-auto flex justify-start">

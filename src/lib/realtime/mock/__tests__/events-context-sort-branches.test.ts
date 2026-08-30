@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { dashboardFilterDocumentFromPresentation } from "@/lib/dashboard/filter-state";
+import type { CanonicalJsonPath, FilterDocument } from "@/lib/filter-contract";
 import {
   demoEventContextCards,
   demoEventDimensionRows,
@@ -11,6 +13,7 @@ import {
   parseDemoEventRecordSort,
   sortDemoEventRecords,
 } from "@/lib/realtime/mock/events-sort";
+import { parseDemoFilters } from "@/lib/realtime/mock/filters";
 import type { DemoFactDataset, DemoVisitFact } from "@/lib/realtime/mock/types";
 
 describe("mock/events-sort branch behavior", () => {
@@ -88,6 +91,22 @@ describe("mock/events-sort branch behavior", () => {
         (event) => event.eventId,
       ),
     ).toEqual(["latest", "middle", "earliest"]);
+  });
+
+  it("falls through to the newest-first tie breaker when occurrence times are equal", () => {
+    const rows = [
+      makeEvent("a", "view", 200),
+      makeEvent("b", "view", 200),
+      makeEvent("c", "signup", 200),
+    ];
+
+    // Sort key is not eventName/pathname, so equal occurredAt values reach the
+    // default newest-first tie breaker instead of the time-difference branch.
+    expect(
+      sortDemoEventRecords(rows, { key: "occurredAt", direction: "asc" }).map(
+        (event) => event.eventId,
+      ),
+    ).toEqual(expect.arrayContaining(["a", "b", "c"]));
   });
 });
 
@@ -251,6 +270,72 @@ describe("mock/events-context branch behavior", () => {
     );
   });
 
+  it("falls back to the raw geo value label when the derived label is empty", () => {
+    const dataset = makeDataset();
+    const cards = demoEventContextCards(
+      dataset,
+      [
+        makeEvent(
+          "region-label-empty",
+          "signup",
+          100,
+          makeVisit({
+            country: "CA",
+            regionCode: "",
+            regionName: "",
+            region: "  ",
+            cityName: "",
+            city: "",
+          }),
+        ),
+      ],
+      10,
+    );
+
+    // regionName || region trims empty, so the raw `value` string is used as
+    // the label (branch: label || value).
+    expect(cards.geo.region).toEqual([
+      {
+        value: "CA::::",
+        label: "CA::::",
+        views: 1,
+        sessions: 1,
+        visitors: 1,
+      },
+    ]);
+  });
+
+  it("emits an empty region value when all geo segments are blank", () => {
+    const dataset = makeDataset({
+      sessions: [["s1", 1]],
+      visitors: [["u1", 1]],
+    });
+    const cards = demoEventContextCards(
+      dataset,
+      [
+        makeEvent(
+          "blank-geo",
+          "signup",
+          100,
+          makeVisit({
+            country: "",
+            regionCode: "",
+            regionName: "",
+            region: "",
+            cityName: "",
+            city: "",
+          }),
+        ),
+      ],
+      10,
+    );
+
+    // The ternary's else branch (all of country/regionCode/regionName empty)
+    // yields an empty region value, which is then skipped.
+    expect(cards.geo.region).toEqual([]);
+    expect(cards.geo.city).toEqual([]);
+  });
+
   it("builds context cards with page/session fallbacks and geo value fallbacks", () => {
     const dataset = makeDataset({
       sessions: [["known-session", 1]],
@@ -379,28 +464,206 @@ describe("mock/events-payload-filter branch behavior", () => {
     const events = [signedIn, signedOut];
 
     expect(
-      filterDemoCustomEventsByPayload(events, {
-        eventPayloadFilters: [
-          { path: "/flags/signedIn", operator: "eq", value: true },
-        ],
-      }).map((event) => event.eventId),
+      filterDemoCustomEventsByPayload(
+        events,
+        parseDemoFilters({
+          "filter[event.payload][/flags/signedIn]": "json:true",
+        }),
+      ).map((event) => event.eventId),
     ).toEqual(["signed-in"]);
 
     expect(
-      filterDemoCustomEventsByPayload(events, {
-        eventPayloadFilters: [
-          { path: "/flags/signedIn", operator: "ne", value: false },
-        ],
-      }).map((event) => event.eventId),
+      filterDemoCustomEventsByPayload(
+        events,
+        parseDemoFilters({
+          "filter[event.payload][/flags/signedIn]": "neq:json:false",
+        }),
+      ).map((event) => event.eventId),
     ).toEqual(["signed-in"]);
 
     expect(
-      filterDemoCustomEventsByPayload(events, {
-        eventPayloadFilters: [
-          { path: "/flags/signedIn", operator: "eq", value: "true" },
-        ],
-      }),
+      filterDemoCustomEventsByPayload(
+        events,
+        parseDemoFilters({ "filter[event.payload][/flags/signedIn]": "true" }),
+      ),
     ).toEqual([]);
+  });
+
+  it("evaluates presence, string, numeric, set, and nested AST operators", () => {
+    const event = makeEvent("signed-in", "signup", 200, makeVisit());
+
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({ "filter[event.payload][/items/*]": "exists" }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload([event], parseDemoFilters({})),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        dashboardFilterDocumentFromPresentation({ browser: "Chrome" }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({ "filter[event.payload][/missing]": "notExists" }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({ "filter[event.payload][/items/*]": "isNull" }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({ "filter[event.payload][/items/*]": "notNull" }),
+      ),
+    ).toHaveLength(1);
+
+    const emptyTitle = makeEvent(
+      "empty-title",
+      "signup",
+      201,
+      makeVisit({ title: "" }),
+    );
+    expect(
+      filterDemoCustomEventsByPayload(
+        [emptyTitle],
+        parseDemoFilters({ "filter[event.payload][/page/title]": "isEmpty" }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({ "filter[event.payload][/page/title]": "notEmpty" }),
+      ),
+    ).toHaveLength(1);
+
+    const stringFilters = {
+      "filter[event.payload][/page/path]": "contains:om",
+    };
+    expect(
+      filterDemoCustomEventsByPayload([event], parseDemoFilters(stringFilters)),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({
+          "filter[event.payload][/page/path]": "startsWith:/",
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({
+          "filter[event.payload][/page/path]": "endsWith:home",
+        }),
+      ),
+    ).toHaveLength(1);
+
+    const numeric = {
+      "filter[event.payload][/device/screen/width]": "json:1920",
+    };
+    expect(
+      filterDemoCustomEventsByPayload([event], parseDemoFilters(numeric)),
+    ).toHaveLength(1);
+    for (const operator of ["gt", "gte", "lt", "lte"] as const) {
+      const value = operator === "gt" || operator === "gte" ? 1919 : 1921;
+      expect(
+        filterDemoCustomEventsByPayload(
+          [event],
+          parseDemoFilters({
+            "filter[event.payload][/device/screen/width]": `${operator}:json:${value}`,
+          }),
+        ),
+      ).toHaveLength(1);
+    }
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({
+          "filter[event.payload][/device/screen/width]": "gt:json:1921",
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({
+          "filter[event.payload][/device/screen/width]":
+            "between:json:1900,json:2000",
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({
+          "filter[event.payload][/device/screen/width]":
+            "in:json:1920,json:1080",
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({
+          "filter[event.payload][/device/screen/width]":
+            "notIn:json:1080,json:2000",
+        }),
+      ),
+    ).toHaveLength(1);
+
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({
+          "filter[event.payload][/page/path][or.0]": "/nope",
+          "filter[event.payload][/page/path][or.1]": "/home",
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      filterDemoCustomEventsByPayload(
+        [event],
+        parseDemoFilters({ "filter[event.payload][/page/path][not]": "/nope" }),
+      ),
+    ).toHaveLength(1);
+
+    const payloadPath = "/page/path" as CanonicalJsonPath;
+    const payloadCondition = (value: string) => ({
+      kind: "condition" as const,
+      target: { kind: "event-payload" as const, path: payloadPath },
+      operator: "eq" as const,
+      value,
+    });
+    const andDocument: FilterDocument = {
+      version: 1,
+      root: {
+        kind: "and",
+        children: [payloadCondition("/home"), payloadCondition("/home")],
+      },
+    };
+    const orDocument: FilterDocument = {
+      version: 1,
+      root: {
+        kind: "or",
+        children: [payloadCondition("/nope"), payloadCondition("/home")],
+      },
+    };
+    expect(filterDemoCustomEventsByPayload([event], andDocument)).toHaveLength(
+      1,
+    );
+    expect(filterDemoCustomEventsByPayload([event], orDocument)).toHaveLength(
+      1,
+    );
   });
 });
 

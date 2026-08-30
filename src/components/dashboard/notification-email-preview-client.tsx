@@ -1,7 +1,6 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { RiMailSendLine, RiRefreshLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -18,8 +17,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { fetchNotificationEmailPreview } from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
+import { requestAdminService } from "@/lib/admin-service-client";
+import {
+  isValidLocale,
+  type Locale,
+  SUPPORTED_LOCALES,
+} from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 type PreviewType =
@@ -30,6 +33,11 @@ type PreviewType =
   | "change"
   | "health";
 type PreviewFormat = "html" | "text" | "json";
+type NotificationEmailPreview = {
+  subject: string;
+  html: string;
+  text: string;
+};
 
 const PREVIEW_TYPES: PreviewType[] = [
   "test",
@@ -40,6 +48,12 @@ const PREVIEW_TYPES: PreviewType[] = [
   "health",
 ];
 const PREVIEW_FORMATS: PreviewFormat[] = ["html", "text", "json"];
+
+function localeLabel(messages: AppMessages, locale: Locale): string {
+  if (locale === "zh") return messages.actions.switchToChinese;
+  if (locale === "ja") return messages.actions.switchToJapanese;
+  return messages.actions.switchToEnglish;
+}
 
 export function NotificationEmailPreviewClient({
   locale,
@@ -53,35 +67,41 @@ export function NotificationEmailPreviewClient({
   const [type, setType] = useState<PreviewType>("report");
   const [previewLocale, setPreviewLocale] = useState<Locale>(locale);
   const [format, setFormat] = useState<PreviewFormat>("html");
-  const [loading, setLoading] = useState(false);
-  const [subject, setSubject] = useState("");
-  const [payload, setPayload] = useState("");
-
-  async function loadPreview() {
-    setLoading(true);
-    try {
-      const result = await fetchNotificationEmailPreview({
-        type,
-        locale: previewLocale,
-        format,
-      });
-      if (typeof result === "string") {
-        setSubject("");
-        setPayload(result);
-      } else {
-        setSubject(result.subject);
-        setPayload(JSON.stringify(result, null, 2));
-      }
-    } catch {
-      toast.error(page.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const previewQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "notification-email-preview",
+      type,
+      previewLocale,
+      format,
+    ],
+    queryFn: () =>
+      requestAdminService<NotificationEmailPreview>(
+        "notification-email-preview",
+        {
+          params: {
+            type,
+            locale: previewLocale,
+            format: "json",
+          },
+        },
+      ),
+    enabled: typeof window !== "undefined",
+  });
+  const loading = previewQuery.isFetching;
+  const subject = previewQuery.data?.subject || "";
+  const payload =
+    format === "html"
+      ? previewQuery.data?.html || ""
+      : format === "text"
+        ? previewQuery.data?.text || ""
+        : previewQuery.data
+          ? JSON.stringify(previewQuery.data, null, 2)
+          : "";
 
   useEffect(() => {
-    void loadPreview();
-  }, [format, previewLocale, type]);
+    if (previewQuery.isError) toast.error(page.loadFailed);
+  }, [page.loadFailed, previewQuery.errorUpdatedAt, previewQuery.isError]);
 
   return (
     <div className="space-y-4">
@@ -93,7 +113,7 @@ export function NotificationEmailPreviewClient({
             type="button"
             variant="outline"
             disabled={loading}
-            onClick={() => void loadPreview()}
+            onClick={() => void previewQuery.refetch()}
           >
             <span className="inline-flex size-4 shrink-0 items-center justify-center">
               {loading ? (
@@ -165,15 +185,18 @@ export function NotificationEmailPreviewClient({
             <Select
               value={previewLocale}
               onValueChange={(value) => {
-                if (value === "en" || value === "zh") setPreviewLocale(value);
+                if (isValidLocale(value)) setPreviewLocale(value);
               }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="zh">中文</SelectItem>
+                {SUPPORTED_LOCALES.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {localeLabel(messages, item)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </Field>

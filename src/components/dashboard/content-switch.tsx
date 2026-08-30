@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 
 import { AutoResizer } from "@/components/ui/auto-resizer";
@@ -16,6 +14,7 @@ interface ContentSwitchProps {
   children: ReactNode;
   className?: string;
   minHeightClassName?: string;
+  initial?: boolean;
 }
 
 export function ContentSwitch({
@@ -27,10 +26,11 @@ export function ContentSwitch({
   children,
   className,
   minHeightClassName = "min-h-[120px]",
+  initial = true,
 }: ContentSwitchProps) {
   return (
-    <AutoResizer className={className} initial>
-      <AutoTransition initial duration={0.22}>
+    <AutoResizer className={className} initial={initial}>
+      <AutoTransition initial={initial} duration={0.22}>
         {loading ? (
           loadingContent ? (
             <div key="loading-content">{loadingContent}</div>

@@ -3,11 +3,13 @@
  * Generates two variants:
  *   - sdk.min.ts        (BUILD_PERFORMANCE=true)  for sites with performance sampling
  *   - sdk.no-perf.min.ts (BUILD_PERFORMANCE=false) for sites without performance
- * Placeholder strings (__IF_*__) survive minification and are replaced at serve time.
+ * Per-request settings are injected by the script endpoint immediately before
+ * execution, so minification cannot pre-evaluate privacy branches.
  */
 import * as esbuild from "esbuild";
 import { writeFileSync } from "fs";
 import { dirname, resolve } from "path";
+import { minify } from "terser";
 import { fileURLToPath } from "url";
 
 import { createScriptLogger } from "./shared/logger";
@@ -23,10 +25,37 @@ const rlog = createScriptLogger({
 const commonOpts: esbuild.BuildOptions = {
   entryPoints: [entry],
   bundle: true,
-  minify: true,
+  minify: false,
   format: "iife",
   target: ["es2020"],
   write: false,
+};
+
+const noPerformancePlugin: esbuild.Plugin = {
+  name: "tracker-no-performance-stub",
+  setup(build) {
+    build.onResolve({ filter: /^\.\/performance$/ }, () => ({
+      path: "tracker-no-performance-stub",
+      namespace: "tracker-no-performance-stub",
+    }));
+
+    build.onLoad(
+      { filter: /.*/, namespace: "tracker-no-performance-stub" },
+      () => ({
+        loader: "ts",
+        contents: `
+          export function createPerformanceTracker() {
+            return {
+              buildPayload() { return null; },
+              hasVisit() { return false; },
+              start() {},
+              stop() {},
+            };
+          }
+        `,
+      }),
+    );
+  },
 };
 
 function generateOutput(text: string, label: string): string {
@@ -40,6 +69,23 @@ function generateOutput(text: string, label: string): string {
   ].join("\n");
 }
 
+async function minifySdk(text: string, label: string): Promise<string> {
+  const result = await minify(text, {
+    ecma: 2020,
+    compress: {
+      passes: 2,
+    },
+    mangle: true,
+    format: {
+      comments: false,
+    },
+  });
+  if (!result.code) {
+    throw new Error(`Terser produced empty output for ${label}`);
+  }
+  return result.code;
+}
+
 async function build() {
   rlog.info("Building tracker SDK variants...");
   // Variant A: Full (with performance)
@@ -47,7 +93,10 @@ async function build() {
     ...commonOpts,
     define: { BUILD_PERFORMANCE: "true" },
   });
-  const fullText = fullResult.outputFiles![0].text;
+  const fullText = await minifySdk(
+    fullResult.outputFiles![0].text,
+    "full (performance included)",
+  );
   const fullPath = resolve(root, "src/tracker/sdk.min.ts");
   writeFileSync(
     fullPath,
@@ -62,8 +111,12 @@ async function build() {
   const noPerfResult = await esbuild.build({
     ...commonOpts,
     define: { BUILD_PERFORMANCE: "false" },
+    plugins: [noPerformancePlugin],
   });
-  const noPerfText = noPerfResult.outputFiles![0].text;
+  const noPerfText = await minifySdk(
+    noPerfResult.outputFiles![0].text,
+    "no-perf (performance stripped)",
+  );
   const noPerfPath = resolve(root, "src/tracker/sdk.no-perf.min.ts");
   writeFileSync(
     noPerfPath,

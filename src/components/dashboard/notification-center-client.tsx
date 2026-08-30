@@ -1,7 +1,4 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   type RemixiconComponentType,
   RiAlertLine,
@@ -14,6 +11,7 @@ import {
   RiNotification3Line,
   RiRefreshLine,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -30,21 +28,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { requestAdminService } from "@/lib/admin-service-client";
 import { shortDateTime } from "@/lib/dashboard/format";
-import {
-  fetchNotificationMessages,
-  markAllNotificationMessagesRead,
-  markNotificationMessageRead,
-  type NotificationMessageData,
-} from "@/lib/edge-client";
+import type { NotificationCenterInitialData } from "@/lib/dashboard/management-data";
+import { type NotificationMessageData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import { usePathname, useRouter, useSearchParams } from "@/lib/router";
 
 interface NotificationCenterClientProps {
   locale: Locale;
   messages: AppMessages;
   teamId?: string;
+  initialData?: NotificationCenterInitialData | null;
 }
 
 type NotificationTab = "all" | "unread" | "attention" | "report";
@@ -383,22 +380,57 @@ export function NotificationCenterClient({
   locale,
   messages,
   teamId,
+  initialData = null,
 }: NotificationCenterClientProps) {
   const copy = messages.notificationCenter;
+  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const ruleIdFilter = searchParams.get("ruleId")?.trim() || "";
-  const [messagesList, setMessagesList] = useState<NotificationMessageData[]>(
-    [],
-  );
-  const [unreadAttentionCount, setUnreadAttentionCount] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<NotificationTab>("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [updatingId, setUpdatingId] = useState("");
   const [markingAll, setMarkingAll] = useState(false);
+  const messagesQueryKey = useMemo(
+    () =>
+      [
+        "dashboard",
+        "notification-messages",
+        teamId ?? "",
+        ruleIdFilter,
+        locale,
+      ] as const,
+    [locale, ruleIdFilter, teamId],
+  );
+  const messagesQuery = useQuery({
+    queryKey: messagesQueryKey,
+    queryFn: ({ signal }) =>
+      requestAdminService<{
+        messages: NotificationMessageData[];
+        unreadAttentionCount: number;
+      }>("notifications", {
+        params: {
+          teamId,
+          ruleId: ruleIdFilter || undefined,
+          locale,
+          limit: 80,
+        },
+        signal,
+      }),
+    initialData: initialData
+      ? {
+          messages: initialData.messages,
+          unreadAttentionCount: initialData.unreadAttentionCount,
+        }
+      : undefined,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const messagesList = messagesQuery.data?.messages ?? [];
+  const unreadAttentionCount = messagesQuery.data?.unreadAttentionCount ?? 0;
+  const loading = messagesQuery.isPending;
 
   const filteredMessages = useMemo(() => {
     return messagesList.filter((item) => {
@@ -434,27 +466,9 @@ export function NotificationCenterClient({
       ? `empty:${activeTab}`
       : `${activeTab}:${filteredMessages.map((item) => item.id).join(":")}`;
 
-  async function loadMessages() {
-    setLoading(true);
-    try {
-      const data = await fetchNotificationMessages({
-        teamId,
-        ruleId: ruleIdFilter || undefined,
-        locale,
-        limit: 80,
-      });
-      setMessagesList(data.messages);
-      setUnreadAttentionCount(data.unreadAttentionCount);
-    } catch {
-      toast.error(copy.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void loadMessages();
-  }, [locale, ruleIdFilter, teamId]);
+    if (messagesQuery.isError) toast.error(copy.loadFailed);
+  }, [copy.loadFailed, messagesQuery.errorUpdatedAt, messagesQuery.isError]);
 
   function clearRuleFilter() {
     const next = new URLSearchParams(searchParams.toString());
@@ -467,15 +481,29 @@ export function NotificationCenterClient({
     const target = messagesList.find((item) => item.id === messageId);
     setUpdatingId(messageId);
     try {
-      const updated = await markNotificationMessageRead({ messageId, locale });
-      setMessagesList((current) =>
-        current.map((item) =>
-          item.id === messageId && updated ? updated : item,
-        ),
+      const updated = await requestAdminService<NotificationMessageData | null>(
+        `notifications/${encodeURIComponent(messageId)}`,
+        {
+          method: "PATCH",
+          body: { read: true, locale },
+        },
       );
-      if (target?.requiresAttention && target.readAt === null) {
-        setUnreadAttentionCount((count) => Math.max(0, count - 1));
-      }
+      queryClient.setQueryData(
+        messagesQueryKey,
+        (current: typeof messagesQuery.data) => {
+          if (!current) return current;
+          return {
+            ...current,
+            messages: current.messages.map((item) =>
+              item.id === messageId && updated ? updated : item,
+            ),
+            unreadAttentionCount:
+              target?.requiresAttention && target.readAt === null
+                ? Math.max(0, current.unreadAttentionCount - 1)
+                : current.unreadAttentionCount,
+          };
+        },
+      );
     } catch {
       toast.error(copy.markReadFailed);
     } finally {
@@ -487,8 +515,11 @@ export function NotificationCenterClient({
     if (markingAll) return;
     setMarkingAll(true);
     try {
-      await markAllNotificationMessagesRead({ teamId });
-      await loadMessages();
+      await requestAdminService<{ updated: number }>("notifications/read-all", {
+        method: "PATCH",
+        body: { teamId, read: true },
+      });
+      await queryClient.invalidateQueries({ queryKey: messagesQueryKey });
       toast.success(copy.markAllReadSuccess);
     } catch {
       toast.error(copy.markAllReadFailed);
@@ -549,7 +580,7 @@ export function NotificationCenterClient({
               type="button"
               variant="outline"
               disabled={loading}
-              onClick={() => void loadMessages()}
+              onClick={() => void messagesQuery.refetch()}
             >
               <span className="inline-flex size-4 shrink-0 items-center justify-center">
                 {loading ? (

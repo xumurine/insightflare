@@ -1,18 +1,16 @@
-"use client";
-
 import {
+  Fragment,
   type KeyboardEvent,
+  memo,
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import {
   RiFileList3Line,
   RiGlobalLine,
@@ -21,24 +19,27 @@ import {
   RiRobot2Line,
   RiShieldCheckLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useAnimationControls } from "motion/react";
-import {
-  Area,
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { motion, useAnimationControls } from "motion/react";
 import { toast } from "sonner";
 
+import { AnalyticsDataTable } from "@/components/dashboard/analytics-data-table";
+import {
+  type AnalyticsTableColumnDefinition,
+  AnalyticsTableColumnSettings,
+  useAnalyticsTableColumns,
+} from "@/components/dashboard/analytics-table-column-settings";
+import {
+  AnalyticsDetailsTooltipTarget,
+  AnalyticsTimeTooltipTarget,
+} from "@/components/dashboard/analytics-time-tooltip";
 import {
   AsyncDimensionBreakdownCard,
   type AsyncDimensionBreakdownLabelAppearance,
   type AsyncDimensionBreakdownRow,
   type AsyncDimensionBreakdownTab,
 } from "@/components/dashboard/async-dimension-breakdown-card";
+import { RequestObservationTrendChart } from "@/components/dashboard/charts/request-observation-trend-chart";
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { GeoPointsMapIsland } from "@/components/dashboard/geo-points-map-island";
 import {
@@ -47,11 +48,8 @@ import {
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
-import {
-  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-  EVENT_RECORD_DRAWER_Z_INDEX,
-  FLOATING_LAYER_Z_ATTR,
-} from "@/components/dashboard/site-pages/floating-layer";
+import { EVENT_RECORD_DRAWER_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
+import { AppOverlay, overlayZIndexFor } from "@/components/ui/app-overlay";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -64,28 +62,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  type ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import {
   Drawer,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
+  DrawerScrollArea,
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Table,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { requestAdminService } from "@/lib/admin-service-client";
 import {
   durationFormat,
   intlLocale,
@@ -100,7 +88,12 @@ import {
 } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
+import Link from "@/lib/router";
+import { usePathname, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
+
+import type { RequestObservationTrendPoint } from "./charts/request-observation-trend-chart";
 
 interface RequestObservationClientProps {
   locale: Locale;
@@ -160,10 +153,42 @@ interface NormalRequestEvent {
   rayId: string;
   traceId: string;
   requestMethod: string;
+  metadataJson?: string;
   latitude: number | null;
   longitude: number | null;
   userAgentLength: number;
 }
+
+const BOT_EVENT_DETAIL_SKELETON_DATA: BotEvent = {
+  timestamp: "",
+  receivedAt: 0,
+  siteId: "",
+  siteName: "",
+  siteDomain: "",
+  kind: "",
+  confidence: "",
+  reasons: [],
+  ip: "",
+  userAgent: "",
+  origin: "",
+  hostname: "",
+  pathname: "",
+  country: "",
+  region: "",
+  city: "",
+  continent: "",
+  colo: "",
+  asn: 0,
+  asOrganization: "",
+  verifiedBotCategory: "",
+  rayId: "",
+  traceId: "",
+  metadataJson: "",
+  latitude: null,
+  longitude: null,
+  botScore: null,
+  userAgentLength: 0,
+};
 
 interface RequestMapPoint {
   latitude: number;
@@ -174,23 +199,36 @@ interface RequestMapPoint {
   color?: [number, number, number];
 }
 
-interface RequestTrendPoint {
-  timestampMs: number;
+interface RequestNetworkDimensionRow {
+  key: string;
+  label: string;
   count: number;
-  baselineCount: number;
-  normalCount: number;
-  abnormalCount: number;
-  totalCount: number;
-  botRatio: number;
-  abnormalRatio: number;
-  normalRatio: number;
-  pageviews: number;
-  customEvents: number;
-  avgLatencyMs: number | null;
-  p50LatencyMs: number | null;
-  p75LatencyMs: number | null;
-  p95LatencyMs: number | null;
-  p99LatencyMs: number | null;
+  highConfidence: number;
+  country: string;
+  region: string;
+  iconLabel?: string;
+}
+
+interface RequestDetailCursor {
+  timestamp: string;
+  receivedAt: number;
+}
+
+interface RequestObservationPageData {
+  ok: true;
+  configured: boolean;
+  generatedAt: number;
+  page: {
+    source: "abnormal" | "normal";
+    events: BotEvent[] | NormalRequestEvent[];
+    hasMore: boolean;
+    nextCursor: RequestDetailCursor | null;
+  };
+}
+
+interface RequestObservationDimensionData {
+  ok: true;
+  dimension: { rows: RequestNetworkDimensionRow[] };
 }
 
 interface RequestObservationData {
@@ -219,7 +257,7 @@ interface RequestObservationData {
     uniqueCountries: number;
   };
   mapPoints: RequestMapPoint[];
-  trend: RequestTrendPoint[];
+  trend: RequestObservationTrendPoint[];
   reasons: Array<{ reason: string; count: number }>;
   countries?: Array<{ country: string; count: number }>;
   asns: Array<{ asn: number; asOrganization: string; count: number }>;
@@ -254,6 +292,13 @@ interface RequestObservationData {
     reasons?: Array<{ reason: string; count: number }>;
     countries?: Array<{ country: string; count: number }>;
     asns?: Array<{ asn: number; asOrganization: string; count: number }>;
+    hasMore?: boolean;
+    nextCursor?: RequestDetailCursor | null;
+    dimensions?: {
+      network?: Partial<
+        Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
+      >;
+    };
   };
   normal?: {
     summary: {
@@ -272,6 +317,13 @@ interface RequestObservationData {
     };
     mapPoints: RequestMapPoint[];
     events: NormalRequestEvent[];
+    hasMore?: boolean;
+    nextCursor?: RequestDetailCursor | null;
+    dimensions?: {
+      network?: Partial<
+        Record<NetworkDimensionTab, RequestNetworkDimensionRow[]>
+      >;
+    };
   };
 }
 
@@ -283,9 +335,102 @@ interface RequestObservationDetailData {
 }
 
 const DIMENSION_ROW_LIMIT = 30;
-const BOT_EVENT_FETCH_LIMIT = 500;
-const BOT_EVENT_PAGE_SIZE = 80;
-const BOT_EVENT_SKELETON_ROWS = 8;
+const BOT_EVENT_FETCH_LIMIT = 50;
+type AbnormalRequestTableColumnId =
+  | "id"
+  | "time"
+  | "site"
+  | "kind"
+  | "reason"
+  | "confidence"
+  | "botScore"
+  | "verifiedBotCategory"
+  | "network"
+  | "ip"
+  | "location"
+  | "pathname"
+  | "userAgent";
+
+type NormalRequestTableColumnId =
+  | "id"
+  | "time"
+  | "site"
+  | "kind"
+  | "requestMethod"
+  | "hostname"
+  | "network"
+  | "location"
+  | "colo"
+  | "pathname"
+  | "edgeLatency";
+
+const BOT_EVENT_SKELETON_WIDTHS: Record<AbnormalRequestTableColumnId, string> =
+  {
+    id: "w-24",
+    time: "w-28",
+    site: "w-24",
+    kind: "w-20",
+    reason: "w-28",
+    confidence: "w-32",
+    botScore: "w-24",
+    verifiedBotCategory: "w-36",
+    network: "w-40",
+    ip: "w-28",
+    location: "w-24",
+    pathname: "w-24",
+    userAgent: "w-20",
+  };
+const NORMAL_REQUEST_SKELETON_WIDTHS: Record<
+  NormalRequestTableColumnId,
+  string
+> = {
+  id: "w-24",
+  time: "w-28",
+  site: "w-24",
+  kind: "w-16",
+  requestMethod: "w-24",
+  hostname: "w-36",
+  network: "w-40",
+  location: "w-28",
+  colo: "w-24",
+  pathname: "w-24",
+  edgeLatency: "w-20",
+};
+type RequestObservationColumnAlignment = "left" | "center" | "right";
+const BOT_EVENT_COLUMN_ALIGNMENTS: Record<
+  AbnormalRequestTableColumnId,
+  RequestObservationColumnAlignment
+> = {
+  id: "left",
+  time: "center",
+  site: "left",
+  kind: "left",
+  reason: "left",
+  confidence: "center",
+  botScore: "right",
+  verifiedBotCategory: "left",
+  network: "left",
+  ip: "left",
+  location: "left",
+  pathname: "left",
+  userAgent: "left",
+};
+const NORMAL_REQUEST_COLUMN_ALIGNMENTS: Record<
+  NormalRequestTableColumnId,
+  RequestObservationColumnAlignment
+> = {
+  id: "left",
+  time: "center",
+  site: "left",
+  kind: "left",
+  requestMethod: "center",
+  hostname: "left",
+  network: "left",
+  location: "left",
+  colo: "left",
+  pathname: "left",
+  edgeLatency: "right",
+};
 const ABNORMAL_POINT_COLOR: [number, number, number] = [239, 68, 68];
 const NORMAL_POINT_COLOR: [number, number, number] = [34, 197, 154];
 const PERFORMANCE_WARNING_COLOR = "oklch(0.75 0.16 80)";
@@ -328,7 +473,11 @@ function botEventDetailId(event: BotEvent): string {
   return event.traceId || event.rayId || "";
 }
 
-function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
+function latencyFormat(
+  locale: Locale,
+  copy: AppMessages["requestObservation"],
+  valueMs: number | null | undefined,
+) {
   if (valueMs === null || valueMs === undefined || !Number.isFinite(valueMs)) {
     return "--";
   }
@@ -337,9 +486,9 @@ function latencyFormat(locale: Locale, valueMs: number | null | undefined) {
     const formatter = new Intl.NumberFormat(intlLocale(locale), {
       maximumFractionDigits: value < 100 ? 1 : 0,
     });
-    return locale === "zh"
-      ? `${formatter.format(value)} 毫秒`
-      : `${formatter.format(value)} ms`;
+    return formatI18nTemplate(copy.overviewLabels.latencyMilliseconds, {
+      value: formatter.format(value),
+    });
   }
   return durationFormat(locale, value);
 }
@@ -369,40 +518,6 @@ interface BotDimensionRow {
   count: number;
   highConfidence: number;
   sampleEvent: BotEvent | null;
-}
-
-type DemoWindowMinutes = 60 | 1440 | 10080 | 43200;
-
-async function generateDemoRequestObservation(
-  minutes: DemoWindowMinutes,
-  overrides?: Pick<RequestObservationData, "configured" | "error"> & {
-    config?: RequestObservationData["config"];
-  },
-): Promise<RequestObservationData> {
-  const { generateDemoRequestObservationData } =
-    await import("@/lib/realtime/mock/request-observation");
-  const data = withRequestObservabilityDefaults(
-    generateDemoRequestObservationData(minutes) as RequestObservationData,
-  );
-  return withRequestObservabilityDefaults({
-    ...data,
-    ...overrides,
-    config: {
-      ...(data.config ?? {}),
-      ...overrides?.config,
-    },
-  });
-}
-
-function demoMinutesForWindow(timeWindow: TimeWindow): DemoWindowMinutes {
-  const minutes = Math.max(
-    1,
-    Math.ceil((timeWindow.to - timeWindow.from) / 60000),
-  );
-  if (minutes <= 60) return 60;
-  if (minutes <= 1440) return 1440;
-  if (minutes <= 10080) return 10080;
-  return 43200;
 }
 
 function withRequestObservabilityDefaults(
@@ -505,6 +620,8 @@ function withRequestObservabilityDefaults(
       reasons: data.abnormal?.reasons ?? data.reasons,
       countries: data.abnormal?.countries ?? data.countries,
       asns: data.abnormal?.asns ?? data.asns,
+      hasMore: data.abnormal?.hasMore ?? false,
+      nextCursor: data.abnormal?.nextCursor ?? null,
     },
     normal: {
       summary: {
@@ -527,14 +644,10 @@ function withRequestObservabilityDefaults(
       },
       mapPoints: normalMapPoints,
       events: normalEvents,
+      hasMore: data.normal?.hasMore ?? false,
+      nextCursor: data.normal?.nextCursor ?? null,
     },
   };
-}
-
-function shouldShowDemoOverlay(data: RequestObservationData): boolean {
-  return (
-    data.config?.analyticsEngineDisabled === true || data.configured === false
-  );
 }
 
 export function RequestObservationClient({
@@ -542,140 +655,128 @@ export function RequestObservationClient({
   messages,
 }: RequestObservationClientProps) {
   const copy = messages.requestObservation;
+  const queryClient = useQueryClient();
   const { window: timeWindow } = useDashboardQuery();
   const searchParams = useSearchParams();
   const activeTab = normalizeRequestObservationTab(
     searchParams.get("requestTab"),
   );
-  const [data, setData] = useState<RequestObservationData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState<"abnormal" | "normal" | null>(
+    null,
+  );
   const mapAnimationControls = useAnimationControls();
+  const observationQueryKey = [
+    "dashboard",
+    "request-observation",
+    timeWindow.from,
+    timeWindow.to,
+    timeWindow.interval,
+    timeWindow.timeZone,
+  ] as const;
+  const observationQuery = useQuery({
+    queryKey: observationQueryKey,
+    queryFn: ({ signal }) => fetchRequestObservation(timeWindow, signal),
+    enabled: typeof window !== "undefined",
+  });
+  const data = observationQuery.data ?? null;
+  const loading = observationQuery.isPending;
+  const refreshing = observationQuery.isFetching && !observationQuery.isPending;
+  const setData = (
+    updater:
+      | RequestObservationData
+      | null
+      | ((
+          current: RequestObservationData | null,
+        ) => RequestObservationData | null),
+  ) => {
+    queryClient.setQueryData<RequestObservationData | null>(
+      observationQueryKey,
+      (current = null) =>
+        typeof updater === "function" ? updater(current) : updater,
+    );
+  };
 
   const spanMs = Math.max(1, timeWindow.to - timeWindow.from);
-  const detailMinutes = Math.max(1, Math.ceil(spanMs / 60000));
-  const windowDetail =
-    locale === "zh"
-      ? `最近 ${Math.max(1, Math.ceil(spanMs / 86400000))} 天`
-      : `Last ${Math.max(1, Math.ceil(spanMs / 86400000))} days`;
+  const windowDetail = formatI18nTemplate(copy.overviewLabels.windowDays, {
+    days: Math.max(1, Math.ceil(spanMs / 86400000)),
+  });
+  const labels = copy.overviewLabels;
 
-  const labels = useMemo(
-    () =>
-      locale === "zh"
-        ? {
-            overview: "总览",
-            abnormal: "异常请求",
-            normal: "正常请求",
-            totalRequests: "总请求数",
-            normalRequests: "正常请求",
-            abnormalRequests: "异常请求",
-            abnormalRatio: "异常请求比例",
-            normalRatio: "正常请求比例",
-            p50Latency: "P50 边缘耗时",
-            p75Latency: "P75 边缘耗时",
-            p95Latency: "P95 边缘耗时",
-            p99Latency: "P99 边缘耗时",
-            avgLatency: "平均边缘耗时",
-            pageviews: "页面浏览",
-            customEvents: "自定义事件",
-            overviewTrendTitle: "请求分流趋势",
-            overviewTrendDescription:
-              "按顶栏时间间隔分桶显示正常与异常请求，以及异常请求比例。",
-            trafficCompositionTitle: "请求构成",
-            trafficCompositionDescription:
-              "正常请求、异常请求和页面事件在同一时间轴上的变化。",
-            confidenceShareTitle: "请求置信度占比",
-            confidenceShareDescription:
-              "按请求数展示正常流量、低/中/高置信度异常流量的占比。",
-            normalTrafficShare: "正常流量",
-            lowConfidenceTraffic: "低置信度流量",
-            mediumConfidenceTraffic: "中置信度流量",
-            highConfidenceTraffic: "高置信度流量",
-            latencyTitle: "边缘耗时趋势",
-            latencyDescription:
-              "正常请求写入 AE 时记录的 P50 / P75 / P95 / P99 边缘耗时。",
-            normalBreakdownTitle: "正常请求维度",
-            abnormalSubtitle:
-              "聚焦已分流的异常请求，地图和统计表只显示红色异常流量。",
-            normalSubtitle:
-              "聚焦进入正常采集链路的请求，地图和统计表只显示绿色正常流量。",
-            requests: "请求数",
-          }
-        : {
-            overview: "Overview",
-            abnormal: "Abnormal Requests",
-            normal: "Normal Requests",
-            totalRequests: "Total Requests",
-            normalRequests: "Normal Requests",
-            abnormalRequests: "Abnormal Requests",
-            abnormalRatio: "Abnormal Request Ratio",
-            normalRatio: "Normal Request Ratio",
-            p50Latency: "P50 Edge Latency",
-            p75Latency: "P75 Edge Latency",
-            p95Latency: "P95 Edge Latency",
-            p99Latency: "P99 Edge Latency",
-            avgLatency: "Average Edge Latency",
-            pageviews: "Pageviews",
-            customEvents: "Custom Events",
-            overviewTrendTitle: "Request Routing Trend",
-            overviewTrendDescription:
-              "Normal requests, abnormal requests, and abnormal ratio bucketed by the top-bar interval.",
-            trafficCompositionTitle: "Request Composition",
-            trafficCompositionDescription:
-              "Normal requests, abnormal requests, and page events on the same timeline.",
-            confidenceShareTitle: "Request Confidence Share",
-            confidenceShareDescription:
-              "Share of normal traffic and low / medium / high-confidence abnormal traffic by request count.",
-            normalTrafficShare: "Normal Traffic",
-            lowConfidenceTraffic: "Low Confidence Traffic",
-            mediumConfidenceTraffic: "Medium Confidence Traffic",
-            highConfidenceTraffic: "High Confidence Traffic",
-            latencyTitle: "Edge Latency Trend",
-            latencyDescription:
-              "P50 / P75 / P95 / P99 edge latency captured when normal requests are written to AE.",
-            normalBreakdownTitle: "Normal Request Dimensions",
-            abnormalSubtitle:
-              "Focuses on diverted abnormal requests; the map and tables show only red abnormal traffic.",
-            normalSubtitle:
-              "Focuses on requests entering the normal collection path; the map and tables show only normal request traffic.",
-            requests: "Requests",
-          },
-    [locale],
-  );
+  useEffect(() => {
+    if (!observationQuery.isError) return;
+    const message =
+      observationQuery.error instanceof Error
+        ? observationQuery.error.message
+        : copy.loadFailed;
+    toast.error(message || copy.loadFailed);
+  }, [
+    copy.loadFailed,
+    observationQuery.error,
+    observationQuery.errorUpdatedAt,
+    observationQuery.isError,
+  ]);
 
-  const load = useMemo(
-    () => async (mode: "initial" | "refresh") => {
-      if (mode === "initial") setLoading(true);
-      else setRefreshing(true);
+  const loadMoreEvents = useMemo(
+    () => async (source: "abnormal" | "normal") => {
+      const section = data?.[source];
+      if (!section?.hasMore || !section.nextCursor || loadingMore !== null) {
+        return;
+      }
+      setLoadingMore(source);
       try {
-        const next = await fetchRequestObservation(timeWindow);
-        setData(next);
+        const page = await fetchRequestObservationPage(
+          timeWindow,
+          source,
+          section.nextCursor,
+        );
+        setData((current) => {
+          if (!current || page.page.source !== source) return current;
+          if (source === "abnormal") {
+            return {
+              ...current,
+              events: [...current.events, ...(page.page.events as BotEvent[])],
+              abnormal: {
+                ...current.abnormal!,
+                events: [
+                  ...current.abnormal!.events,
+                  ...(page.page.events as BotEvent[]),
+                ],
+                hasMore: page.page.hasMore,
+                nextCursor: page.page.nextCursor,
+              },
+            };
+          }
+          return {
+            ...current,
+            normalEvents: [
+              ...(current.normalEvents ?? []),
+              ...(page.page.events as NormalRequestEvent[]),
+            ],
+            normal: {
+              ...current.normal!,
+              events: [
+                ...current.normal!.events,
+                ...(page.page.events as NormalRequestEvent[]),
+              ],
+              hasMore: page.page.hasMore,
+              nextCursor: page.page.nextCursor,
+            },
+          };
+        });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : copy.loadFailed);
       } finally {
-        if (mode === "initial") setLoading(false);
-        else setRefreshing(false);
+        setLoadingMore(null);
       }
     },
-    [copy.loadFailed, timeWindow],
+    [copy.loadFailed, data, loadingMore, timeWindow],
   );
-
-  useEffect(() => {
-    void load("initial");
-  }, [load]);
-
-  const formatter = useMemo(
-    () => new Intl.NumberFormat(intlLocale(locale)),
-    [locale],
-  );
-  const trendTickFormatter = useMemo(
-    () => trendTickDateFormat(locale, spanMs),
-    [locale, spanMs],
-  );
-  const trendTooltipFormatter = useMemo(
-    () => trendTooltipDateFormat(locale, spanMs),
-    [locale, spanMs],
-  );
+  const loadMoreAbnormalEvents = useCallback(() => {
+    void loadMoreEvents("abnormal");
+  }, [loadMoreEvents]);
+  const loadMoreNormalEvents = useCallback(() => {
+    void loadMoreEvents("normal");
+  }, [loadMoreEvents]);
 
   const trend = data?.trend ?? [];
   const abnormalEvents = data?.abnormal?.events ?? data?.events ?? [];
@@ -816,100 +917,6 @@ export function RequestObservationClient({
     </Button>
   );
 
-  const trendConfig = useMemo(
-    () =>
-      ({
-        normalCount: {
-          label: labels.normalRequests,
-          color: NORMAL_TRAFFIC_SHARE_COLOR,
-        },
-        abnormalCount: {
-          label: labels.abnormalRequests,
-          color: "var(--color-destructive)",
-        },
-        totalCount: {
-          label: labels.totalRequests,
-          color: "var(--color-chart-1)",
-        },
-        pageviews: {
-          label: labels.pageviews,
-          color: NORMAL_TRAFFIC_SHARE_COLOR,
-        },
-        customEvents: {
-          label: labels.customEvents,
-          color: PERFORMANCE_WARNING_COLOR,
-        },
-        abnormalRatio: {
-          label: labels.abnormalRatio,
-          color: "var(--color-destructive)",
-        },
-        avgLatencyMs: {
-          label: labels.avgLatency,
-          color: "var(--color-chart-1)",
-        },
-        p50LatencyMs: {
-          label: labels.p50Latency,
-          color: "var(--color-chart-1)",
-        },
-        p75LatencyMs: {
-          label: labels.p75Latency,
-          color: "var(--color-chart-4)",
-        },
-        p95LatencyMs: {
-          label: labels.p95Latency,
-          color: "var(--color-chart-5)",
-        },
-        p99LatencyMs: {
-          label: labels.p99Latency,
-          color: "var(--color-destructive)",
-        },
-        normalTrafficShare: {
-          label: labels.normalTrafficShare,
-          color: NORMAL_TRAFFIC_SHARE_COLOR,
-        },
-        lowConfidenceTraffic: {
-          label: labels.lowConfidenceTraffic,
-          color: LOW_CONFIDENCE_TRAFFIC_COLOR,
-        },
-        mediumConfidenceTraffic: {
-          label: labels.mediumConfidenceTraffic,
-          color: MEDIUM_CONFIDENCE_TRAFFIC_COLOR,
-        },
-        highConfidenceTraffic: {
-          label: labels.highConfidenceTraffic,
-          color: HIGH_CONFIDENCE_TRAFFIC_COLOR,
-        },
-      }) satisfies ChartConfig,
-    [labels],
-  );
-  const formatTrendTooltipValue = useMemo(
-    () =>
-      createTrendTooltipFormatter({
-        botRequestsLabel: labels.requests,
-        botTrafficRatioLabel: labels.abnormalRatio,
-        countFormatter: formatter,
-        locale,
-        labels: {
-          normalCount: labels.normalRequests,
-          abnormalCount: labels.abnormalRequests,
-          totalCount: labels.totalRequests,
-          pageviews: labels.pageviews,
-          customEvents: labels.customEvents,
-          abnormalRatio: labels.abnormalRatio,
-          avgLatencyMs: labels.avgLatency,
-          p50LatencyMs: labels.p50Latency,
-          p75LatencyMs: labels.p75Latency,
-          p95LatencyMs: labels.p95Latency,
-          p99LatencyMs: labels.p99Latency,
-          normalTrafficShare: labels.normalTrafficShare,
-          lowConfidenceTraffic: labels.lowConfidenceTraffic,
-          mediumConfidenceTraffic: labels.mediumConfidenceTraffic,
-          highConfidenceTraffic: labels.highConfidenceTraffic,
-        },
-      }),
-    [formatter, labels, locale],
-  );
-
   const detectionTabs = useMemo(
     () =>
       [
@@ -1061,101 +1068,86 @@ export function RequestObservationClient({
     [copy],
   );
 
-  const detectionRowsByTab = useMemo(
+  const loadAbnormalDimensionRows = useMemo(
     () =>
-      Object.fromEntries(
-        detectionTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForDetectionTab(event, tab.value, copy),
-            ),
+      async (
+        group: "detection" | "target" | "network" | "client",
+        tab: string,
+      ) =>
+        toAsyncAggregatedDimensionRows(
+          await fetchRequestObservationDimension(
+            timeWindow,
+            "abnormal",
+            group,
+            tab,
           ),
-        ]),
-      ) as Record<DetectionDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, detectionTabs],
+          group === "network"
+            ? {
+                networkTab: tab as NetworkDimensionTab,
+                locale,
+                unknownLabel: copy.emptyValue,
+              }
+            : group === "target"
+              ? { targetTab: tab as TargetDimensionTab }
+              : group === "detection"
+                ? {
+                    detectionTab: tab as DetectionDimensionTab,
+                    copy,
+                  }
+                : undefined,
+        ),
+    [copy.emptyValue, locale, timeWindow],
   );
-  const abnormalTargetRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        targetTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForTargetTab(event, tab.value),
-            ),
-            { targetTab: tab.value },
-          ),
-        ]),
-      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, targetTabs],
-  );
-  const abnormalNetworkRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        networkTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForNetworkTab(event, tab.value),
-            ),
-            {
-              networkTab: tab.value,
+  const loadNormalDimensionRows = useMemo(
+    () => async (group: "target" | "network", tab: string) =>
+      toAsyncAggregatedDimensionRows(
+        await fetchRequestObservationDimension(
+          timeWindow,
+          "normal",
+          group,
+          tab,
+        ),
+        group === "network"
+          ? {
+              networkTab: tab as NetworkDimensionTab,
               locale,
               unknownLabel: copy.emptyValue,
-            },
-          ),
-        ]),
-      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, copy, locale, networkTabs],
+            }
+          : group === "target"
+            ? { targetTab: tab as TargetDimensionTab }
+            : undefined,
+      ),
+    [copy.emptyValue, locale, timeWindow],
   );
-  const clientRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        clientTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateDimensionRows(abnormalEvents, copy, (event) =>
-              valuesForClientTab(event, tab.value),
-            ),
-          ),
-        ]),
-      ) as Record<ClientDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [abnormalEvents, clientTabs, copy],
+  const loadAbnormalDetectionRows = useCallback(
+    (tab: DetectionDimensionTab, _signal?: AbortSignal) =>
+      loadAbnormalDimensionRows("detection", tab),
+    [loadAbnormalDimensionRows],
   );
-  const normalTargetRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        targetTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
-              valuesForNormalTargetTab(event, tab.value),
-            ),
-            { targetTab: tab.value },
-          ),
-        ]),
-      ) as Record<TargetDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [copy, normalEvents, targetTabs],
+  const loadAbnormalTargetRows = useCallback(
+    (tab: TargetDimensionTab, _signal?: AbortSignal) =>
+      loadAbnormalDimensionRows("target", tab),
+    [loadAbnormalDimensionRows],
   );
-  const normalNetworkRowsByTab = useMemo(
-    () =>
-      Object.fromEntries(
-        networkTabs.map((tab) => [
-          tab.value,
-          toAsyncDimensionRows(
-            aggregateNormalDimensionRows(normalEvents, copy, (event) =>
-              valuesForNormalNetworkTab(event, tab.value),
-            ),
-            {
-              networkTab: tab.value,
-              locale,
-              unknownLabel: copy.emptyValue,
-            },
-          ),
-        ]),
-      ) as Record<NetworkDimensionTab, AsyncDimensionBreakdownRow[]>,
-    [copy, locale, networkTabs, normalEvents],
+  const loadAbnormalNetworkRows = useCallback(
+    (tab: NetworkDimensionTab, _signal?: AbortSignal) =>
+      loadAbnormalDimensionRows("network", tab),
+    [loadAbnormalDimensionRows],
+  );
+  const loadAbnormalClientRows = useCallback(
+    (tab: ClientDimensionTab, _signal?: AbortSignal) =>
+      loadAbnormalDimensionRows("client", tab),
+    [loadAbnormalDimensionRows],
+  );
+  const loadNormalTargetRows = useCallback(
+    (tab: TargetDimensionTab, _signal?: AbortSignal) =>
+      loadNormalDimensionRows("target", tab),
+    [loadNormalDimensionRows],
+  );
+  const loadNormalNetworkRows = useCallback(
+    (tab: NetworkDimensionTab, _signal?: AbortSignal) =>
+      loadNormalDimensionRows("network", tab),
+    [loadNormalDimensionRows],
   );
 
   const requestKey = `${timeWindow.interval}:${data?.generatedAt ?? 0}`;
@@ -1246,7 +1238,7 @@ export function RequestObservationClient({
           type="button"
           variant="outline"
           className="bg-background/90 backdrop-blur"
-          onClick={() => load("refresh")}
+          onClick={() => void observationQuery.refetch()}
           disabled={loading || refreshing}
         >
           {refreshing ? (
@@ -1300,7 +1292,7 @@ export function RequestObservationClient({
                   overview?.p95LatencyMs === null ||
                   overview?.p95LatencyMs === undefined
                     ? "--"
-                    : latencyFormat(locale, overview.p95LatencyMs)
+                    : latencyFormat(locale, copy, overview.p95LatencyMs)
                 }
                 detail={labels.avgLatency}
                 loading={loading}
@@ -1315,79 +1307,14 @@ export function RequestObservationClient({
             <CardDescription>{labels.overviewTrendDescription}</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={trendConfig} className="h-[320px] w-full">
-              <ComposedChart data={trend}>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="timestampMs"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tickFormatter={(value) =>
-                    trendTickFormatter.format(new Date(Number(value ?? 0)))
-                  }
-                  minTickGap={14}
-                />
-                <YAxis
-                  yAxisId="requests"
-                  width={52}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) => formatter.format(Number(value))}
-                />
-                <YAxis
-                  yAxisId="ratio"
-                  orientation="right"
-                  width={44}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(value) =>
-                    percentFormat(locale, Number(value))
-                  }
-                />
-                <ChartTooltip
-                  allowEscapeViewBox={{ x: false, y: true }}
-                  wrapperStyle={{ zIndex: 20 }}
-                  content={
-                    <ChartTooltipContent
-                      indicator="dot"
-                      labelFormatter={(value, payload) => {
-                        const timestamp = Number(
-                          payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                        );
-                        return trendTooltipFormatter.format(
-                          new Date(timestamp),
-                        );
-                      }}
-                      formatter={formatTrendTooltipValue}
-                    />
-                  }
-                />
-                <Bar
-                  yAxisId="requests"
-                  dataKey="normalCount"
-                  stackId="requests"
-                  fill="var(--color-normalCount)"
-                  radius={[0, 0, 0, 0]}
-                />
-                <Bar
-                  yAxisId="requests"
-                  dataKey="abnormalCount"
-                  stackId="requests"
-                  fill="var(--color-abnormalCount)"
-                  radius={[0, 0, 0, 0]}
-                />
-                <Line
-                  yAxisId="ratio"
-                  type="linear"
-                  dataKey="abnormalRatio"
-                  stroke="var(--color-abnormalRatio)"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </ComposedChart>
-            </ChartContainer>
+            <RequestObservationTrendChart
+              data={trend}
+              labels={labels}
+              locale={locale}
+              spanMs={spanMs}
+              variant="overview"
+              className="h-[320px]"
+            />
           </CardContent>
         </Card>
 
@@ -1396,6 +1323,7 @@ export function RequestObservationClient({
             className="xl:col-span-2"
             title={labels.confidenceShareTitle}
             items={confidenceShareItems}
+            maxItems={4}
             locale={locale}
             valueLabel={labels.requests}
             loading={loading}
@@ -1410,88 +1338,14 @@ export function RequestObservationClient({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ChartContainer config={trendConfig} className="h-[280px] w-full">
-                <ComposedChart data={trend}>
-                  <defs>
-                    <linearGradient
-                      id="request-observability-total-fill"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop
-                        offset="5%"
-                        stopColor="var(--color-totalCount)"
-                        stopOpacity={0.3}
-                      />
-                      <stop
-                        offset="95%"
-                        stopColor="var(--color-totalCount)"
-                        stopOpacity={0.02}
-                      />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="timestampMs"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) =>
-                      trendTickFormatter.format(new Date(Number(value ?? 0)))
-                    }
-                    minTickGap={14}
-                  />
-                  <YAxis
-                    width={52}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) => formatter.format(Number(value))}
-                  />
-                  <ChartTooltip
-                    allowEscapeViewBox={{ x: false, y: true }}
-                    wrapperStyle={{ zIndex: 20 }}
-                    content={
-                      <ChartTooltipContent
-                        indicator="dot"
-                        labelFormatter={(value, payload) => {
-                          const timestamp = Number(
-                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                          );
-                          return trendTooltipFormatter.format(
-                            new Date(timestamp),
-                          );
-                        }}
-                        formatter={formatTrendTooltipValue}
-                      />
-                    }
-                  />
-                  <Area
-                    type="linear"
-                    dataKey="totalCount"
-                    stroke="var(--color-totalCount)"
-                    fill="url(#request-observability-total-fill)"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="pageviews"
-                    stroke="var(--color-pageviews)"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="customEvents"
-                    stroke="var(--color-customEvents)"
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                    dot={false}
-                  />
-                </ComposedChart>
-              </ChartContainer>
+              <RequestObservationTrendChart
+                data={trend}
+                labels={labels}
+                locale={locale}
+                spanMs={spanMs}
+                variant="traffic-composition"
+                className="h-[280px]"
+              />
             </CardContent>
           </Card>
 
@@ -1501,80 +1355,17 @@ export function RequestObservationClient({
               <CardDescription>{labels.latencyDescription}</CardDescription>
             </CardHeader>
             <CardContent>
-              <ChartContainer config={trendConfig} className="h-[280px] w-full">
-                <ComposedChart data={trend}>
-                  <CartesianGrid vertical={false} />
-                  <XAxis
-                    dataKey="timestampMs"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) =>
-                      trendTickFormatter.format(new Date(Number(value ?? 0)))
-                    }
-                    minTickGap={14}
-                  />
-                  <YAxis
-                    width={60}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={(value) =>
-                      latencyFormat(locale, Number(value))
-                    }
-                  />
-                  <ChartTooltip
-                    allowEscapeViewBox={{ x: false, y: true }}
-                    wrapperStyle={{ zIndex: 20 }}
-                    content={
-                      <ChartTooltipContent
-                        indicator="dot"
-                        labelFormatter={(value, payload) => {
-                          const timestamp = Number(
-                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                          );
-                          return trendTooltipFormatter.format(
-                            new Date(timestamp),
-                          );
-                        }}
-                        formatter={formatTrendTooltipValue}
-                      />
-                    }
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="p50LatencyMs"
-                    stroke="var(--color-p50LatencyMs)"
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="p75LatencyMs"
-                    stroke="var(--color-p75LatencyMs)"
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="p95LatencyMs"
-                    stroke="var(--color-p95LatencyMs)"
-                    strokeWidth={2}
-                    dot={false}
-                    connectNulls
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="p99LatencyMs"
-                    stroke="var(--color-p99LatencyMs)"
-                    strokeWidth={2}
-                    strokeDasharray="4 4"
-                    dot={false}
-                    connectNulls
-                  />
-                </ComposedChart>
-              </ChartContainer>
+              <RequestObservationTrendChart
+                data={trend}
+                labels={labels}
+                locale={locale}
+                spanMs={spanMs}
+                variant="latency"
+                latencyFormatter={(valueMs) =>
+                  latencyFormat(locale, copy, valueMs)
+                }
+                className="h-[280px]"
+              />
             </CardContent>
           </Card>
         </section>
@@ -1671,80 +1462,14 @@ export function RequestObservationClient({
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
-                          <ChartContainer
-                            config={trendConfig}
-                            className="h-[320px] w-full"
-                          >
-                            <ComposedChart data={trend}>
-                              <CartesianGrid vertical={false} />
-                              <XAxis
-                                dataKey="timestampMs"
-                                tickLine={false}
-                                axisLine={false}
-                                tickMargin={8}
-                                tickFormatter={(value) =>
-                                  trendTickFormatter.format(
-                                    new Date(Number(value ?? 0)),
-                                  )
-                                }
-                                minTickGap={14}
-                              />
-                              <YAxis
-                                yAxisId="requests"
-                                width={52}
-                                tickLine={false}
-                                axisLine={false}
-                                tickFormatter={(value) =>
-                                  formatter.format(Number(value))
-                                }
-                              />
-                              <YAxis
-                                yAxisId="ratio"
-                                orientation="right"
-                                width={44}
-                                tickLine={false}
-                                axisLine={false}
-                                tickFormatter={(value) =>
-                                  percentFormat(locale, Number(value))
-                                }
-                              />
-                              <ChartTooltip
-                                allowEscapeViewBox={{ x: false, y: true }}
-                                wrapperStyle={{ zIndex: 20 }}
-                                content={
-                                  <ChartTooltipContent
-                                    indicator="dot"
-                                    labelFormatter={(value, payload) => {
-                                      const timestamp = Number(
-                                        payload?.[0]?.payload?.timestampMs ??
-                                          value ??
-                                          0,
-                                      );
-                                      return trendTooltipFormatter.format(
-                                        new Date(timestamp),
-                                      );
-                                    }}
-                                    formatter={formatTrendTooltipValue}
-                                  />
-                                }
-                              />
-                              <Bar
-                                yAxisId="requests"
-                                dataKey="abnormalCount"
-                                fill="var(--color-abnormalCount)"
-                                radius={[3, 3, 0, 0]}
-                              />
-                              <Line
-                                yAxisId="ratio"
-                                type="linear"
-                                dataKey="abnormalRatio"
-                                stroke="var(--color-abnormalRatio)"
-                                strokeWidth={2}
-                                dot={false}
-                                activeDot={{ r: 4 }}
-                              />
-                            </ComposedChart>
-                          </ChartContainer>
+                          <RequestObservationTrendChart
+                            data={trend}
+                            labels={labels}
+                            locale={locale}
+                            spanMs={spanMs}
+                            variant="abnormal"
+                            className="h-[320px]"
+                          />
                         </CardContent>
                       </Card>
 
@@ -1753,15 +1478,8 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={detectionTabs}
-                          rowsByTab={detectionRowsByTab}
-                          loadingByTab={{
-                            reason: loading,
-                            confidence: loading,
-                            kind: loading,
-                            botScoreBucket: loading,
-                            verifiedBotCategory: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:detection`}
+                          loadRows={loadAbnormalDetectionRows}
+                          requestKey={`${requestKey}:detection`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1770,14 +1488,8 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={targetTabs}
-                          rowsByTab={abnormalTargetRowsByTab}
-                          loadingByTab={{
-                            site: loading,
-                            hostname: loading,
-                            pathname: loading,
-                            origin: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:target`}
+                          loadRows={loadAbnormalTargetRows}
+                          requestKey={`${requestKey}:target`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1786,16 +1498,8 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={networkTabs}
-                          rowsByTab={abnormalNetworkRowsByTab}
-                          loadingByTab={{
-                            asOrganization: loading,
-                            asn: loading,
-                            country: loading,
-                            region: loading,
-                            city: loading,
-                            colo: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:network`}
+                          loadRows={loadAbnormalNetworkRows}
+                          requestKey={`${requestKey}:network`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1804,14 +1508,8 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={clientTabs}
-                          rowsByTab={clientRowsByTab}
-                          loadingByTab={{
-                            ip: loading,
-                            userAgent: loading,
-                            userAgentLengthBucket: loading,
-                            ipPrefix: loading,
-                          }}
-                          requestKey={`${requestKey}:${abnormalEvents.length}:client`}
+                          loadRows={loadAbnormalClientRows}
+                          requestKey={`${requestKey}:client`}
                           className="h-full"
                           secondaryMetricLabel={copy.highConfidenceRequests}
                           emptyLabel={copy.noData}
@@ -1824,8 +1522,10 @@ export function RequestObservationClient({
                         copy={copy}
                         events={abnormalEvents}
                         loading={loading}
-                        requestKey={`${requestKey}:${abnormalEvents.length}`}
-                        minutes={detailMinutes}
+                        hasMore={data?.abnormal?.hasMore ?? false}
+                        loadingMore={loadingMore === "abnormal"}
+                        onLoadMore={loadMoreAbnormalEvents}
+                        timeWindow={timeWindow}
                       />
                     </div>
                   </div>
@@ -1888,6 +1588,7 @@ export function RequestObservationClient({
                                   ? "--"
                                   : latencyFormat(
                                       locale,
+                                      copy,
                                       normalSummary.p95LatencyMs,
                                     )
                               }
@@ -1903,14 +1604,8 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={targetTabs}
-                          rowsByTab={normalTargetRowsByTab}
-                          loadingByTab={{
-                            site: loading,
-                            hostname: loading,
-                            pathname: loading,
-                            origin: loading,
-                          }}
-                          requestKey={`${requestKey}:${normalEvents.length}:normal-target`}
+                          loadRows={loadNormalTargetRows}
+                          requestKey={`${requestKey}:normal-target`}
                           className="h-full"
                           showVisitors={false}
                           emptyLabel={copy.noData}
@@ -1919,16 +1614,8 @@ export function RequestObservationClient({
                           locale={locale}
                           messages={messages}
                           tabs={networkTabs}
-                          rowsByTab={normalNetworkRowsByTab}
-                          loadingByTab={{
-                            asOrganization: loading,
-                            asn: loading,
-                            country: loading,
-                            region: loading,
-                            city: loading,
-                            colo: loading,
-                          }}
-                          requestKey={`${requestKey}:${normalEvents.length}:normal-network`}
+                          loadRows={loadNormalNetworkRows}
+                          requestKey={`${requestKey}:normal-network`}
                           className="h-full"
                           showVisitors={false}
                           emptyLabel={copy.noData}
@@ -1941,7 +1628,9 @@ export function RequestObservationClient({
                         copy={copy}
                         events={normalEvents}
                         loading={loading}
-                        requestKey={`${requestKey}:${normalEvents.length}`}
+                        hasMore={data?.normal?.hasMore ?? false}
+                        loadingMore={loadingMore === "normal"}
+                        onLoadMore={loadMoreNormalEvents}
                       />
                     </div>
                   </div>
@@ -1978,125 +1667,91 @@ export function RequestObservationClient({
     </div>
   );
 }
-async function withDemoOverlayData(
+async function fetchRequestObservation(
   timeWindow: TimeWindow,
-  data: RequestObservationData,
+  signal?: AbortSignal,
 ): Promise<RequestObservationData> {
-  const normalized = withRequestObservabilityDefaults(data);
-  if (!shouldShowDemoOverlay(normalized)) return normalized;
-  return generateDemoRequestObservation(demoMinutesForWindow(timeWindow), {
-    configured: false,
-    error: normalized.error,
-    config: normalized.config,
+  const payload = await requestAdminService<RequestObservationData>(
+    "bot-analytics",
+    {
+      params: {
+        from: String(Math.floor(timeWindow.from)),
+        to: String(Math.floor(timeWindow.to)),
+        interval: timeWindow.interval,
+        timeZone: timeWindow.timeZone,
+        limit: String(BOT_EVENT_FETCH_LIMIT),
+      },
+      signal,
+    },
+  );
+  return withRequestObservabilityDefaults(payload);
+}
+
+async function fetchRequestObservationPage(
+  timeWindow: TimeWindow,
+  source: "abnormal" | "normal",
+  cursor: RequestDetailCursor,
+): Promise<RequestObservationPageData> {
+  return requestAdminService<RequestObservationPageData>("bot-analytics", {
+    params: {
+      from: String(Math.floor(timeWindow.from)),
+      to: String(Math.floor(timeWindow.to)),
+      interval: timeWindow.interval,
+      timeZone: timeWindow.timeZone,
+      page: source,
+      limit: String(BOT_EVENT_FETCH_LIMIT),
+      cursor: JSON.stringify(cursor),
+    },
   });
 }
 
-async function fetchRequestObservation(
+async function fetchRequestObservationDimension(
   timeWindow: TimeWindow,
-): Promise<RequestObservationData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    return generateDemoRequestObservation(demoMinutesForWindow(timeWindow));
+  source: "abnormal" | "normal",
+  group: "detection" | "target" | "network" | "client",
+  tab: string,
+): Promise<RequestNetworkDimensionRow[]> {
+  const payload = await requestAdminService<RequestObservationDimensionData>(
+    "bot-analytics",
+    {
+      params: {
+        from: String(Math.floor(timeWindow.from)),
+        to: String(Math.floor(timeWindow.to)),
+        interval: timeWindow.interval,
+        timeZone: timeWindow.timeZone,
+        dimensionSource: source,
+        dimensionGroup: group,
+        dimensionTab: tab,
+      },
+    },
+  );
+  if (!payload.dimension) {
+    throw new Error("load_bot_protection_failed");
   }
-
-  const params = new URLSearchParams({
-    from: String(Math.floor(timeWindow.from)),
-    to: String(Math.floor(timeWindow.to)),
-    interval: timeWindow.interval,
-    limit: String(BOT_EVENT_FETCH_LIMIT),
-  });
-  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
-  const payload = (await response.json()) as
-    | RequestObservationData
-    | {
-        ok?: false;
-        error?: string;
-        message?: string;
-      };
-  if (!response.ok || payload.ok !== true) {
-    throw new Error(
-      ("message" in payload && payload.message) ||
-        ("error" in payload && payload.error) ||
-        "load_bot_protection_failed",
-    );
-  }
-  return withDemoOverlayData(timeWindow, payload);
+  return payload.dimension.rows;
 }
 
 async function fetchRequestObservationDetail(
-  minutes: number,
+  timeWindow: TimeWindow,
   event: BotEvent,
+  signal?: AbortSignal,
 ): Promise<BotEvent | null> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") return event;
-
-  const params = new URLSearchParams({
-    minutes: String(minutes),
-    detail: "1",
-  });
-  if (event.traceId) params.set("traceId", event.traceId);
-  if (event.rayId) params.set("rayId", event.rayId);
-
-  const response = await fetch(`/api/private/admin/bot-analytics?${params}`, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
-  const payload = (await response.json()) as
-    | RequestObservationDetailData
-    | {
-        ok?: false;
-        error?: string;
-        message?: string;
-      };
-  if (!response.ok || payload.ok !== true) {
-    throw new Error(
-      ("message" in payload && payload.message) ||
-        ("error" in payload && payload.error) ||
-        "load_bot_protection_detail_failed",
-    );
-  }
+  const payload = await requestAdminService<RequestObservationDetailData>(
+    "bot-analytics",
+    {
+      params: {
+        from: String(Math.floor(timeWindow.from)),
+        to: String(Math.floor(timeWindow.to)),
+        interval: timeWindow.interval,
+        timeZone: timeWindow.timeZone,
+        detail: "1",
+        ...(event.traceId ? { traceId: event.traceId } : {}),
+        ...(event.rayId ? { rayId: event.rayId } : {}),
+      },
+      signal,
+    },
+  );
   return payload.detail;
-}
-
-function trendTickDateFormat(
-  locale: Locale,
-  spanMs: number,
-): Intl.DateTimeFormat {
-  if (spanMs <= 14 * 24 * 60 * 60 * 1000) {
-    return new Intl.DateTimeFormat(intlLocale(locale), {
-      month: "numeric",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  return new Intl.DateTimeFormat(intlLocale(locale), {
-    month: "numeric",
-    day: "numeric",
-  });
-}
-
-function trendTooltipDateFormat(
-  locale: Locale,
-  spanMs: number,
-): Intl.DateTimeFormat {
-  if (spanMs <= 14 * 24 * 60 * 60 * 1000) {
-    return new Intl.DateTimeFormat(intlLocale(locale), {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  return new Intl.DateTimeFormat(intlLocale(locale), {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function compactReason(reason: string): string {
@@ -2107,16 +1762,28 @@ function botReasonLabel(
   copy: AppMessages["requestObservation"],
   reason: string,
 ): string {
-  return copy.botReasonLabels[reason] ?? compactReason(reason);
+  const labels: Readonly<Record<string, string>> = copy.botReasonLabels;
+  return labels[reason] ?? compactReason(reason);
+}
+
+function botReasonCombinationLabel(
+  copy: AppMessages["requestObservation"],
+  value: string,
+): string {
+  return value
+    .split(",")
+    .map((reason) => reason.trim())
+    .filter(Boolean)
+    .map((reason) => botReasonLabel(copy, reason))
+    .join(", ");
 }
 
 function requestKindLabel(
   copy: AppMessages["requestObservation"],
   kind: string,
 ): string {
-  return (
-    copy.requestKindLabels[kind] ?? (compactReason(kind) || emptyValue(copy))
-  );
+  const labels: Readonly<Record<string, string>> = copy.requestKindLabels;
+  return labels[kind] ?? (compactReason(kind) || emptyValue(copy));
 }
 
 function emptyValue(copy: AppMessages["requestObservation"]): string {
@@ -2152,7 +1819,7 @@ function ipPrefix(ip: string): string {
   return value;
 }
 
-function valuesForDetectionTab(
+function _valuesForDetectionTab(
   event: BotEvent,
   tab: DetectionDimensionTab,
   copy: AppMessages["requestObservation"],
@@ -2166,7 +1833,7 @@ function valuesForDetectionTab(
   return [event.verifiedBotCategory];
 }
 
-function valuesForTargetTab(
+function _valuesForTargetTab(
   event: BotEvent,
   tab: TargetDimensionTab,
 ): string[] {
@@ -2178,7 +1845,7 @@ function valuesForTargetTab(
   return [event.origin];
 }
 
-function valuesForNetworkTab(
+function _valuesForNetworkTab(
   event: BotEvent,
   tab: NetworkDimensionTab,
 ): string[] {
@@ -2190,7 +1857,7 @@ function valuesForNetworkTab(
   return [event.colo];
 }
 
-function valuesForClientTab(
+function _valuesForClientTab(
   event: BotEvent,
   tab: ClientDimensionTab,
 ): string[] {
@@ -2202,7 +1869,7 @@ function valuesForClientTab(
   return [ipPrefix(event.ip)];
 }
 
-function aggregateDimensionRows(
+function _aggregateDimensionRows(
   events: BotEvent[],
   copy: AppMessages["requestObservation"],
   resolveValues: (event: BotEvent) => string[],
@@ -2312,99 +1979,6 @@ function MetricTile({
       </p>
     </div>
   );
-}
-
-function TrendTooltipValue({
-  color,
-  label,
-  value,
-}: {
-  color: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex min-w-36 items-center justify-between gap-3">
-      <span className="inline-flex items-center gap-2">
-        <span
-          className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-          style={{ backgroundColor: color }}
-        />
-        <span className="text-muted-foreground">{label}</span>
-      </span>
-      <span className="font-mono text-foreground tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-function createTrendTooltipFormatter(input: {
-  botRequestsLabel: string;
-  botTrafficRatioLabel: string;
-  countFormatter: Intl.NumberFormat;
-  locale: Locale;
-  labels?: Record<string, string>;
-}) {
-  return function formatTrendTooltipValue(
-    value: unknown,
-    name: unknown,
-    _item: unknown,
-    _index: number,
-    payload: unknown,
-  ) {
-    const key = String(name || "");
-    const row = (payload ?? null) as Record<string, unknown> | null;
-    const isRatio = key === "botRatio" || key.endsWith("Ratio");
-    const isLatency = key.toLowerCase().includes("latency");
-    const numeric = Number(value);
-    const displayValue = Number(row?.[key] ?? numeric ?? 0);
-    const formatted = isLatency
-      ? durationFormat(
-          input.locale,
-          Number.isFinite(displayValue) ? displayValue : 0,
-        )
-      : isRatio
-        ? percentFormat(
-            input.locale,
-            Number.isFinite(displayValue) ? displayValue : 0,
-          )
-        : input.countFormatter.format(
-            Math.max(
-              0,
-              Math.round(Number.isFinite(displayValue) ? displayValue : 0),
-            ),
-          );
-    const label =
-      input.labels?.[key] ??
-      (isRatio ? input.botTrafficRatioLabel : input.botRequestsLabel);
-    const indicatorColor =
-      key === "normalCount"
-        ? "var(--color-normalCount)"
-        : key === "totalCount"
-          ? "var(--color-totalCount)"
-          : key === "pageviews"
-            ? "var(--color-pageviews)"
-            : key === "customEvents"
-              ? "var(--color-customEvents)"
-              : key === "p50LatencyMs"
-                ? "var(--color-p50LatencyMs)"
-                : key === "p75LatencyMs"
-                  ? "var(--color-p75LatencyMs)"
-                  : key === "p95LatencyMs"
-                    ? "var(--color-p95LatencyMs)"
-                    : key === "p99LatencyMs"
-                      ? "var(--color-p99LatencyMs)"
-                      : isRatio
-                        ? "var(--color-abnormalRatio, var(--color-botRatio))"
-                        : "var(--color-abnormalCount, var(--color-count))";
-
-    return (
-      <TrendTooltipValue
-        color={indicatorColor}
-        label={label}
-        value={formatted}
-      />
-    );
-  };
 }
 
 function faviconLabelForEvent(
@@ -2536,6 +2110,67 @@ function toAsyncDimensionRows(
   }));
 }
 
+function _toAsyncNetworkDimensionRows(
+  rows: RequestNetworkDimensionRow[] | undefined,
+  fallbackRows: BotDimensionRow[],
+  options: {
+    networkTab: NetworkDimensionTab;
+    locale: Locale;
+    unknownLabel: string;
+  },
+): AsyncDimensionBreakdownRow[] {
+  if (!rows) return toAsyncDimensionRows(fallbackRows, options);
+
+  const dimensionRows = rows.map((row) => ({
+    label:
+      options.networkTab === "asn" && row.label
+        ? `AS${row.label}`
+        : row.label || options.unknownLabel,
+    count: row.count,
+    highConfidence: row.highConfidence,
+    sampleEvent: {
+      country: row.country,
+      region: row.region,
+      city: options.networkTab === "city" ? row.label : "",
+    } as BotEvent,
+  }));
+
+  return toAsyncDimensionRows(dimensionRows, options).map((row, index) => ({
+    ...row,
+    key: rows[index]?.key || row.key,
+  }));
+}
+
+function toAsyncAggregatedDimensionRows(
+  rows: RequestNetworkDimensionRow[],
+  options?: Parameters<typeof toAsyncDimensionRows>[1] & {
+    detectionTab?: DetectionDimensionTab;
+    copy?: AppMessages["requestObservation"];
+  },
+): AsyncDimensionBreakdownRow[] {
+  return toAsyncDimensionRows(
+    rows.map((row) => ({
+      label:
+        options?.detectionTab === "reason" && options.copy
+          ? botReasonCombinationLabel(options.copy, row.label)
+          : options?.networkTab === "asn" && row.label
+            ? `AS${row.label}`
+            : row.label || options?.unknownLabel || "--",
+      count: row.count,
+      highConfidence: row.highConfidence,
+      sampleEvent: {
+        country: row.country,
+        region: options?.networkTab === "region" ? row.label : row.region,
+        city: row.label,
+        siteDomain: row.iconLabel,
+        hostname: options?.targetTab === "hostname" ? row.label : "",
+        origin: options?.targetTab === "origin" ? row.label : "",
+      } as BotEvent,
+    })),
+    options,
+  ).map((row, index) => ({ ...row, key: rows[index]?.key || row.key }));
+}
+
 function displayValue(
   value: string | number | null | undefined,
   empty: string,
@@ -2566,14 +2201,125 @@ function metadataEntries(
   }
 }
 
-function DetailItem({ label, value }: { label: string; value: ReactNode }) {
+const RequestDetailLocationMap = memo(function RequestDetailLocationMap({
+  locale,
+  messages,
+  country,
+  latitude,
+  longitude,
+  loading,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  country: string;
+  latitude: number | null;
+  longitude: number | null;
+  loading: boolean;
+}) {
+  const hasLocation =
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude) &&
+    Number(latitude) >= -90 &&
+    Number(latitude) <= 90 &&
+    Number(longitude) >= -180 &&
+    Number(longitude) <= 180;
+  const points = useMemo(
+    () =>
+      hasLocation
+        ? [
+            {
+              latitude: Number(latitude),
+              longitude: Number(longitude),
+              country,
+            },
+          ]
+        : [],
+    [country, hasLocation, latitude, longitude],
+  );
+
   return (
-    <div className="min-w-0 space-y-1">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{value}</dd>
+    <AutoResizer className="w-full" duration={0.24}>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : "ready"}
+        duration={0.22}
+        type="fade"
+        presenceMode="wait"
+        className="w-full"
+      >
+        {loading ? (
+          <Skeleton key="loading" className="h-[11rem] w-full sm:h-[13rem]" />
+        ) : (
+          <div key="ready" className="w-full">
+            <GeoPointsMapIsland
+              locale={locale}
+              messages={messages}
+              points={points}
+              emptyLabel={messages.realtime.visitorMapUnavailable}
+              heightClassName="h-[11rem] sm:h-[13rem]"
+              initialZoom={0.3}
+              countryHoverEnabled={false}
+              reuseMaps
+            />
+          </div>
+        )}
+      </AutoTransition>
+    </AutoResizer>
+  );
+});
+
+const DetailItem = memo(function DetailItem({
+  label,
+  value,
+  loading = false,
+  wide = false,
+  inline = false,
+}: {
+  label: string;
+  value: ReactNode;
+  loading?: boolean;
+  wide?: boolean;
+  inline?: boolean;
+}) {
+  const skeletonClassName = wide
+    ? "my-1 h-3 w-[min(20rem,88%)]"
+    : "my-1 h-3 w-[min(11rem,78%)]";
+
+  return (
+    <div
+      className={cn(
+        "min-w-0 space-y-1",
+        wide && "sm:col-span-2",
+        inline &&
+          "grid grid-cols-[minmax(7rem,auto)_minmax(0,1fr)] items-baseline gap-x-3 space-y-0",
+      )}
+    >
+      <dt className={cn("text-muted-foreground", inline && "min-w-0 truncate")}>
+        {label}
+      </dt>
+      <dd className={cn("min-w-0", inline && "min-h-5")}>
+        <AutoResizer className="min-w-0" duration={0.2}>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : "ready"}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="flex min-h-5 min-w-0 items-center"
+          >
+            {loading ? (
+              <Skeleton key="loading" className={skeletonClassName} />
+            ) : (
+              <div key="ready" className="min-h-5 min-w-0 leading-5">
+                {value}
+              </div>
+            )}
+          </AutoTransition>
+        </AutoResizer>
+      </dd>
     </div>
   );
-}
+});
 
 function ConfidenceBlocks({
   confidence,
@@ -2619,38 +2365,46 @@ function ConfidenceBlocks({
   );
 }
 
-function BotEventRowSkeleton({
+function RequestObservationRowSkeletonContent({
   index,
-  sentinelRef,
+  columns,
+  widths,
+  alignments,
 }: {
   index: number;
-  sentinelRef?: (node: HTMLTableRowElement | null) => void;
+  columns: readonly string[];
+  widths: Readonly<Record<string, string>>;
+  alignments: Readonly<Record<string, RequestObservationColumnAlignment>>;
 }) {
-  const widths = [
-    "w-24",
-    "w-28",
-    "w-24",
-    "w-28",
-    "w-32",
-    "w-40",
-    "w-24",
-    "w-28",
-    "w-24",
-    "w-24",
-    "w-20",
-    "w-48",
-  ];
   return (
-    <TableRow ref={sentinelRef} aria-hidden="true">
-      {widths.map((width, cellIndex) => (
+    <>
+      {columns.map((columnId) => (
         <TableCell
-          key={`${index}:${cellIndex}`}
-          className={cellIndex === 0 ? "pl-4" : undefined}
+          key={`${index}:${columnId}`}
+          className={cn(
+            columnId === "id" && "pl-4",
+            alignments[columnId] === "center" && "text-center",
+            alignments[columnId] === "right" && "text-right",
+          )}
         >
-          <Skeleton className={cn("h-4", width)} />
+          {columnId === "id" ? (
+            <div className="flex w-28 min-w-0 items-center gap-2">
+              <Skeleton className="size-6 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ) : (
+            <Skeleton
+              className={cn(
+                "h-4",
+                widths[columnId],
+                alignments[columnId] === "center" && "mx-auto",
+                alignments[columnId] === "right" && "ml-auto",
+              )}
+            />
+          )}
         </TableCell>
       ))}
-    </TableRow>
+    </>
   );
 }
 
@@ -2676,16 +2430,12 @@ function BotRequestDetailDrawer({
   onOpenChange: (open: boolean) => void;
 }) {
   const empty = copy.emptyValue;
-  const event = detailEvent ?? previewEvent;
+  const preview = detailEvent ?? previewEvent;
+  const event = preview ?? BOT_EVENT_DETAIL_SKELETON_DATA;
+  const hasEvent = Boolean(preview);
   const metadata = event ? metadataEntries(event.metadataJson) : [];
   const eventId = event ? event.traceId || event.rayId : "";
-  const contentKey = loading
-    ? "loading"
-    : error
-      ? "error"
-      : event
-        ? "detail"
-        : "empty";
+  const subtitle = eventId || copy.detailSubtitle;
 
   const stopSideDrawerOverlayEvent = (
     event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
@@ -2700,36 +2450,17 @@ function BotRequestDetailDrawer({
     onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="request-observation-drawer-overlay"
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <AppOverlay
+        layerId="request-observation-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -2741,9 +2472,6 @@ function BotRequestDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onFocusOutside={(event) => {
             event.preventDefault();
           }}
@@ -2756,259 +2484,359 @@ function BotRequestDetailDrawer({
         >
           <DrawerHeader className="border-b">
             <DrawerTitle>{copy.detailTitle}</DrawerTitle>
-            <DrawerDescription>
-              {previewEvent?.pathname ||
-                detailEvent?.pathname ||
-                copy.detailSubtitle}
-            </DrawerDescription>
+            <AutoTransition
+              initial={false}
+              transitionKey={loading ? "loading" : subtitle}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              className="h-5"
+            >
+              {loading ? (
+                <Skeleton key="loading" className="h-4 w-44" />
+              ) : (
+                <DrawerDescription key="ready">{subtitle}</DrawerDescription>
+              )}
+            </AutoTransition>
           </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <AutoResizer initial duration={0.2} ease={[0.22, 1, 0.36, 1]}>
-              <AutoTransition
-                transitionKey={contentKey}
-                initial={false}
-                duration={0.18}
-                type="fade"
-                presenceMode="wait"
-              >
-                {loading ? (
-                  <div className="flex h-64 items-center justify-center text-muted-foreground">
-                    <Spinner className="size-5" />
-                  </div>
-                ) : error ? (
-                  <div className="flex h-64 items-center justify-center text-center text-sm text-muted-foreground">
-                    {error}
-                  </div>
-                ) : !event ? (
-                  <div className="flex h-64 items-center justify-center text-muted-foreground">
-                    {copy.noData}
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    <section className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">
-                          <ConfidenceBlocks
-                            confidence={event.confidence}
-                            label={displayValue(event.confidence, empty)}
-                          />
-                        </Badge>
-                        {event.reasons.map((reason) => (
-                          <Badge key={reason} variant="outline">
-                            {botReasonLabel(copy, reason)}
-                          </Badge>
-                        ))}
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {displayValue(eventId, empty)}
-                        </span>
-                      </div>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.time}
-                          value={shortDateTimeWithSeconds(
-                            locale,
-                            event.receivedAt,
-                          )}
-                        />
-                        <DetailItem
-                          label={copy.kind}
-                          value={displayValue(event.kind, empty)}
-                        />
-                        <DetailItem
-                          label={copy.botScoreBucket}
-                          value={botScoreBucket(event.botScore)}
-                        />
-                        <DetailItem
-                          label={copy.verifiedBotCategory}
-                          value={displayValue(event.verifiedBotCategory, empty)}
-                        />
-                      </dl>
-                    </section>
-
-                    <Separator />
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-medium">{copy.request}</h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.site}
-                          value={
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">
-                                {displayValue(event.siteName, empty)}
-                              </div>
-                              <div className="truncate font-mono text-xs text-muted-foreground">
-                                {displayValue(
-                                  event.siteDomain || event.siteId,
-                                  empty,
-                                )}
-                              </div>
-                            </div>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.origin}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.origin, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.hostname}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.hostname, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.pathname}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.pathname || "/", empty)}
-                            </span>
-                          }
-                        />
-                      </dl>
-                    </section>
-
-                    <Separator />
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-medium">{copy.edge}</h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.location}
-                          value={
-                            <CountryRegionMeta
-                              locale={locale}
-                              messages={messages}
-                              country={event.country || ""}
-                              region={event.region}
+          <DrawerScrollArea contentClassName="p-4">
+            {error ? (
+              <div className="flex h-64 items-center justify-center text-center text-sm text-muted-foreground">
+                {error}
+              </div>
+            ) : !hasEvent && !loading ? (
+              <div className="flex h-64 items-center justify-center text-muted-foreground">
+                {copy.noData}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.detailTitle}</h3>
+                  <AutoResizer className="w-full" duration={0.2}>
+                    <AutoTransition
+                      initial={false}
+                      transitionKey={loading ? "loading" : "ready"}
+                      duration={0.18}
+                      type="fade"
+                      presenceMode="wait"
+                      className="w-full"
+                    >
+                      {loading ? (
+                        <div
+                          key="loading"
+                          className="flex flex-wrap items-center gap-2"
+                        >
+                          <Skeleton className="h-5 w-20" />
+                          <Skeleton className="h-5 w-28" />
+                          <Skeleton className="h-4 w-32" />
+                        </div>
+                      ) : (
+                        <div
+                          key="ready"
+                          className="flex flex-wrap items-center gap-2"
+                        >
+                          <Badge variant="outline">
+                            <ConfidenceBlocks
+                              confidence={event.confidence}
+                              label={displayValue(event.confidence, empty)}
                             />
-                          }
-                        />
-                        <DetailItem
-                          label={copy.colo}
-                          value={displayValue(event.colo, empty)}
-                        />
-                        <DetailItem
-                          label={copy.network}
-                          value={displayValue(formatAsn(event), empty)}
-                        />
-                        <DetailItem
-                          label={copy.ip}
-                          value={
-                            <span className="font-mono">
-                              {displayValue(event.ip, empty)}
-                            </span>
-                          }
-                        />
-                      </dl>
-                    </section>
-
-                    <Separator />
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-medium">{copy.client}</h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.userAgentLengthBucket}
-                          value={
-                            event.userAgentLength
-                              ? userAgentLengthBucket(event.userAgentLength)
-                              : empty
-                          }
-                        />
-                        <DetailItem
-                          label={copy.ipPrefix}
-                          value={ipPrefix(event.ip)}
-                        />
-                      </dl>
-                      <div className="space-y-1">
-                        <div className="text-muted-foreground">
-                          {copy.fullUserAgent}
+                          </Badge>
+                          {event.reasons.map((reason) => (
+                            <Badge key={reason} variant="outline">
+                              {botReasonLabel(copy, reason)}
+                            </Badge>
+                          ))}
                         </div>
-                        <div className="break-all rounded-none border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
-                          {displayValue(event.userAgent, empty)}
+                      )}
+                    </AutoTransition>
+                  </AutoResizer>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      loading={loading}
+                      label={copy.time}
+                      value={shortDateTimeWithSeconds(locale, event.receivedAt)}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.kind}
+                      value={displayValue(event.kind, empty)}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.botScoreBucket}
+                      value={botScoreBucket(event.botScore)}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.botScore}
+                      value={
+                        event.botScore === null ||
+                        !Number.isFinite(event.botScore)
+                          ? empty
+                          : numberFormat(locale, event.botScore)
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.verifiedBotCategory}
+                      value={displayValue(event.verifiedBotCategory, empty)}
+                    />
+                  </dl>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.request}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      loading={loading}
+                      label={copy.site}
+                      value={
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">
+                            {displayValue(event.siteName, empty)}
+                          </div>
+                          <div className="truncate font-mono text-xs text-muted-foreground">
+                            {displayValue(
+                              event.siteDomain || event.siteId,
+                              empty,
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </section>
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={messages.realtime.siteId}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.siteId, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.normalDetail.requestMethod}
+                      value={displayValue(
+                        metadata.find(([key]) => key === "requestMethod")?.[1],
+                        empty,
+                      )}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      wide
+                      label={copy.origin}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.origin, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      wide
+                      label={copy.hostname}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.hostname, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      wide
+                      label={copy.pathname}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.pathname || "/", empty)}
+                        </span>
+                      }
+                    />
+                  </dl>
+                </section>
 
-                    <Separator />
+                <Separator />
 
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-medium">
-                        {copy.identifiers}
-                      </h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.id}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(eventId, empty)}
-                            </span>
-                          }
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.edge}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      loading={loading}
+                      wide
+                      label={copy.location}
+                      value={
+                        <CountryRegionMeta
+                          locale={locale}
+                          messages={messages}
+                          country={event.country || ""}
+                          region={event.region}
+                          city={event.city}
                         />
-                        <DetailItem
-                          label="Trace ID"
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.traceId, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label="Ray ID"
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.rayId, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.country}
-                          value={displayValue(event.country, empty)}
-                        />
-                        <DetailItem
-                          label={copy.asn}
-                          value={displayValue(
-                            event.asn ? `AS${event.asn}` : "",
-                            empty,
-                          )}
-                        />
-                      </dl>
-                    </section>
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.colo}
+                      value={displayValue(event.colo, empty)}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.network}
+                      value={displayValue(formatAsn(event), empty)}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={messages.common.continent}
+                      value={displayValue(event.continent, empty)}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={messages.common.latitude}
+                      value={
+                        event.latitude === null ||
+                        !Number.isFinite(event.latitude)
+                          ? empty
+                          : numberFormat(locale, event.latitude)
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={messages.common.longitude}
+                      value={
+                        event.longitude === null ||
+                        !Number.isFinite(event.longitude)
+                          ? empty
+                          : numberFormat(locale, event.longitude)
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.ip}
+                      value={
+                        <span className="font-mono">
+                          {displayValue(event.ip, empty)}
+                        </span>
+                      }
+                    />
+                  </dl>
+                </section>
 
-                    {metadata.length > 0 ? (
-                      <>
-                        <Separator />
-                        <section className="space-y-3">
-                          <h3 className="text-sm font-medium">
-                            {copy.metadata}
-                          </h3>
-                          <dl className="grid gap-3">
-                            {metadata.map(([key, value]) => (
-                              <DetailItem
-                                key={key}
-                                label={key}
-                                value={
-                                  <span className="break-all font-mono text-xs text-muted-foreground">
-                                    {displayValue(value, empty)}
-                                  </span>
-                                }
-                              />
-                            ))}
-                          </dl>
-                        </section>
-                      </>
-                    ) : null}
+                <RequestDetailLocationMap
+                  locale={locale}
+                  messages={messages}
+                  country={event.country || ""}
+                  latitude={event.latitude}
+                  longitude={event.longitude}
+                  loading={loading}
+                />
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.client}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      loading={loading}
+                      label={copy.userAgentLengthBucket}
+                      value={
+                        event.userAgentLength
+                          ? userAgentLengthBucket(event.userAgentLength)
+                          : empty
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.userAgentLength}
+                      value={
+                        event.userAgentLength > 0
+                          ? numberFormat(locale, event.userAgentLength)
+                          : empty
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.ipPrefix}
+                      value={ipPrefix(event.ip)}
+                    />
+                  </dl>
+                  <div className="space-y-1">
+                    <div className="text-muted-foreground">
+                      {copy.fullUserAgent}
+                    </div>
+                    <div className="break-all rounded-none border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
+                      {displayValue(event.userAgent, empty)}
+                    </div>
                   </div>
-                )}
-              </AutoTransition>
-            </AutoResizer>
-          </div>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.identifiers}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      loading={loading}
+                      wide
+                      label="Trace ID"
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.traceId, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      wide
+                      label="Ray ID"
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.rayId, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.country}
+                      value={displayValue(event.country, empty)}
+                    />
+                    <DetailItem
+                      loading={loading}
+                      label={copy.asn}
+                      value={displayValue(
+                        event.asn ? `AS${event.asn}` : "",
+                        empty,
+                      )}
+                    />
+                  </dl>
+                </section>
+
+                {metadata.length > 0 ? (
+                  <>
+                    <Separator />
+                    <section className="space-y-3">
+                      <h3 className="text-sm font-medium">{copy.metadata}</h3>
+                      <dl className="grid gap-3">
+                        {metadata.map(([key, value]) => (
+                          <DetailItem
+                            key={key}
+                            loading={loading}
+                            inline
+                            label={key}
+                            value={
+                              <span className="break-all font-mono text-xs text-muted-foreground">
+                                {displayValue(value, empty)}
+                              </span>
+                            }
+                          />
+                        ))}
+                      </dl>
+                    </section>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </DrawerScrollArea>
         </DrawerContent>
       </Drawer>
     </>
@@ -3032,19 +2860,14 @@ function NormalRequestDetailDrawer({
 }) {
   const empty = copy.emptyValue;
   const eventId = event ? event.traceId || event.rayId : "";
-  const title = locale === "zh" ? "正常请求详情" : "Normal Request Detail";
-  const subtitle =
-    event?.pathname ||
-    (locale === "zh"
-      ? "查看正常请求 AE 记录的链路、位置和耗时字段。"
-      : "Inspect the normal request AE record fields, location, and latency.");
-  const requestMethodLabel = locale === "zh" ? "请求方法" : "Request Method";
-  const edgeLatencyLabel = locale === "zh" ? "边缘耗时" : "Edge Latency";
-  const eventAtLabel = locale === "zh" ? "事件时间" : "Event Time";
-  const receivedAtLabel = locale === "zh" ? "接收时间" : "Received Time";
-  const coordinatesLabel = locale === "zh" ? "坐标" : "Coordinates";
-  const continentLabel = locale === "zh" ? "大洲" : "Continent";
-  const contentKey = event ? "detail" : "empty";
+  const title = copy.normalDetail.title;
+  const subtitle = eventId || copy.normalDetail.subtitle;
+  const requestMethodLabel = copy.normalDetail.requestMethod;
+  const edgeLatencyLabel = copy.normalDetail.edgeLatency;
+  const eventAtLabel = copy.normalDetail.eventAt;
+  const receivedAtLabel = copy.normalDetail.receivedAt;
+  const continentLabel = copy.normalDetail.continent;
+  const metadata = event ? metadataEntries(event.metadataJson) : [];
 
   const stopSideDrawerOverlayEvent = (
     event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
@@ -3059,36 +2882,17 @@ function NormalRequestDetailDrawer({
     onOpenChange(false);
   };
 
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="request-observation-normal-drawer-overlay"
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
-
   return (
     <>
-      {sideDrawerOverlay}
+      <AppOverlay
+        layerId="request-observation-normal-drawer"
+        open={open}
+        portal
+        zIndex={overlayZIndexFor(EVENT_RECORD_DRAWER_Z_INDEX)}
+        onPointerDown={stopSideDrawerOverlayEvent}
+        onPointerUp={stopSideDrawerOverlayEvent}
+        onClick={closeSideDrawerFromOverlay}
+      />
       <Drawer
         open={open}
         onOpenChange={onOpenChange}
@@ -3100,9 +2904,6 @@ function NormalRequestDetailDrawer({
           className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
           overlayClassName="hidden"
           style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
           onFocusOutside={(event) => {
             event.preventDefault();
           }}
@@ -3115,263 +2916,330 @@ function NormalRequestDetailDrawer({
         >
           <DrawerHeader className="border-b">
             <DrawerTitle>{title}</DrawerTitle>
-            <DrawerDescription>{subtitle}</DrawerDescription>
+            <AutoTransition
+              initial={false}
+              transitionKey={eventId || "ready"}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              className="h-5"
+            >
+              <DrawerDescription key="ready">{subtitle}</DrawerDescription>
+            </AutoTransition>
           </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            <AutoResizer initial duration={0.2} ease={[0.22, 1, 0.36, 1]}>
-              <AutoTransition
-                transitionKey={contentKey}
-                initial={false}
-                duration={0.18}
-                type="fade"
-                presenceMode="wait"
-              >
-                {!event ? (
-                  <div className="flex h-64 items-center justify-center text-muted-foreground">
-                    {copy.noData}
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    <section className="space-y-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="outline">
-                          {requestKindLabel(copy, event.kind)}
-                        </Badge>
-                        <Badge variant="outline">
-                          {event.requestMethod || empty}
-                        </Badge>
-                        <span className="font-mono text-xs text-muted-foreground">
+          <DrawerScrollArea contentClassName="p-4">
+            {!event ? (
+              <div className="flex h-64 items-center justify-center text-muted-foreground">
+                {copy.noData}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{title}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      label={receivedAtLabel}
+                      value={shortDateTimeWithSeconds(locale, event.receivedAt)}
+                    />
+                    <DetailItem
+                      label={eventAtLabel}
+                      value={shortDateTimeWithSeconds(locale, event.eventAt)}
+                    />
+                    <DetailItem
+                      label={copy.kind}
+                      value={requestKindLabel(copy, event.kind)}
+                    />
+                    <DetailItem
+                      label={requestMethodLabel}
+                      value={displayValue(event.requestMethod, empty)}
+                    />
+                  </dl>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.request}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      label={copy.site}
+                      value={
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">
+                            {displayValue(event.siteName, empty)}
+                          </div>
+                          <div className="truncate font-mono text-xs text-muted-foreground">
+                            {displayValue(
+                              event.siteDomain || event.siteId,
+                              empty,
+                            )}
+                          </div>
+                        </div>
+                      }
+                    />
+                    <DetailItem
+                      label={messages.realtime.siteId}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.siteId, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      wide
+                      label={copy.origin}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.origin, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      wide
+                      label={copy.hostname}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.hostname, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      wide
+                      label={copy.pathname}
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.pathname || "/", empty)}
+                        </span>
+                      }
+                    />
+                  </dl>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.edge}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      label={edgeLatencyLabel}
+                      value={latencyFormat(locale, copy, event.edgeLatencyMs)}
+                    />
+                    <DetailItem
+                      wide
+                      label={copy.location}
+                      value={
+                        <CountryRegionMeta
+                          locale={locale}
+                          messages={messages}
+                          country={event.country || ""}
+                          region={event.region}
+                          city={event.city}
+                        />
+                      }
+                    />
+                    <DetailItem
+                      label={copy.colo}
+                      value={displayValue(event.colo, empty)}
+                    />
+                    <DetailItem
+                      label={copy.network}
+                      value={displayValue(formatNormalAsn(event), empty)}
+                    />
+                    <DetailItem
+                      label={messages.common.latitude}
+                      value={
+                        event.latitude === null ||
+                        !Number.isFinite(event.latitude)
+                          ? empty
+                          : numberFormat(locale, event.latitude)
+                      }
+                    />
+                    <DetailItem
+                      label={messages.common.longitude}
+                      value={
+                        event.longitude === null ||
+                        !Number.isFinite(event.longitude)
+                          ? empty
+                          : numberFormat(locale, event.longitude)
+                      }
+                    />
+                    <DetailItem
+                      label={continentLabel}
+                      value={displayValue(event.continent, empty)}
+                    />
+                  </dl>
+                </section>
+
+                <RequestDetailLocationMap
+                  locale={locale}
+                  messages={messages}
+                  country={event.country || ""}
+                  latitude={event.latitude}
+                  longitude={event.longitude}
+                  loading={false}
+                />
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.client}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      label={copy.userAgentLengthBucket}
+                      value={
+                        event.userAgentLength
+                          ? userAgentLengthBucket(event.userAgentLength)
+                          : empty
+                      }
+                    />
+                    <DetailItem
+                      label={copy.userAgentLength}
+                      value={
+                        event.userAgentLength > 0
+                          ? numberFormat(locale, event.userAgentLength)
+                          : empty
+                      }
+                    />
+                  </dl>
+                </section>
+
+                <Separator />
+
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">{copy.identifiers}</h3>
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailItem
+                      wide
+                      label={copy.id}
+                      value={
+                        <span className="break-all font-mono text-xs">
                           {displayValue(eventId, empty)}
                         </span>
-                      </div>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={receivedAtLabel}
-                          value={shortDateTimeWithSeconds(
-                            locale,
-                            event.receivedAt,
-                          )}
-                        />
-                        <DetailItem
-                          label={eventAtLabel}
-                          value={shortDateTimeWithSeconds(
-                            locale,
-                            event.eventAt,
-                          )}
-                        />
-                        <DetailItem
-                          label={copy.kind}
-                          value={requestKindLabel(copy, event.kind)}
-                        />
-                        <DetailItem
-                          label={requestMethodLabel}
-                          value={displayValue(event.requestMethod, empty)}
-                        />
-                      </dl>
-                    </section>
+                      }
+                    />
+                    <DetailItem
+                      wide
+                      label="Trace ID"
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.traceId, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      wide
+                      label="Ray ID"
+                      value={
+                        <span className="break-all font-mono text-xs">
+                          {displayValue(event.rayId, empty)}
+                        </span>
+                      }
+                    />
+                    <DetailItem
+                      label={copy.country}
+                      value={displayValue(event.country, empty)}
+                    />
+                    <DetailItem
+                      label={copy.asn}
+                      value={displayValue(
+                        event.asn ? `AS${event.asn}` : "",
+                        empty,
+                      )}
+                    />
+                  </dl>
+                </section>
 
+                {metadata.length > 0 ? (
+                  <>
                     <Separator />
-
                     <section className="space-y-3">
-                      <h3 className="text-sm font-medium">{copy.request}</h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.site}
-                          value={
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">
-                                {displayValue(event.siteName, empty)}
-                              </div>
-                              <div className="truncate font-mono text-xs text-muted-foreground">
-                                {displayValue(
-                                  event.siteDomain || event.siteId,
-                                  empty,
-                                )}
-                              </div>
-                            </div>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.origin}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.origin, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.hostname}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.hostname, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.pathname}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.pathname || "/", empty)}
-                            </span>
-                          }
-                        />
+                      <h3 className="text-sm font-medium">{copy.metadata}</h3>
+                      <dl className="grid gap-3">
+                        {metadata.map(([key, value]) => (
+                          <DetailItem
+                            key={key}
+                            inline
+                            label={key}
+                            value={
+                              <span className="break-all font-mono text-xs text-muted-foreground">
+                                {displayValue(value, empty)}
+                              </span>
+                            }
+                          />
+                        ))}
                       </dl>
                     </section>
-
-                    <Separator />
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-medium">{copy.edge}</h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={edgeLatencyLabel}
-                          value={latencyFormat(locale, event.edgeLatencyMs)}
-                        />
-                        <DetailItem
-                          label={copy.location}
-                          value={
-                            <CountryRegionMeta
-                              locale={locale}
-                              messages={messages}
-                              country={event.country || ""}
-                              region={event.region}
-                            />
-                          }
-                        />
-                        <DetailItem
-                          label={copy.colo}
-                          value={displayValue(event.colo, empty)}
-                        />
-                        <DetailItem
-                          label={copy.network}
-                          value={displayValue(formatNormalAsn(event), empty)}
-                        />
-                        <DetailItem
-                          label={coordinatesLabel}
-                          value={
-                            event.latitude !== null && event.longitude !== null
-                              ? `${event.latitude.toFixed(5)}, ${event.longitude.toFixed(5)}`
-                              : empty
-                          }
-                        />
-                        <DetailItem
-                          label={continentLabel}
-                          value={displayValue(event.continent, empty)}
-                        />
-                      </dl>
-                    </section>
-
-                    <Separator />
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-medium">{copy.client}</h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.userAgentLengthBucket}
-                          value={
-                            event.userAgentLength
-                              ? userAgentLengthBucket(event.userAgentLength)
-                              : empty
-                          }
-                        />
-                        <DetailItem
-                          label={copy.userAgent}
-                          value={numberFormat(locale, event.userAgentLength)}
-                        />
-                      </dl>
-                    </section>
-
-                    <Separator />
-
-                    <section className="space-y-3">
-                      <h3 className="text-sm font-medium">
-                        {copy.identifiers}
-                      </h3>
-                      <dl className="grid gap-3 sm:grid-cols-2">
-                        <DetailItem
-                          label={copy.id}
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(eventId, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label="Trace ID"
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.traceId, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label="Ray ID"
-                          value={
-                            <span className="break-all font-mono text-xs">
-                              {displayValue(event.rayId, empty)}
-                            </span>
-                          }
-                        />
-                        <DetailItem
-                          label={copy.country}
-                          value={displayValue(event.country, empty)}
-                        />
-                        <DetailItem
-                          label={copy.asn}
-                          value={displayValue(
-                            event.asn ? `AS${event.asn}` : "",
-                            empty,
-                          )}
-                        />
-                      </dl>
-                    </section>
-                  </div>
-                )}
-              </AutoTransition>
-            </AutoResizer>
-          </div>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </DrawerScrollArea>
         </DrawerContent>
       </Drawer>
     </>
   );
 }
 
-function BotEventsTable({
+const BotEventsTable = memo(function BotEventsTable({
   locale,
   messages,
   copy,
   events,
   loading,
-  requestKey,
-  minutes,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  timeWindow,
 }: {
   locale: Locale;
   messages: AppMessages;
   copy: AppMessages["requestObservation"];
   events: BotEvent[];
   loading: boolean;
-  requestKey: string;
-  minutes: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
+  timeWindow: TimeWindow;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [selectedEvent, setSelectedEvent] = useState<BotEvent | null>(null);
-  const [detailEvent, setDetailEvent] = useState<BotEvent | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [detailParam, setDetailParam] = useState(
     () => searchParams.get("detail")?.trim() || "",
   );
-
-  useEffect(() => {
-    setVisibleCount(BOT_EVENT_PAGE_SIZE);
-  }, [requestKey]);
+  const selectedEventId = selectedEvent ? botEventDetailId(selectedEvent) : "";
+  const selectedEventCacheKey = selectedEventId
+    ? selectedEventId
+    : selectedEvent
+      ? `${selectedEvent.siteId}:${selectedEvent.pathname}:${selectedEvent.receivedAt}`
+      : "";
+  const detailQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "request-observation-detail",
+      selectedEventCacheKey,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+    ],
+    queryFn: ({ signal }) =>
+      selectedEvent
+        ? fetchRequestObservationDetail(timeWindow, selectedEvent, signal)
+        : null,
+    enabled:
+      typeof window !== "undefined" && drawerOpen && Boolean(selectedEvent),
+    retry: false,
+  });
+  const detailEvent = detailQuery.data ?? null;
+  const detailLoading = detailQuery.isPending;
+  const detailError = detailQuery.isError
+    ? detailQuery.error instanceof Error
+      ? detailQuery.error.message
+      : "load_bot_protection_detail_failed"
+    : null;
 
   useEffect(() => {
     setDetailParam(searchParams.get("detail")?.trim() || "");
@@ -3392,87 +3260,46 @@ function BotEventsTable({
     return () => window.clearInterval(interval);
   }, []);
 
-  const visibleEvents = useMemo(
-    () => events.slice(0, visibleCount),
-    [events, visibleCount],
-  );
-  const hasMore = visibleCount < events.length;
+  const updateDetailParam = useCallback(
+    (detailId: string, mode: "push" | "replace") => {
+      const nextParams = new URLSearchParams(window.location.search);
+      if (detailId) nextParams.set("detail", detailId);
+      else nextParams.delete("detail");
 
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loading ||
-      !hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const loadMore = () => {
-      setVisibleCount((current) =>
-        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-      );
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) loadMore();
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadMore();
+      const nextQuery = nextParams.toString();
+      const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+      if (`${window.location.pathname}${window.location.search}` === nextUrl) {
+        setDetailParam(detailId);
+        return;
       }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [events.length, hasMore, loading, sentinelNode]);
-
-  const updateDetailParam = (detailId: string, mode: "push" | "replace") => {
-    const nextParams = new URLSearchParams(window.location.search);
-    if (detailId) nextParams.set("detail", detailId);
-    else nextParams.delete("detail");
-
-    const nextQuery = nextParams.toString();
-    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
-    if (`${window.location.pathname}${window.location.search}` === nextUrl) {
+      if (mode === "push") window.history.pushState(null, "", nextUrl);
+      else window.history.replaceState(null, "", nextUrl);
       setDetailParam(detailId);
-      return;
-    }
-    if (mode === "push") window.history.pushState(null, "", nextUrl);
-    else window.history.replaceState(null, "", nextUrl);
-    setDetailParam(detailId);
-  };
+    },
+    [pathname],
+  );
 
-  const openEvent = (event: BotEvent, options?: { syncUrl?: boolean }) => {
-    setSelectedEvent(event);
-    setDetailEvent(null);
-    setDetailError(null);
-    setDrawerOpen(true);
+  const openEvent = useCallback(
+    (event: BotEvent, options?: { syncUrl?: boolean }) => {
+      setSelectedEvent(event);
+      setDrawerOpen(true);
 
-    if (options?.syncUrl !== false) {
-      const detailId = botEventDetailId(event);
-      if (detailId) updateDetailParam(detailId, "push");
-    }
-  };
+      if (options?.syncUrl !== false) {
+        const detailId = botEventDetailId(event);
+        if (detailId) updateDetailParam(detailId, "push");
+      }
+    },
+    [updateDetailParam],
+  );
 
-  const handleDrawerOpenChange = (nextOpen: boolean) => {
-    setDrawerOpen(nextOpen);
-    if (nextOpen || !detailParam) return;
-    updateDetailParam("", "replace");
-  };
+  const handleDrawerOpenChange = useCallback(
+    (nextOpen: boolean) => {
+      setDrawerOpen(nextOpen);
+      if (nextOpen || !detailParam) return;
+      updateDetailParam("", "replace");
+    },
+    [detailParam, updateDetailParam],
+  );
 
   useEffect(() => {
     if (!detailParam) {
@@ -3488,47 +3315,431 @@ function BotEventsTable({
       return;
     }
     openEvent(matchingEvent, { syncUrl: false });
-  }, [detailParam, events, selectedEvent]);
+  }, [detailParam, events, openEvent, selectedEvent]);
 
-  useEffect(() => {
-    if (!drawerOpen || !selectedEvent) return;
-    let active = true;
-    setDetailLoading(true);
-    fetchRequestObservationDetail(minutes, selectedEvent)
-      .then((detail) => {
-        if (!active) return;
-        setDetailEvent(detail ?? selectedEvent);
-      })
-      .catch((error) => {
-        if (!active) return;
-        setDetailError(
-          error instanceof Error
-            ? error.message
-            : "load_bot_protection_detail_failed",
-        );
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [drawerOpen, minutes, selectedEvent]);
+  const handleKeyDown = useCallback(
+    (keyboardEvent: KeyboardEvent<HTMLTableRowElement>, event: BotEvent) => {
+      if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
+      keyboardEvent.preventDefault();
+      openEvent(event);
+    },
+    [openEvent],
+  );
 
-  const handleKeyDown = (
-    keyboardEvent: KeyboardEvent<HTMLTableRowElement>,
-    event: BotEvent,
-  ) => {
-    if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
-    keyboardEvent.preventDefault();
-    openEvent(event);
-  };
-
-  const bodyState = loading
-    ? "loading"
-    : events.length === 0
-      ? "empty"
-      : "rows";
+  const columnDefinitions = useMemo<
+    readonly AnalyticsTableColumnDefinition<AbnormalRequestTableColumnId>[]
+  >(
+    () => [
+      { id: "id", label: copy.id, required: true },
+      { id: "time", label: copy.time, required: true },
+      { id: "site", label: copy.site, required: true },
+      { id: "kind", label: copy.kind },
+      { id: "reason", label: copy.reason },
+      { id: "confidence", label: copy.confidence },
+      { id: "network", label: copy.network },
+      { id: "ip", label: copy.ip },
+      { id: "location", label: copy.location },
+      { id: "pathname", label: copy.pathname },
+      { id: "userAgent", label: copy.userAgent },
+      { id: "botScore", label: copy.botScore },
+      { id: "verifiedBotCategory", label: copy.verifiedBotCategory },
+    ],
+    [copy],
+  );
+  const tableColumns = useAnalyticsTableColumns({
+    storageKey:
+      "insightflare:analytics-table-columns:request-observation-abnormal",
+    columns: columnDefinitions,
+  });
+  const headers = useMemo<Record<AbnormalRequestTableColumnId, ReactNode>>(
+    () => ({
+      id: <TableHead className="pl-4">{copy.id}</TableHead>,
+      time: <TableHead className="text-center">{copy.time}</TableHead>,
+      site: <TableHead>{copy.site}</TableHead>,
+      kind: <TableHead>{copy.kind}</TableHead>,
+      reason: <TableHead>{copy.reason}</TableHead>,
+      confidence: (
+        <TableHead className="text-center">{copy.confidence}</TableHead>
+      ),
+      botScore: <TableHead className="text-right">{copy.botScore}</TableHead>,
+      verifiedBotCategory: <TableHead>{copy.verifiedBotCategory}</TableHead>,
+      network: <TableHead>{copy.network}</TableHead>,
+      ip: <TableHead>{copy.ip}</TableHead>,
+      location: <TableHead>{copy.location}</TableHead>,
+      pathname: <TableHead>{copy.pathname}</TableHead>,
+      userAgent: <TableHead className="pr-4">{copy.userAgent}</TableHead>,
+    }),
+    [copy],
+  );
+  const tableHeader = useMemo(
+    () => (
+      <TableRow>
+        {tableColumns.visibleIds.map((columnId) => (
+          <Fragment key={columnId}>{headers[columnId]}</Fragment>
+        ))}
+      </TableRow>
+    ),
+    [headers, tableColumns.visibleIds],
+  );
+  const renderRow = useCallback(
+    (event: BotEvent) => {
+      const reasonLabel = botReasonLabel(
+        copy,
+        event.reasons[0] || event.confidence || "",
+      );
+      const reasonItems =
+        event.reasons.length > 0
+          ? event.reasons.map((reason, index) => {
+              const value = botReasonLabel(copy, reason);
+              return {
+                label: `${copy.reason}#${index + 1}`,
+                value,
+                copyValue: value,
+              };
+            })
+          : [
+              {
+                label: copy.reason,
+                value: reasonLabel || emptyValue(copy),
+                copyValue: reasonLabel || undefined,
+              },
+            ];
+      const eventId = event.traceId || event.rayId || "";
+      const kindLabel = requestKindLabel(copy, event.kind);
+      const confidenceLabel = event.confidence || emptyValue(copy);
+      const siteLabel =
+        event.siteName || event.siteDomain || event.siteId || emptyValue(copy);
+      const siteCopyValue =
+        event.siteName || event.siteDomain || event.siteId || undefined;
+      const hostnameLabel = event.hostname || emptyValue(copy);
+      const hostnameCopyValue = event.hostname || undefined;
+      const networkLabel = event.asOrganization || emptyValue(copy);
+      const networkCopyValue = event.asOrganization || undefined;
+      const asnLabel = event.asn ? `AS${event.asn}` : emptyValue(copy);
+      const asnCopyValue = event.asn ? `AS${event.asn}` : undefined;
+      const botScoreLabel =
+        event.botScore === null || !Number.isFinite(event.botScore)
+          ? emptyValue(copy)
+          : numberFormat(locale, event.botScore);
+      const verifiedBotCategoryLabel =
+        event.verifiedBotCategory || emptyValue(copy);
+      const verifiedBotCategoryCopyValue =
+        event.verifiedBotCategory || undefined;
+      const pathnameLabel = event.pathname || "/";
+      const userAgentLabel = event.userAgent || emptyValue(copy);
+      const cells: Record<AbnormalRequestTableColumnId, ReactNode> = {
+        id: (
+          <TableCell className="pl-4 max-w-36">
+            <div className="flex w-28 min-w-0 items-center gap-2">
+              <VisitorAvatar seed={eventId || "unknown"} className="size-6" />
+              <AnalyticsDetailsTooltipTarget
+                className="min-w-0 flex-1 truncate"
+                locale={locale}
+                request={{
+                  key: `request-observation-abnormal-id:${eventId}:${event.receivedAt}`,
+                  items: [
+                    {
+                      label: copy.id,
+                      value: eventId || emptyValue(copy),
+                      copyValue: eventId || undefined,
+                    },
+                  ],
+                }}
+              >
+                <span className="truncate font-mono">
+                  {eventId ? shortId(eventId) : "--"}
+                </span>
+              </AnalyticsDetailsTooltipTarget>
+            </div>
+          </TableCell>
+        ),
+        time: (
+          <TableCell className="max-w-36 text-center font-mono text-muted-foreground">
+            <AnalyticsTimeTooltipTarget
+              className="block truncate"
+              locale={locale}
+              timestamp={event.receivedAt}
+            >
+              {formatRelativeTime(locale, event.receivedAt, now)}
+            </AnalyticsTimeTooltipTarget>
+          </TableCell>
+        ),
+        site: (
+          <TableCell className="max-w-48">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-medium"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-site:${event.siteId}:${event.siteName}:${event.siteDomain}`,
+                items: [
+                  {
+                    label: copy.site,
+                    value: siteLabel,
+                    copyValue: siteCopyValue,
+                  },
+                  {
+                    label: copy.hostname,
+                    value: hostnameLabel,
+                    copyValue: hostnameCopyValue,
+                  },
+                ],
+              }}
+            >
+              {event.siteName}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        kind: (
+          <TableCell className="max-w-36">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-kind:${eventId}:${event.kind}`,
+                items: [
+                  {
+                    label: copy.kind,
+                    value: kindLabel,
+                    copyValue: event.kind || undefined,
+                  },
+                ],
+              }}
+            >
+              {kindLabel}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        reason: (
+          <TableCell className="max-w-48">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-medium"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-reason:${eventId}:${event.reasons.join(",")}:${reasonLabel}`,
+                items: reasonItems,
+              }}
+            >
+              {reasonLabel}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        confidence: (
+          <TableCell className="max-w-36 text-center">
+            <AnalyticsDetailsTooltipTarget
+              className="inline-flex"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-confidence:${eventId}:${event.confidence}`,
+                items: [
+                  {
+                    label: copy.confidence,
+                    value: confidenceLabel,
+                    copyValue: event.confidence || undefined,
+                  },
+                ],
+              }}
+            >
+              <ConfidenceBlocks
+                confidence={event.confidence}
+                label={event.confidence || "--"}
+              />
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        botScore: (
+          <TableCell className="max-w-24 text-right">
+            <span className="block truncate font-mono tabular-nums">
+              {botScoreLabel}
+            </span>
+          </TableCell>
+        ),
+        verifiedBotCategory: (
+          <TableCell className="max-w-44">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-verified-bot:${eventId}:${event.verifiedBotCategory}`,
+                items: [
+                  {
+                    label: copy.verifiedBotCategory,
+                    value: verifiedBotCategoryLabel,
+                    copyValue: verifiedBotCategoryCopyValue,
+                  },
+                ],
+              }}
+            >
+              {event.verifiedBotCategory || "--"}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        network: (
+          <TableCell className="max-w-44">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-network:${eventId}:${event.asOrganization}:${event.asn}`,
+                items: [
+                  {
+                    label: copy.network,
+                    value: networkLabel,
+                    copyValue: networkCopyValue,
+                  },
+                  {
+                    label: copy.asn,
+                    value: asnLabel,
+                    copyValue: asnCopyValue,
+                  },
+                ],
+              }}
+            >
+              {event.asOrganization || "--"}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        ip: (
+          <TableCell className="max-w-36">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-mono text-muted-foreground"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-ip:${eventId}:${event.ip}`,
+                items: [
+                  {
+                    label: copy.ip,
+                    value: event.ip || emptyValue(copy),
+                    copyValue: event.ip || undefined,
+                  },
+                ],
+              }}
+            >
+              {event.ip || "--"}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        location: (
+          <TableCell className="max-w-52">
+            <AnalyticsDetailsTooltipTarget
+              className="block min-w-0"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-location:${eventId}:${event.country}:${event.region}:${event.city}`,
+                items: [
+                  {
+                    label: copy.location,
+                    value: (
+                      <CountryRegionMeta
+                        locale={locale}
+                        messages={messages}
+                        country={event.country || ""}
+                        region={event.region}
+                        city={event.city}
+                        className="max-w-none text-background [&_.text-foreground]:text-background"
+                      />
+                    ),
+                  },
+                ],
+              }}
+            >
+              <CountryRegionMeta
+                locale={locale}
+                messages={messages}
+                country={event.country || ""}
+                region={event.region}
+                className="w-full"
+              />
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        pathname: (
+          <TableCell className="max-w-64">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-mono"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-pathname:${eventId}:${pathnameLabel}`,
+                items: [
+                  {
+                    label: copy.pathname,
+                    value: pathnameLabel,
+                    copyValue: pathnameLabel,
+                  },
+                ],
+              }}
+            >
+              {pathnameLabel}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        userAgent: (
+          <TableCell className="max-w-80 pr-4">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-mono text-muted-foreground"
+              locale={locale}
+              request={{
+                key: `request-observation-abnormal-user-agent:${eventId}:${event.userAgent}`,
+                items: [
+                  {
+                    label: copy.userAgent,
+                    value: userAgentLabel,
+                    copyValue: event.userAgent || undefined,
+                  },
+                ],
+              }}
+            >
+              {event.userAgent || "--"}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+      };
+      return {
+        children: (
+          <>
+            {tableColumns.visibleIds.map((columnId) => (
+              <Fragment key={columnId}>{cells[columnId]}</Fragment>
+            ))}
+          </>
+        ),
+        props: {
+          role: "button",
+          tabIndex: 0,
+          className:
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+          onClick: () => openEvent(event),
+          onKeyDown: (keyboardEvent: KeyboardEvent<HTMLTableRowElement>) =>
+            handleKeyDown(keyboardEvent, event),
+        },
+      };
+    },
+    [
+      copy,
+      handleKeyDown,
+      locale,
+      messages,
+      now,
+      openEvent,
+      tableColumns.visibleIds,
+    ],
+  );
+  const renderSkeletonRow = useCallback(
+    (index: number) => (
+      <RequestObservationRowSkeletonContent
+        index={index}
+        columns={tableColumns.visibleIds}
+        widths={BOT_EVENT_SKELETON_WIDTHS}
+        alignments={BOT_EVENT_COLUMN_ALIGNMENTS}
+      />
+    ),
+    [tableColumns.visibleIds],
+  );
+  const getRowKey = useCallback(
+    (event: BotEvent, index: number) =>
+      event.traceId ||
+      event.rayId ||
+      `${event.siteId}:${event.ip}:${event.pathname}:${event.receivedAt}:${index}`,
+    [],
+  );
 
   return (
     <>
@@ -3543,186 +3754,43 @@ function BotEventsTable({
               {copy.recentDescription}
             </p>
           </div>
-          <div className="shrink-0 text-xs text-muted-foreground">
-            {!loading && events.length > 0
-              ? hasMore
-                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
-                : copy.recentLoadedAll
-              : ""}
+          <div className="flex shrink-0 items-center gap-2">
+            <AnalyticsTableColumnSettings
+              columns={columnDefinitions}
+              orderedIds={tableColumns.orderedIds}
+              visibleIds={tableColumns.visibleIds}
+              onOrderChange={tableColumns.setOrder}
+              onVisibilityChange={tableColumns.setVisible}
+              onReset={tableColumns.reset}
+              labels={messages.common.tableColumns}
+            />
+            <div className="text-xs text-muted-foreground">
+              {!loading && events.length > 0 && !hasMore
+                ? copy.recentLoadedAll
+                : ""}
+            </div>
           </div>
         </div>
 
-        <Card className="py-0">
-          <CardContent className="px-0">
-            <Table className="min-w-[92rem]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">{copy.id}</TableHead>
-                  <TableHead>{copy.time}</TableHead>
-                  <TableHead>{copy.site}</TableHead>
-                  <TableHead>{copy.reason}</TableHead>
-                  <TableHead>{copy.confidence}</TableHead>
-                  <TableHead>{copy.network}</TableHead>
-                  <TableHead>{copy.asn}</TableHead>
-                  <TableHead>{copy.ip}</TableHead>
-                  <TableHead>{copy.location}</TableHead>
-                  <TableHead>{copy.pathname}</TableHead>
-                  <TableHead className="pr-4">{copy.userAgent}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <AutoTransition
-                as="tbody"
-                transitionKey={bodyState}
-                initial={false}
-                duration={0.18}
-                type="fade"
-                presenceMode="wait"
-                aria-busy={loading}
-                data-slot="table-body"
-                className="[&_tr:last-child]:border-0"
-              >
-                {loading ? (
-                  Array.from(
-                    { length: BOT_EVENT_SKELETON_ROWS },
-                    (_, index) => (
-                      <BotEventRowSkeleton key={index} index={index} />
-                    ),
-                  )
-                ) : events.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={11}
-                      className="h-28 text-center text-muted-foreground"
-                    >
-                      {copy.noData}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <>
-                    {visibleEvents.map((event, index) => {
-                      const reasonLabel = botReasonLabel(
-                        copy,
-                        event.reasons[0] || event.confidence || "",
-                      );
-                      const eventId = event.traceId || event.rayId || "";
-                      const rowKey =
-                        eventId ||
-                        `${event.siteId}:${event.ip}:${event.pathname}:${event.receivedAt}`;
-                      return (
-                        <TableRow
-                          key={`${rowKey}:${index}`}
-                          role="button"
-                          tabIndex={0}
-                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                          onClick={() => openEvent(event)}
-                          onKeyDown={(keyboardEvent) =>
-                            handleKeyDown(keyboardEvent, event)
-                          }
-                        >
-                          <TableCell className="pl-4 max-w-36">
-                            <div className="flex w-28 min-w-0 items-center gap-2">
-                              <VisitorAvatar
-                                seed={eventId || "unknown"}
-                                className="size-6"
-                              />
-                              <span
-                                className="min-w-0 truncate font-mono"
-                                title={eventId || undefined}
-                              >
-                                {eventId ? shortId(eventId) : "--"}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="max-w-36 font-mono text-muted-foreground">
-                            <span className="block truncate">
-                              {formatRelativeTime(
-                                locale,
-                                event.receivedAt,
-                                now,
-                              )}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-48">
-                            <span
-                              className="block truncate font-medium"
-                              title={event.siteName}
-                            >
-                              {event.siteName}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-48">
-                            <span
-                              className="block truncate font-medium"
-                              title={reasonLabel}
-                            >
-                              {reasonLabel}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-36">
-                            <ConfidenceBlocks
-                              confidence={event.confidence}
-                              label={event.confidence || "--"}
-                            />
-                          </TableCell>
-                          <TableCell className="max-w-44">
-                            <span
-                              className="block truncate"
-                              title={event.asOrganization || undefined}
-                            >
-                              {event.asOrganization || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.asn ? `AS${event.asn}` : "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-36">
-                            <span className="block truncate font-mono text-muted-foreground">
-                              {event.ip || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-52">
-                            <CountryRegionMeta
-                              locale={locale}
-                              messages={messages}
-                              country={event.country || ""}
-                              region={event.region}
-                              className="w-full"
-                            />
-                          </TableCell>
-                          <TableCell className="max-w-64">
-                            <span
-                              className="block truncate font-mono"
-                              title={event.pathname || "/"}
-                            >
-                              {event.pathname || "/"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-80 pr-4">
-                            <span
-                              className="block truncate font-mono text-muted-foreground"
-                              title={event.userAgent || undefined}
-                            >
-                              {event.userAgent || "--"}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {hasMore ? (
-                      <BotEventRowSkeleton
-                        key={`sentinel-${visibleEvents.length}`}
-                        index={visibleEvents.length}
-                        sentinelRef={setSentinelNode}
-                      />
-                    ) : null}
-                  </>
-                )}
-              </AutoTransition>
-            </Table>
-          </CardContent>
-        </Card>
+        <AnalyticsDataTable
+          minTableWidth="92rem"
+          tableClassName="min-w-[92rem]"
+          header={tableHeader}
+          rows={events}
+          renderRow={renderRow}
+          renderSkeletonRow={renderSkeletonRow}
+          getRowKey={getRowKey}
+          skeletonRows={BOT_EVENT_FETCH_LIMIT}
+          columnCount={tableColumns.visibleIds.length}
+          loading={loading}
+          loadingMore={loadingMore}
+          errorContent={copy.loadFailed}
+          emptyContent={copy.noData}
+          hasMore={hasMore}
+          onLoadMore={onLoadMore}
+          enableTimeTooltips
+          messages={messages}
+        />
       </section>
 
       <BotRequestDetailDrawer
@@ -3738,9 +3806,9 @@ function BotEventsTable({
       />
     </>
   );
-}
+});
 
-function valuesForNormalTargetTab(
+function _valuesForNormalTargetTab(
   event: NormalRequestEvent,
   tab: TargetDimensionTab,
 ): string[] {
@@ -3752,7 +3820,7 @@ function valuesForNormalTargetTab(
   return [event.origin];
 }
 
-function valuesForNormalNetworkTab(
+function _valuesForNormalNetworkTab(
   event: NormalRequestEvent,
   tab: NetworkDimensionTab,
 ): string[] {
@@ -3764,7 +3832,7 @@ function valuesForNormalNetworkTab(
   return [event.colo];
 }
 
-function aggregateNormalDimensionRows(
+function _aggregateNormalDimensionRows(
   events: NormalRequestEvent[],
   copy: AppMessages["requestObservation"],
   resolveValues: (event: NormalRequestEvent) => string[],
@@ -3815,25 +3883,26 @@ function aggregateNormalDimensionRows(
     .slice(0, DIMENSION_ROW_LIMIT);
 }
 
-function NormalRequestsTable({
+const NormalRequestsTable = memo(function NormalRequestsTable({
   locale,
   messages,
   copy,
   events,
   loading,
-  requestKey,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: {
   locale: Locale;
   messages: AppMessages;
   copy: AppMessages["requestObservation"];
   events: NormalRequestEvent[];
   loading: boolean;
-  requestKey: string;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
+  requestKey?: string;
 }) {
-  const [visibleCount, setVisibleCount] = useState(BOT_EVENT_PAGE_SIZE);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [selectedEvent, setSelectedEvent] = useState<NormalRequestEvent | null>(
     null,
   );
@@ -3841,84 +3910,402 @@ function NormalRequestsTable({
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    setVisibleCount(BOT_EVENT_PAGE_SIZE);
-  }, [requestKey]);
-
-  useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
 
-  const visibleEvents = useMemo(
-    () => events.slice(0, visibleCount),
-    [events, visibleCount],
-  );
-  const hasMore = visibleCount < events.length;
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loading ||
-      !hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const loadMore = () => {
-      setVisibleCount((current) =>
-        Math.min(current + BOT_EVENT_PAGE_SIZE, events.length),
-      );
-    };
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) loadMore();
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadMore();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [events.length, hasMore, loading, sentinelNode]);
-
-  const bodyState = loading
-    ? "loading"
-    : events.length === 0
-      ? "empty"
-      : "rows";
-  const title = locale === "zh" ? "最近正常请求" : "Recent Normal Requests";
-  const description =
-    locale === "zh"
-      ? "这些详细记录只写入正常请求 Analytics Engine 数据集。"
-      : "Detailed records written only to the normal request Analytics Engine dataset.";
-  const openEvent = (event: NormalRequestEvent) => {
+  const title = copy.recentNormal.title;
+  const description = copy.recentNormal.description;
+  const openEvent = useCallback((event: NormalRequestEvent) => {
     setSelectedEvent(event);
     setDrawerOpen(true);
-  };
-  const handleKeyDown = (
-    keyboardEvent: KeyboardEvent<HTMLTableRowElement>,
-    event: NormalRequestEvent,
-  ) => {
-    if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
-    keyboardEvent.preventDefault();
-    openEvent(event);
-  };
+  }, []);
+  const handleKeyDown = useCallback(
+    (
+      keyboardEvent: KeyboardEvent<HTMLTableRowElement>,
+      event: NormalRequestEvent,
+    ) => {
+      if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") return;
+      keyboardEvent.preventDefault();
+      openEvent(event);
+    },
+    [openEvent],
+  );
+  const columnDefinitions = useMemo<
+    readonly AnalyticsTableColumnDefinition<NormalRequestTableColumnId>[]
+  >(
+    () => [
+      { id: "id", label: copy.id, required: true },
+      { id: "time", label: copy.time, required: true },
+      { id: "site", label: copy.site, required: true },
+      { id: "kind", label: copy.kind },
+      { id: "requestMethod", label: copy.normalDetail.requestMethod },
+      { id: "hostname", label: copy.hostname },
+      { id: "network", label: copy.network },
+      { id: "location", label: copy.location },
+      { id: "colo", label: copy.colo },
+      { id: "pathname", label: copy.pathname },
+      { id: "edgeLatency", label: copy.normalDetail.edgeLatency },
+    ],
+    [copy],
+  );
+  const tableColumns = useAnalyticsTableColumns({
+    storageKey:
+      "insightflare:analytics-table-columns:request-observation-normal",
+    columns: columnDefinitions,
+  });
+  const headers = useMemo<Record<NormalRequestTableColumnId, ReactNode>>(
+    () => ({
+      id: <TableHead className="pl-4">{copy.id}</TableHead>,
+      time: <TableHead className="text-center">{copy.time}</TableHead>,
+      site: <TableHead>{copy.site}</TableHead>,
+      kind: <TableHead>{copy.kind}</TableHead>,
+      requestMethod: (
+        <TableHead className="text-center">
+          {copy.normalDetail.requestMethod}
+        </TableHead>
+      ),
+      hostname: <TableHead>{copy.hostname}</TableHead>,
+      network: <TableHead>{copy.network}</TableHead>,
+      location: <TableHead>{copy.location}</TableHead>,
+      colo: <TableHead>{copy.colo}</TableHead>,
+      pathname: <TableHead>{copy.pathname}</TableHead>,
+      edgeLatency: (
+        <TableHead className="pr-4 text-right">
+          {copy.normalDetail.edgeLatency}
+        </TableHead>
+      ),
+    }),
+    [copy],
+  );
+  const tableHeader = useMemo(
+    () => (
+      <TableRow>
+        {tableColumns.visibleIds.map((columnId) => (
+          <Fragment key={columnId}>{headers[columnId]}</Fragment>
+        ))}
+      </TableRow>
+    ),
+    [headers, tableColumns.visibleIds],
+  );
+  const renderRow = useCallback(
+    (event: NormalRequestEvent) => {
+      const eventId = event.traceId || event.rayId || "";
+      const kindLabel = requestKindLabel(copy, event.kind);
+      const requestMethodLabel = event.requestMethod || emptyValue(copy);
+      const siteLabel =
+        event.siteName || event.siteDomain || event.siteId || emptyValue(copy);
+      const siteCopyValue =
+        event.siteName || event.siteDomain || event.siteId || undefined;
+      const networkLabel = event.asOrganization || emptyValue(copy);
+      const networkCopyValue = event.asOrganization || undefined;
+      const hostnameLabel = event.hostname || emptyValue(copy);
+      const hostnameCopyValue = event.hostname || undefined;
+      const asnLabel = event.asn ? `AS${event.asn}` : emptyValue(copy);
+      const asnCopyValue = event.asn ? `AS${event.asn}` : undefined;
+      const coloLabel = event.colo || emptyValue(copy);
+      const coloCopyValue = event.colo || undefined;
+      const pathnameLabel = event.pathname || "/";
+      const edgeLatencyLabel = latencyFormat(locale, copy, event.edgeLatencyMs);
+      const edgeLatencyCopyValue =
+        event.edgeLatencyMs === null ||
+        event.edgeLatencyMs === undefined ||
+        !Number.isFinite(event.edgeLatencyMs)
+          ? undefined
+          : edgeLatencyLabel;
+      const cells: Record<NormalRequestTableColumnId, ReactNode> = {
+        id: (
+          <TableCell className="pl-4 max-w-36">
+            <div className="flex w-28 min-w-0 items-center gap-2">
+              <VisitorAvatar seed={eventId || "normal"} className="size-6" />
+              <AnalyticsDetailsTooltipTarget
+                className="min-w-0 flex-1 truncate"
+                locale={locale}
+                request={{
+                  key: `request-observation-normal-id:${eventId}:${event.receivedAt}`,
+                  items: [
+                    {
+                      label: copy.id,
+                      value: eventId || emptyValue(copy),
+                      copyValue: eventId || undefined,
+                    },
+                  ],
+                }}
+              >
+                <span className="truncate font-mono">
+                  {eventId ? shortId(eventId) : "--"}
+                </span>
+              </AnalyticsDetailsTooltipTarget>
+            </div>
+          </TableCell>
+        ),
+        time: (
+          <TableCell className="max-w-36 text-center font-mono text-muted-foreground">
+            <AnalyticsTimeTooltipTarget
+              className="block truncate"
+              locale={locale}
+              timestamp={event.receivedAt}
+            >
+              {formatRelativeTime(locale, event.receivedAt, now)}
+            </AnalyticsTimeTooltipTarget>
+          </TableCell>
+        ),
+        site: (
+          <TableCell className="max-w-48">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-medium"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-site:${event.siteId}:${event.siteName}:${event.siteDomain}`,
+                items: [
+                  {
+                    label: copy.site,
+                    value: siteLabel,
+                    copyValue: siteCopyValue,
+                  },
+                  {
+                    label: copy.hostname,
+                    value: hostnameLabel,
+                    copyValue: hostnameCopyValue,
+                  },
+                ],
+              }}
+            >
+              {event.siteName || event.siteDomain || event.siteId}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        kind: (
+          <TableCell className="max-w-28">
+            <AnalyticsDetailsTooltipTarget
+              className="inline-flex"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-kind:${eventId}:${event.kind}`,
+                items: [
+                  {
+                    label: copy.kind,
+                    value: kindLabel,
+                    copyValue: event.kind || undefined,
+                  },
+                ],
+              }}
+            >
+              <span className="truncate">{kindLabel}</span>
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        requestMethod: (
+          <TableCell className="max-w-24 text-center">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate text-center"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-method:${eventId}:${event.requestMethod}`,
+                items: [
+                  {
+                    label: copy.normalDetail.requestMethod,
+                    value: requestMethodLabel,
+                    copyValue: event.requestMethod || undefined,
+                  },
+                ],
+              }}
+            >
+              <span className="block truncate text-center font-mono">
+                {event.requestMethod || "--"}
+              </span>
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        hostname: (
+          <TableCell className="max-w-44">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-mono"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-hostname:${eventId}:${event.hostname}`,
+                items: [
+                  {
+                    label: copy.hostname,
+                    value: hostnameLabel,
+                    copyValue: event.hostname || undefined,
+                  },
+                ],
+              }}
+            >
+              {event.hostname || "--"}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        network: (
+          <TableCell className="max-w-44">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-network:${eventId}:${event.asOrganization}:${event.asn}`,
+                items: [
+                  {
+                    label: copy.network,
+                    value: networkLabel,
+                    copyValue: networkCopyValue,
+                  },
+                  {
+                    label: copy.asn,
+                    value: asnLabel,
+                    copyValue: asnCopyValue,
+                  },
+                ],
+              }}
+            >
+              {event.asOrganization || "--"}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        location: (
+          <TableCell className="max-w-52">
+            <AnalyticsDetailsTooltipTarget
+              className="block min-w-0"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-location:${eventId}:${event.country}:${event.region}:${event.city}`,
+                items: [
+                  {
+                    label: copy.location,
+                    value: (
+                      <CountryRegionMeta
+                        locale={locale}
+                        messages={messages}
+                        country={event.country || ""}
+                        region={event.region}
+                        city={event.city}
+                        className="max-w-none text-background [&_.text-foreground]:text-background"
+                      />
+                    ),
+                  },
+                ],
+              }}
+            >
+              <CountryRegionMeta
+                locale={locale}
+                messages={messages}
+                country={event.country || ""}
+                region={event.region}
+                className="w-full"
+              />
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        colo: (
+          <TableCell className="max-w-32">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-colo:${eventId}:${event.colo}`,
+                items: [
+                  {
+                    label: copy.colo,
+                    value: coloLabel,
+                    copyValue: coloCopyValue,
+                  },
+                ],
+              }}
+            >
+              {event.colo || "--"}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        pathname: (
+          <TableCell className="max-w-64">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate font-mono"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-pathname:${eventId}:${pathnameLabel}`,
+                items: [
+                  {
+                    label: copy.pathname,
+                    value: pathnameLabel,
+                    copyValue: pathnameLabel,
+                  },
+                ],
+              }}
+            >
+              {pathnameLabel}
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+        edgeLatency: (
+          <TableCell className="max-w-28 pr-4 text-right">
+            <AnalyticsDetailsTooltipTarget
+              className="block truncate"
+              locale={locale}
+              request={{
+                key: `request-observation-normal-edge-latency:${eventId}:${event.edgeLatencyMs}`,
+                items: [
+                  {
+                    label: copy.normalDetail.edgeLatency,
+                    value: edgeLatencyLabel,
+                    copyValue: edgeLatencyCopyValue,
+                  },
+                ],
+              }}
+            >
+              <span className="block truncate font-mono tabular-nums text-muted-foreground">
+                {edgeLatencyLabel}
+              </span>
+            </AnalyticsDetailsTooltipTarget>
+          </TableCell>
+        ),
+      };
+      return {
+        children: (
+          <>
+            {tableColumns.visibleIds.map((columnId) => (
+              <Fragment key={columnId}>{cells[columnId]}</Fragment>
+            ))}
+          </>
+        ),
+        props: {
+          role: "button",
+          tabIndex: 0,
+          className:
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+          onClick: () => openEvent(event),
+          onKeyDown: (keyboardEvent: KeyboardEvent<HTMLTableRowElement>) =>
+            handleKeyDown(keyboardEvent, event),
+        },
+      };
+    },
+    [
+      copy,
+      handleKeyDown,
+      locale,
+      messages,
+      now,
+      openEvent,
+      tableColumns.visibleIds,
+    ],
+  );
+  const renderSkeletonRow = useCallback(
+    (index: number) => (
+      <RequestObservationRowSkeletonContent
+        index={index}
+        columns={tableColumns.visibleIds}
+        widths={NORMAL_REQUEST_SKELETON_WIDTHS}
+        alignments={NORMAL_REQUEST_COLUMN_ALIGNMENTS}
+      />
+    ),
+    [tableColumns.visibleIds],
+  );
+  const getRowKey = useCallback(
+    (event: NormalRequestEvent, index: number) =>
+      event.traceId ||
+      event.rayId ||
+      `${event.siteId}:${event.pathname}:${event.receivedAt}:${index}`,
+    [],
+  );
 
   return (
     <>
@@ -3931,173 +4318,42 @@ function NormalRequestsTable({
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">{description}</p>
           </div>
-          <div className="shrink-0 text-xs text-muted-foreground">
-            {!loading && events.length > 0
-              ? hasMore
-                ? `${copy.recentShowing} ${numberFormat(locale, visibleEvents.length)} / ${numberFormat(locale, events.length)}`
-                : copy.recentLoadedAll
-              : ""}
+          <div className="flex shrink-0 items-center gap-2">
+            <AnalyticsTableColumnSettings
+              columns={columnDefinitions}
+              orderedIds={tableColumns.orderedIds}
+              visibleIds={tableColumns.visibleIds}
+              onOrderChange={tableColumns.setOrder}
+              onVisibilityChange={tableColumns.setVisible}
+              onReset={tableColumns.reset}
+              labels={messages.common.tableColumns}
+            />
+            <div className="text-xs text-muted-foreground">
+              {!loading && events.length > 0 && !hasMore
+                ? copy.recentLoadedAll
+                : ""}
+            </div>
           </div>
         </div>
 
-        <Card className="py-0">
-          <CardContent className="px-0">
-            <Table className="min-w-[80rem]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="pl-4">{copy.id}</TableHead>
-                  <TableHead>{copy.time}</TableHead>
-                  <TableHead>{copy.site}</TableHead>
-                  <TableHead>{copy.kind}</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>{copy.network}</TableHead>
-                  <TableHead>{copy.asn}</TableHead>
-                  <TableHead>{copy.location}</TableHead>
-                  <TableHead>{copy.pathname}</TableHead>
-                  <TableHead className="pr-4">
-                    {locale === "zh" ? "边缘耗时" : "Edge Latency"}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <AutoTransition
-                as="tbody"
-                transitionKey={bodyState}
-                initial={false}
-                duration={0.18}
-                type="fade"
-                presenceMode="wait"
-                aria-busy={loading}
-                data-slot="table-body"
-                className="[&_tr:last-child]:border-0"
-              >
-                {loading ? (
-                  Array.from(
-                    { length: BOT_EVENT_SKELETON_ROWS },
-                    (_, index) => (
-                      <BotEventRowSkeleton key={index} index={index} />
-                    ),
-                  )
-                ) : events.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={10}
-                      className="h-28 text-center text-muted-foreground"
-                    >
-                      {copy.noData}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  <>
-                    {visibleEvents.map((event, index) => {
-                      const eventId = event.traceId || event.rayId || "";
-                      const rowKey =
-                        eventId ||
-                        `${event.siteId}:${event.pathname}:${event.receivedAt}`;
-                      return (
-                        <TableRow
-                          key={`${rowKey}:${index}`}
-                          role="button"
-                          tabIndex={0}
-                          className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                          onClick={() => openEvent(event)}
-                          onKeyDown={(keyboardEvent) =>
-                            handleKeyDown(keyboardEvent, event)
-                          }
-                        >
-                          <TableCell className="pl-4 max-w-36">
-                            <div className="flex w-28 min-w-0 items-center gap-2">
-                              <VisitorAvatar
-                                seed={eventId || "normal"}
-                                className="size-6"
-                              />
-                              <span
-                                className="min-w-0 truncate font-mono"
-                                title={eventId || undefined}
-                              >
-                                {eventId ? shortId(eventId) : "--"}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="max-w-36 font-mono text-muted-foreground">
-                            <span className="block truncate">
-                              {formatRelativeTime(
-                                locale,
-                                event.receivedAt,
-                                now,
-                              )}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-48">
-                            <span
-                              className="block truncate font-medium"
-                              title={event.siteName}
-                            >
-                              {event.siteName ||
-                                event.siteDomain ||
-                                event.siteId}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-28">
-                            <Badge variant="outline">
-                              {requestKindLabel(copy, event.kind)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.requestMethod || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-44">
-                            <span
-                              className="block truncate"
-                              title={event.asOrganization || undefined}
-                            >
-                              {event.asOrganization || "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-24">
-                            <span className="block truncate font-mono">
-                              {event.asn ? `AS${event.asn}` : "--"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-52">
-                            <CountryRegionMeta
-                              locale={locale}
-                              messages={messages}
-                              country={event.country || ""}
-                              region={event.region}
-                              className="w-full"
-                            />
-                          </TableCell>
-                          <TableCell className="max-w-64">
-                            <span
-                              className="block truncate font-mono"
-                              title={event.pathname || "/"}
-                            >
-                              {event.pathname || "/"}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-28 pr-4">
-                            <span className="block truncate font-mono tabular-nums text-muted-foreground">
-                              {latencyFormat(locale, event.edgeLatencyMs)}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {hasMore ? (
-                      <BotEventRowSkeleton
-                        key={`sentinel-${visibleEvents.length}`}
-                        index={visibleEvents.length}
-                        sentinelRef={setSentinelNode}
-                      />
-                    ) : null}
-                  </>
-                )}
-              </AutoTransition>
-            </Table>
-          </CardContent>
-        </Card>
+        <AnalyticsDataTable
+          tableClassName="min-w-[80rem]"
+          header={tableHeader}
+          rows={events}
+          renderRow={renderRow}
+          renderSkeletonRow={renderSkeletonRow}
+          getRowKey={getRowKey}
+          skeletonRows={BOT_EVENT_FETCH_LIMIT}
+          columnCount={tableColumns.visibleIds.length}
+          loading={loading}
+          loadingMore={loadingMore}
+          errorContent={copy.loadFailed}
+          emptyContent={copy.noData}
+          hasMore={hasMore}
+          onLoadMore={onLoadMore}
+          enableTimeTooltips
+          messages={messages}
+        />
       </section>
 
       <NormalRequestDetailDrawer
@@ -4110,593 +4366,4 @@ function NormalRequestsTable({
       />
     </>
   );
-}
-
-/*
-function LegacyRequestObservationClient({
-  locale,
-  messages,
-}: RequestObservationClientProps) {
-  const copy = messages.requestObservation;
-  const [minutes, setMinutes] = useState<WindowMinutes>(43200);
-  const [data, setData] = useState<RequestObservationData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useMemo(
-    () => async (nextMinutes: WindowMinutes, mode: "initial" | "refresh") => {
-      if (mode === "initial") setLoading(true);
-      else setRefreshing(true);
-      try {
-        const next = await fetchRequestObservation(nextMinutes);
-        setData(next);
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : copy.loadFailed);
-      } finally {
-        if (mode === "initial") setLoading(false);
-        else setRefreshing(false);
-      }
-    },
-    [copy.loadFailed],
-  );
-
-  useEffect(() => {
-    void load(minutes, "initial");
-  }, [load, minutes]);
-
-  const formatter = useMemo(
-    () => new Intl.NumberFormat(intlLocale(locale)),
-    [locale],
-  );
-  const trendTickFormatter = useMemo(
-    () => trendTickDateFormat(locale, minutes),
-    [locale, minutes],
-  );
-  const trendTooltipFormatter = useMemo(
-    () => trendTooltipDateFormat(locale, minutes),
-    [locale, minutes],
-  );
-  const trend = data?.trend ?? [];
-  const events = data?.events ?? [];
-  const analyticsEngineDisabled =
-    data?.config?.analyticsEngineDisabled === true;
-  const configured = !analyticsEngineDisabled && data?.configured !== false;
-  const showDemoOverlay =
-    Boolean(data) && !loading && (analyticsEngineDisabled || !configured);
-  const overlayTitle = analyticsEngineDisabled
-    ? copy.analyticsEngineDisabledTitle
-    : copy.notConfiguredTitle;
-  const overlayDescription = analyticsEngineDisabled
-    ? copy.analyticsEngineDisabledDescription
-    : copy.notConfiguredDescription;
-  const overlayAction = analyticsEngineDisabled ? (
-    <Button asChild>
-      <a
-        href={data?.config?.analyticsEngineEnableUrl || "#"}
-        target="_blank"
-        rel="noreferrer"
-      >
-        {copy.openAnalyticsEngine}
-      </a>
-    </Button>
-  ) : (
-    <Button asChild>
-      <Link href={`/${locale}/app/manage/system-settings`}>
-        {copy.openSettings}
-      </Link>
-    </Button>
-  );
-  const trendConfig = useMemo(() => trendChartConfig(copy), [copy]);
-  const formatTrendTooltipValue = useMemo(
-    () =>
-      createTrendTooltipFormatter({
-        botRequestsLabel: copy.botRequests,
-        botTrafficRatioLabel: copy.botTrafficRatio,
-        countFormatter: formatter,
-        locale,
-      }),
-    [copy.botRequests, copy.botTrafficRatio, formatter, locale],
-  );
-  const detectionTabs = useMemo(
-    () =>
-      [
-        {
-          value: "reason",
-          label: copy.reason,
-          columnLabel: copy.reason,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "confidence",
-          label: copy.confidence,
-          columnLabel: copy.confidence,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "kind",
-          label: copy.kind,
-          columnLabel: copy.kind,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "botScoreBucket",
-          label: copy.botScoreBucket,
-          columnLabel: copy.botScoreBucket,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "verifiedBotCategory",
-          label: copy.verifiedBotCategory,
-          columnLabel: copy.verifiedBotCategory,
-          primaryMetricLabel: copy.blocked,
-        },
-      ] satisfies [
-        AsyncDimensionBreakdownTab<DetectionDimensionTab>,
-        ...AsyncDimensionBreakdownTab<DetectionDimensionTab>[],
-      ],
-    [copy],
-  );
-  const targetTabs = useMemo(
-    () =>
-      [
-        {
-          value: "site",
-          label: copy.site,
-          columnLabel: copy.site,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "hostname",
-          label: copy.hostname,
-          columnLabel: copy.hostname,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "pathname",
-          label: copy.pathname,
-          columnLabel: copy.pathname,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "origin",
-          label: copy.origin,
-          columnLabel: copy.origin,
-          primaryMetricLabel: copy.blocked,
-        },
-      ] satisfies [
-        AsyncDimensionBreakdownTab<TargetDimensionTab>,
-        ...AsyncDimensionBreakdownTab<TargetDimensionTab>[],
-      ],
-    [copy],
-  );
-  const networkTabs = useMemo(
-    () =>
-      [
-        {
-          value: "asOrganization",
-          label: copy.asOrganization,
-          columnLabel: copy.asOrganization,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "asn",
-          label: copy.asn,
-          columnLabel: copy.asn,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "country",
-          label: copy.country,
-          columnLabel: copy.country,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "region",
-          label: copy.region,
-          columnLabel: copy.region,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "city",
-          label: copy.city,
-          columnLabel: copy.city,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "colo",
-          label: copy.colo,
-          columnLabel: copy.colo,
-          primaryMetricLabel: copy.blocked,
-        },
-      ] satisfies [
-        AsyncDimensionBreakdownTab<NetworkDimensionTab>,
-        ...AsyncDimensionBreakdownTab<NetworkDimensionTab>[],
-      ],
-    [copy],
-  );
-  const clientTabs = useMemo(
-    () =>
-      [
-        {
-          value: "ip",
-          label: copy.ip,
-          columnLabel: copy.ip,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "userAgent",
-          label: copy.userAgent,
-          columnLabel: copy.userAgent,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "userAgentLengthBucket",
-          label: copy.userAgentLengthBucket,
-          columnLabel: copy.userAgentLengthBucket,
-          primaryMetricLabel: copy.blocked,
-        },
-        {
-          value: "ipPrefix",
-          label: copy.ipPrefix,
-          columnLabel: copy.ipPrefix,
-          primaryMetricLabel: copy.blocked,
-        },
-      ] satisfies [
-        AsyncDimensionBreakdownTab<ClientDimensionTab>,
-        ...AsyncDimensionBreakdownTab<ClientDimensionTab>[],
-      ],
-    [copy],
-  );
-  const loadDetectionRows = useMemo(
-    () => async (tab: DetectionDimensionTab) =>
-      toAsyncDimensionRows(
-        aggregateDimensionRows(events, copy, (event) =>
-          valuesForDetectionTab(event, tab, copy),
-        ),
-      ),
-    [copy, events],
-  );
-  const loadTargetRows = useMemo(
-    () => async (tab: TargetDimensionTab) =>
-      toAsyncDimensionRows(
-        aggregateDimensionRows(events, copy, (event) =>
-          valuesForTargetTab(event, tab),
-        ),
-        { targetTab: tab },
-      ),
-    [copy, events],
-  );
-  const loadNetworkRows = useMemo(
-    () => async (tab: NetworkDimensionTab) =>
-      toAsyncDimensionRows(
-        aggregateDimensionRows(events, copy, (event) =>
-          valuesForNetworkTab(event, tab),
-        ),
-        {
-          networkTab: tab,
-          locale,
-          unknownLabel: copy.emptyValue,
-        },
-      ),
-    [copy, events, locale],
-  );
-  const loadClientRows = useMemo(
-    () => async (tab: ClientDimensionTab) =>
-      toAsyncDimensionRows(
-        aggregateDimensionRows(events, copy, (event) =>
-          valuesForClientTab(event, tab),
-        ),
-      ),
-    [copy, events],
-  );
-
-  return (
-    <div className="space-y-6 pb-6">
-      <div className="pointer-events-none relative z-20 mx-auto flex w-full max-w-[1400px] flex-col gap-4 px-4 pt-4 md:px-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            {copy.title}
-          </h1>
-          <p className="max-w-prose text-sm text-foreground/75">
-            {copy.subtitle}
-          </p>
-        </div>
-        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
-          <Select
-            value={String(minutes)}
-            onValueChange={(value) =>
-              setMinutes(Number(value) as WindowMinutes)
-            }
-          >
-            <SelectTrigger className="w-[160px] bg-background/90 backdrop-blur">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {WINDOW_OPTIONS.map((option) => (
-                <SelectItem key={option} value={String(option)}>
-                  {windowLabel(messages, option)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            variant="outline"
-            className="bg-background/90 backdrop-blur"
-            onClick={() => load(minutes, "refresh")}
-            disabled={loading || refreshing}
-          >
-            {refreshing ? (
-              <Spinner className="size-4" />
-            ) : (
-              <RiRefreshLine className="size-4" />
-            )}
-            {copy.refresh}
-          </Button>
-        </div>
-      </div>
-
-      <div className="relative">
-        <div
-          aria-hidden={showDemoOverlay}
-          className={cn(
-            "space-y-6 transition duration-200",
-            showDemoOverlay && "pointer-events-none select-none blur-sm",
-          )}
-        >
-          <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] overflow-hidden bg-background sm:min-h-[22rem]">
-            <GeoPointsMapIsland
-              locale={locale}
-              messages={messages}
-              points={data?.mapPoints ?? []}
-              loading={loading}
-              emptyLabel={copy.noData}
-              heightClassName="h-full"
-              countryHoverEnabled={false}
-              pointColor={[239, 68, 68]}
-              projectionMode="globe"
-              autoRotate
-            />
-
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-44 bg-gradient-to-b from-background via-background/65 to-transparent" />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-background via-background/70 to-transparent" />
-          </div>
-
-          <div className="mx-auto w-full max-w-[1400px] px-4 md:px-6">
-            <div className="space-y-6">
-              <Card className="py-0">
-                <CardContent className="p-0">
-                  <div className="grid gap-px overflow-hidden bg-border/70 md:grid-cols-2 xl:grid-cols-4">
-                    <MetricTile
-                      icon={RiRobot2Line}
-                      label={copy.botRequests}
-                      value={numberFormat(locale, data?.summary.total ?? 0)}
-                      detail={windowLabel(messages, minutes)}
-                      loading={loading}
-                    />
-                    <MetricTile
-                      icon={RiRadarLine}
-                      label={copy.botRequestRatio}
-                      value={percentFormat(
-                        locale,
-                        data?.summary.botRequestRatio ?? 0,
-                      )}
-                      detail={copy.rollupBaseline}
-                      loading={loading}
-                    />
-                    <MetricTile
-                      icon={RiShieldCheckLine}
-                      label={copy.highConfidenceBots}
-                      value={numberFormat(
-                        locale,
-                        data?.summary.highConfidence ?? 0,
-                      )}
-                      detail={copy.confidence}
-                      loading={loading}
-                    />
-                    <MetricTile
-                      icon={RiGlobalLine}
-                      label={copy.affectedSites}
-                      value={numberFormat(
-                        locale,
-                        data?.summary.affectedSites ?? 0,
-                      )}
-                      detail={copy.site}
-                      loading={loading}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>{copy.trendTitle}</CardTitle>
-                  <CardDescription>{copy.trendDescription}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ChartContainer
-                    config={trendConfig}
-                    className="h-[320px] w-full"
-                  >
-                    <ComposedChart data={trend}>
-                      <defs>
-                        <linearGradient
-                          id="request-observation-count-fill"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="5%"
-                            stopColor="var(--color-count)"
-                            stopOpacity={0.35}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="var(--color-count)"
-                            stopOpacity={0.03}
-                          />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid vertical={false} />
-                      <XAxis
-                        dataKey="timestampMs"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={8}
-                        tickFormatter={(value) =>
-                          trendTickFormatter.format(
-                            new Date(Number(value ?? 0)),
-                          )
-                        }
-                        minTickGap={14}
-                      />
-                      <YAxis
-                        yAxisId="bots"
-                        width={52}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) =>
-                          formatter.format(Number(value))
-                        }
-                      />
-                      <YAxis
-                        yAxisId="ratio"
-                        orientation="right"
-                        width={44}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) =>
-                          percentFormat(locale, Number(value))
-                        }
-                      />
-                      <ChartTooltip
-                        allowEscapeViewBox={{ x: false, y: true }}
-                        wrapperStyle={{ zIndex: 20 }}
-                        content={
-                          <ChartTooltipContent
-                            indicator="dot"
-                            labelFormatter={(value, payload) => {
-                              const timestamp = Number(
-                                payload?.[0]?.payload?.timestampMs ??
-                                  value ??
-                                  0,
-                              );
-                              return trendTooltipFormatter.format(
-                                new Date(timestamp),
-                              );
-                            }}
-                            formatter={formatTrendTooltipValue}
-                          />
-                        }
-                      />
-                      <Area
-                        yAxisId="bots"
-                        type="monotone"
-                        dataKey="count"
-                        stroke="var(--color-count)"
-                        fill="url(#request-observation-count-fill)"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 4 }}
-                      />
-                      <Line
-                        yAxisId="ratio"
-                        type="monotone"
-                        dataKey="botRatio"
-                        stroke="var(--color-botRatio)"
-                        strokeWidth={2}
-                        strokeDasharray="4 4"
-                        dot={false}
-                        activeDot={{ r: 4 }}
-                      />
-                    </ComposedChart>
-                  </ChartContainer>
-                </CardContent>
-              </Card>
-
-              <section className="grid gap-4 xl:grid-cols-2">
-                <AsyncDimensionBreakdownCard
-                  locale={locale}
-                  messages={messages}
-                  tabs={detectionTabs}
-                  loadRows={loadDetectionRows}
-                  requestKey={`${minutes}:${events.length}:detection`}
-                  className="h-full"
-                  secondaryMetricLabel={copy.highConfidenceRequests}
-                  emptyLabel={copy.noData}
-                />
-                <AsyncDimensionBreakdownCard
-                  locale={locale}
-                  messages={messages}
-                  tabs={targetTabs}
-                  loadRows={loadTargetRows}
-                  requestKey={`${minutes}:${events.length}:target`}
-                  className="h-full"
-                  secondaryMetricLabel={copy.highConfidenceRequests}
-                  emptyLabel={copy.noData}
-                />
-                <AsyncDimensionBreakdownCard
-                  locale={locale}
-                  messages={messages}
-                  tabs={networkTabs}
-                  loadRows={loadNetworkRows}
-                  requestKey={`${minutes}:${events.length}:network`}
-                  className="h-full"
-                  secondaryMetricLabel={copy.highConfidenceRequests}
-                  emptyLabel={copy.noData}
-                />
-                <AsyncDimensionBreakdownCard
-                  locale={locale}
-                  messages={messages}
-                  tabs={clientTabs}
-                  loadRows={loadClientRows}
-                  requestKey={`${minutes}:${events.length}:client`}
-                  className="h-full"
-                  secondaryMetricLabel={copy.highConfidenceRequests}
-                  emptyLabel={copy.noData}
-                />
-              </section>
-
-              <BotEventsTable
-                locale={locale}
-                messages={messages}
-                copy={copy}
-                events={events}
-                loading={loading}
-                requestKey={`${minutes}:${data?.generatedAt ?? 0}:${events.length}`}
-                minutes={minutes}
-              />
-            </div>
-          </div>
-        </div>
-
-        {showDemoOverlay ? (
-          <div className="absolute inset-0 z-30 bg-background/30 px-4">
-            <div className="sticky top-[calc(50svh-8rem)] mx-auto flex w-full max-w-lg justify-center py-10">
-              <Card
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="request-observation-overlay-title"
-                aria-describedby="request-observation-overlay-description"
-                className="w-full border-border/80 bg-background/95 shadow-2xl backdrop-blur"
-              >
-                <CardHeader>
-                  <CardTitle id="request-observation-overlay-title">
-                    {overlayTitle}
-                  </CardTitle>
-                  <CardDescription id="request-observation-overlay-description">
-                    {overlayDescription}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>{overlayAction}</CardContent>
-              </Card>
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-*/
+});

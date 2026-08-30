@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect } from "react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";

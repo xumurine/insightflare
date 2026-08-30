@@ -1,6 +1,6 @@
 import type {
-  DashboardFilterKey,
   DashboardFilterOptionData,
+  DashboardFilterOptionKey,
   OverviewClientDimensionTab,
   OverviewPageCardTab,
   OverviewSourceCardTab,
@@ -10,11 +10,12 @@ import {
   emptyDashboardFilterOptions,
   emptyOverviewTab,
 } from "@/lib/dashboard/client-empty-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   DashboardFilterOptionsData,
   OverviewTabData,
 } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 
 import { fetchPrivateJson } from "./client-request";
 import {
@@ -32,13 +33,19 @@ const clientPathByTab: Record<OverviewClientDimensionTab, string> = {
   screenSize: "screen-size",
 };
 
+function emptyOverviewTabUnlessAborted(error: unknown): OverviewTabData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyOverviewTab();
+}
+
 export async function fetchOverviewPageCardTab(
   siteId: string,
   window: TimeWindow,
   tab: OverviewPageCardTab,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const endpoint =
@@ -57,7 +64,8 @@ export async function fetchOverviewPageCardTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   const rows = normalizeOverviewRows(payload.data);
   return tab === "query"
     ? rows.map((row) => ({
@@ -70,7 +78,7 @@ export async function fetchOverviewPageCardTab(
 export async function fetchPageHashTab(
   siteId: string,
   window: TimeWindow,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
   },
@@ -97,7 +105,7 @@ export async function fetchPageHashTab(
 export async function fetchPageQueryTab(
   siteId: string,
   window: TimeWindow,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
   },
@@ -109,9 +117,10 @@ export async function fetchOverviewSourceCardTab(
   siteId: string,
   window: TimeWindow,
   tab: OverviewSourceCardTab,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const payload = await fetchPrivateJson<OverviewTabData>(
@@ -126,16 +135,18 @@ export async function fetchOverviewSourceCardTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   return normalizeOverviewRows(payload.data);
 }
 
 export async function fetchEventTypesTab(
   siteId: string,
   window: TimeWindow,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewTabRows> {
   const payload = await fetchPrivateJson<OverviewTabData>(
@@ -150,7 +161,8 @@ export async function fetchEventTypesTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewTab());
+    { signal: options?.signal },
+  ).catch(emptyOverviewTabUnlessAborted);
   return normalizeOverviewRows(payload.data);
 }
 
@@ -158,7 +170,7 @@ export async function fetchOverviewClientDimensionTab(
   siteId: string,
   window: TimeWindow,
   tab: OverviewClientDimensionTab,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
   },
@@ -179,17 +191,19 @@ export async function fetchOverviewClientDimensionTab(
   return normalizeOverviewRows(payload.data);
 }
 
-export async function fetchDashboardFilterOptions(
+export async function fetchFilterValues(
   siteId: string,
   window: TimeWindow,
-  filterKey: DashboardFilterKey,
-  filters?: DashboardFilters,
+  filterKey: DashboardFilterOptionKey,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
+    search?: string;
+    signal?: AbortSignal;
   },
 ): Promise<DashboardFilterOptionData[]> {
   const payload = await fetchPrivateJson<DashboardFilterOptionsData>(
-    "/api/private/filter-options",
+    "/api/private/filter-values",
     withFilters(
       {
         siteId,
@@ -198,9 +212,11 @@ export async function fetchDashboardFilterOptions(
         timeZone: window.timeZone,
         filterKey,
         limit: options?.limit ?? 200,
+        ...(options?.search?.trim() ? { search: options.search.trim() } : {}),
       },
       filters,
     ),
+    { signal: options?.signal },
   ).catch(() => emptyDashboardFilterOptions());
   return Array.isArray(payload.data) ? payload.data : [];
 }

@@ -9,6 +9,8 @@ export const API_KEY_EXPIRATION_DAYS = [30, 90, 180, 365] as const;
 
 export const API_KEY_SCOPES = [
   "analytics:read",
+  "analysis:read",
+  "analysis:write",
   "site:read",
   "site:write",
   "site_config:read",
@@ -61,12 +63,18 @@ export interface CreatedApiKey {
 const API_KEY_SECRET_BYTES = 32;
 const API_KEY_PREFIX_BYTES = 9;
 const DEFAULT_SCOPE_SET = new Set<ApiKeyScope>(API_KEY_SCOPES);
+// The derived secret is deployment configuration, so this cache cannot grow
+// from request input. CryptoKey is immutable and safe to reuse across requests.
+const apiKeyHmacKeyCache = new Map<string, CryptoKey>();
 
 async function apiKeyHashSecret(env: Env): Promise<string> {
-  return (
-    (await resolveApiKeyHashSecret(env)) ||
-    "insightflare-api-key-secret-change-me"
-  );
+  const secret = await resolveApiKeyHashSecret(env);
+  if (!secret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for API keys",
+    );
+  }
+  return secret;
 }
 
 function toArrayBuffer(input: Uint8Array): ArrayBuffer {
@@ -104,13 +112,17 @@ function randomTokenPart(byteLength: number): string {
 }
 
 async function hmacSha256Hex(message: string, secret: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(bytes(secret)),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
+  let key = apiKeyHmacKeyCache.get(secret);
+  if (!key) {
+    key = await crypto.subtle.importKey(
+      "raw",
+      toArrayBuffer(bytes(secret)),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    apiKeyHmacKeyCache.set(secret, key);
+  }
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,

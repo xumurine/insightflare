@@ -1,4 +1,4 @@
-import { errorToMessage, logDoTrace, toUnixSeconds } from "./ingest-log";
+import { toUnixSeconds } from "./ingest-time";
 import type {
   BufferedCustomEventInput,
   BufferedVisitRow,
@@ -7,6 +7,7 @@ import type {
   StoredOpenVisit,
   VisitRow,
 } from "./ingest-types";
+import { SITE_PK_FROM_SITE_ID_SQL } from "./site-identity-sql";
 import type {
   Env,
   NormalizedCustomEvent,
@@ -130,13 +131,42 @@ export async function findRecentVisitorSession(
     visitId: string;
     startedAt: number;
     sessionWindowMs: number;
+    routePreviousHostname?: string;
+    routePreviousPathname?: string;
+    routePreviousQueryString?: string;
+    routePreviousHashFragment?: string;
   },
 ): Promise<RecentVisitorSession | null> {
   const cutoff = input.startedAt - input.sessionWindowMs;
+  const routeMatchEnabled =
+    input.routePreviousHostname && input.routePreviousPathname ? 1 : 0;
+  const routePreviousHostname = input.routePreviousHostname || "";
+  const routePreviousPathname = input.routePreviousPathname || "";
+  const routePreviousQueryString = input.routePreviousQueryString || "";
+  const routePreviousHashFragment = input.routePreviousHashFragment || "";
   const buffered = context.sqlOne<RecentVisitorSession>(
     `
       SELECT
         session_id AS sessionId,
+        visit_id AS visitId,
+        status,
+        CASE
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND query_string = ?
+            AND hash_fragment = ?
+            THEN 2
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND (query_string = ? OR query_string = '' OR ? = '')
+            AND (hash_fragment = ? OR hash_fragment = '' OR ? = '')
+            THEN 1
+          ELSE 0
+        END AS routeMatch,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt
       FROM buffered_visits
@@ -145,9 +175,25 @@ export async function findRecentVisitorSession(
         AND visit_id != ?
         AND session_id != ''
         AND last_activity_at >= ?
-      ORDER BY last_activity_at DESC, started_at DESC
+      ORDER BY
+        routeMatch DESC,
+        CASE WHEN status IN ('open', 'hidden_pending') THEN 0 ELSE 1 END,
+        last_activity_at DESC,
+        started_at DESC
       LIMIT 1
     `,
+    routeMatchEnabled,
+    routePreviousHostname,
+    routePreviousPathname,
+    routePreviousQueryString,
+    routePreviousHashFragment,
+    routeMatchEnabled,
+    routePreviousHostname,
+    routePreviousPathname,
+    routePreviousQueryString,
+    routePreviousQueryString,
+    routePreviousHashFragment,
+    routePreviousHashFragment,
     input.siteId,
     input.visitorId,
     input.visitId,
@@ -159,19 +205,59 @@ export async function findRecentVisitorSession(
     `
       SELECT
         session_id AS sessionId,
+        visit_id AS visitId,
+        status,
+        CASE
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND query_string = ?
+            AND hash_fragment = ?
+            THEN 2
+          WHEN ? = 1
+            AND status IN ('open', 'hidden_pending')
+            AND hostname = ?
+            AND pathname = ?
+            AND (query_string = ? OR query_string = '' OR ? = '')
+            AND (hash_fragment = ? OR hash_fragment = '' OR ? = '')
+            THEN 1
+          ELSE 0
+        END AS routeMatch,
         started_at AS startedAt,
         last_activity_at AS lastActivityAt
       FROM visits
-      WHERE site_id = ?
+      WHERE site_pk = ${SITE_PK_FROM_SITE_ID_SQL}
         AND visitor_id = ?
         AND visit_id != ?
         AND session_id != ''
         AND last_activity_at >= ?
-      ORDER BY last_activity_at DESC, started_at DESC
+      ORDER BY
+        routeMatch DESC,
+        CASE WHEN status IN ('open', 'hidden_pending') THEN 0 ELSE 1 END,
+        last_activity_at DESC,
+        started_at DESC
       LIMIT 1
     `,
   )
-    .bind(input.siteId, input.visitorId, input.visitId, cutoff)
+    .bind(
+      routeMatchEnabled,
+      routePreviousHostname,
+      routePreviousPathname,
+      routePreviousQueryString,
+      routePreviousHashFragment,
+      routeMatchEnabled,
+      routePreviousHostname,
+      routePreviousPathname,
+      routePreviousQueryString,
+      routePreviousQueryString,
+      routePreviousHashFragment,
+      routePreviousHashFragment,
+      input.siteId,
+      input.visitorId,
+      input.visitId,
+      cutoff,
+    )
     .first<RecentVisitorSession>();
 
   return persisted ?? null;
@@ -304,7 +390,7 @@ export async function readPersistedVisitRow(
         created_at AS createdAt,
         updated_at AS updatedAt
       FROM visits
-      WHERE site_id = ? AND visit_id = ?
+      WHERE site_pk = ${SITE_PK_FROM_SITE_ID_SQL} AND visit_id = ?
       LIMIT 1
     `,
   )
@@ -463,9 +549,8 @@ export async function insertVisit(
     createdAt,
     createdAt,
   ];
-  try {
-    const rowsWritten = context.sqlRun(
-      `
+  const rowsWritten = context.sqlRun(
+    `
       INSERT INTO buffered_visits (
           visit_id, site_id, visitor_id, session_id, status, started_at, last_activity_at,
           pathname, query_string, hash_fragment, hostname, title, referrer_url, referrer_host,
@@ -479,25 +564,9 @@ export async function insertVisit(
         ) VALUES (${bindings.map(() => "?").join(", ")})
         ON CONFLICT(visit_id) DO NOTHING
       `,
-      ...bindings,
-    );
-    return rowsWritten > 0;
-  } catch (error) {
-    const message = errorToMessage(error);
-    logDoTrace(
-      "do_pageview_insert_failed",
-      {
-        traceId: record.traceId || "",
-        siteId: record.siteId,
-        visitId: record.visitId,
-        sessionId: record.sessionId,
-        pathname: record.pathname,
-        error: message,
-      },
-      "error",
-    );
-    throw error;
-  }
+    ...bindings,
+  );
+  return rowsWritten > 0;
 }
 
 export async function insertCustomEvent(

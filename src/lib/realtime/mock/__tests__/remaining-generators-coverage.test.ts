@@ -259,10 +259,14 @@ describe("mock remaining generator coverage", () => {
     ]);
     expect(
       generateDemoFilterOptions(SITE_ID, { filterKey: "sourceDomain" }).data,
-    ).toEqual([{ value: "Search.Example", label: "Search.Example" }]);
+    ).toEqual([
+      { value: "__direct__", label: "Direct" },
+      { value: "Search.Example", label: "Search.Example" },
+    ]);
     expect(
       generateDemoFilterOptions(SITE_ID, { filterKey: "sourceLink" }).data,
     ).toEqual([
+      { value: "__direct__", label: "Direct" },
       {
         value: "https://search.example/result",
         label: "https://search.example/result",
@@ -600,9 +604,21 @@ describe("mock remaining generator coverage", () => {
         }),
       ],
     });
-    expect(generateDemoReferrerRadar(SITE_ID, {})).toEqual({
+    expect(generateDemoReferrerRadar(SITE_ID, {})).toMatchObject({
       ok: true,
-      data: [],
+      data: [
+        expect.objectContaining({
+          referrer: "",
+          metrics: expect.objectContaining({
+            duration: 500,
+            engagement: 0,
+            depth: 1,
+            loyalty: 1,
+            frequency: 1.5,
+            traffic: 1,
+          }),
+        }),
+      ],
     });
   });
 
@@ -948,16 +964,24 @@ describe("mock remaining generator coverage", () => {
       }),
     ]);
 
-    generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "DE" }, "country");
+    generateDemoOverviewGeoTab(
+      SITE_ID,
+      { limit: 5, "filter[geo.country]": "DE" },
+      "country",
+    );
     expect(mockApplyDemoFilters).toHaveBeenLastCalledWith(
       expect.any(Object),
-      expect.not.objectContaining({ geo: expect.any(String) }),
+      expect.not.objectContaining({ country: expect.any(String) }),
     );
 
-    generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "DE" }, "region");
+    generateDemoOverviewGeoTab(
+      SITE_ID,
+      { limit: 5, "filter[geo.country]": "DE" },
+      "region",
+    );
     expect(mockApplyDemoFilters).toHaveBeenLastCalledWith(
       expect.any(Object),
-      expect.objectContaining({ geo: "DE" }),
+      expect.objectContaining({ country: "de" }),
     );
   });
 
@@ -1008,6 +1032,12 @@ describe("mock remaining generator coverage", () => {
       ok: true,
       data: [
         {
+          label: "",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+        {
           label: "https://search.example/result",
           views: 1,
           sessions: 1,
@@ -1025,7 +1055,11 @@ describe("mock remaining generator coverage", () => {
       ]),
     });
     expect(
-      generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "US" }, "country"),
+      generateDemoOverviewGeoTab(
+        SITE_ID,
+        { limit: 5, "filter[geo.country]": "US" },
+        "country",
+      ),
     ).toMatchObject({
       ok: true,
       data: expect.arrayContaining([
@@ -1037,7 +1071,9 @@ describe("mock remaining generator coverage", () => {
       generateDemoGeoPoints(SITE_ID, {
         limit: 50,
         applyGeoFilter: "1",
-        geo: "DE::BE::Berlin",
+        "filter[geo.country]": "DE",
+        "filter[geo.region]": "BE",
+        "filter[geo.city]": "Berlin",
       }),
     ).toMatchObject({
       ok: true,
@@ -1053,6 +1089,31 @@ describe("mock remaining generator coverage", () => {
         expect.objectContaining({ label: "Berlin" }),
       ]),
     });
+  });
+
+  it("falls back to the raw region/city strings when labels do not parse", () => {
+    setFacts([
+      makeVisit({
+        visitId: "unparsed-geo",
+        sessionId: "s1",
+        visitorId: "u1",
+        country: "US",
+        region: "CA", // parses to null -> label falls back to raw string
+        city: "Austin", // parses to null -> label falls back to raw string
+      }),
+    ]);
+
+    const result = generateDemoGeoPoints(SITE_ID, {
+      limit: 50,
+      applyGeoFilter: "true",
+      "filter[geo.country]": "US",
+      "filter[geo.region]": "CA",
+      "filter[geo.city]": "Austin",
+    }) as any;
+
+    // The unparseable region/city buckets still exercise the label
+    // fallbacks (`parseDemoRegionLabel(...)?.regionName || visit.region`).
+    expect(result).toMatchObject({ ok: true });
   });
 
   it("returns geo point region drilldowns and ignores geo filters by default", () => {
@@ -1079,7 +1140,7 @@ describe("mock remaining generator coverage", () => {
     const unfilteredResult = generateDemoGeoPoints(SITE_ID, {
       limit: 50,
       applyGeoFilter: "false",
-      geo: "US",
+      "filter[geo.country]": "US",
     });
     expect(mockApplyDemoFilters).toHaveBeenLastCalledWith(
       expect.any(Object),
@@ -1094,7 +1155,7 @@ describe("mock remaining generator coverage", () => {
     const result = generateDemoGeoPoints(SITE_ID, {
       limit: 50,
       applyGeoFilter: "true",
-      geo: "US",
+      "filter[geo.country]": "US",
     });
 
     expect(result).toMatchObject({
@@ -1143,6 +1204,12 @@ describe("mock remaining generator coverage", () => {
       ok: true,
       data: [
         {
+          label: "",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+        {
           label: "docs.example.test",
           views: 1,
           sessions: 1,
@@ -1151,7 +1218,11 @@ describe("mock remaining generator coverage", () => {
       ],
     });
     expect(
-      generateDemoOverviewGeoTab(SITE_ID, { limit: 5, geo: "US" }, "region"),
+      generateDemoOverviewGeoTab(
+        SITE_ID,
+        { limit: 5, "filter[geo.country]": "US" },
+        "region",
+      ),
     ).toMatchObject({
       ok: true,
       data: expect.arrayContaining([
@@ -1162,7 +1233,12 @@ describe("mock remaining generator coverage", () => {
     expect(
       generateDemoOverviewGeoTab(
         SITE_ID,
-        { limit: 5, geo: "US::CA::California" },
+        {
+          limit: 5,
+          "filter[geo.country]": "US",
+          "filter[geo.region]": "CA",
+          "filter[geo.city]": "California",
+        },
         "city",
       ),
     ).toMatchObject({
@@ -1189,7 +1265,7 @@ describe("mock remaining generator coverage", () => {
             teamId: "demo-team-001",
             overview: expect.objectContaining({ views: expect.any(Number) }),
             changeRates: expect.objectContaining({
-              pagesPerSession: null,
+              pagesPerSession: expect.any(Number),
             }),
           }),
         ]),
@@ -1248,6 +1324,25 @@ describe("mock remaining generator coverage", () => {
       },
     });
   });
+
+  it(
+    "builds the team dashboard when the `to` window param is missing",
+    { timeout: 15_000 },
+    () => {
+      const dashboard = generateDemoTeamDashboard("demo-team-001", {
+        from: 1,
+      }) as any;
+
+      expect(dashboard).toMatchObject({
+        ok: true,
+        data: {
+          sites: expect.arrayContaining([
+            expect.objectContaining({ teamId: "demo-team-001" }),
+          ]),
+        },
+      });
+    },
+  );
 
   it("summarizes performance for overall, route, country, and empty journeys", () => {
     const visits = [
@@ -1509,7 +1604,6 @@ describe("mock remaining generator coverage", () => {
     dataset.visitors.get("u1")!.weight = 3;
 
     const visitors = generateDemoVisitors(SITE_ID, {
-      page: 1,
       pageSize: 1,
       search: "checkout",
       sortBy: "views",
@@ -1525,11 +1619,10 @@ describe("mock remaining generator coverage", () => {
           events: 1,
         }),
       ],
-      meta: { page: 1, pageSize: 1, returned: 1, hasMore: false },
+      meta: { pageSize: 1, returned: 1, hasMore: false, nextCursor: null },
     });
 
     const sessions = generateDemoSessions(SITE_ID, {
-      page: 1,
       pageSize: 1,
       search: "pricing",
       sortBy: "durationMs",

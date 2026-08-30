@@ -1,9 +1,10 @@
 import { broadcastRealtimeMessage } from "@/lib/realtime/broadcast-store";
-import type { RealtimeSocketLike } from "@/lib/realtime/mock";
+import type { RealtimeSocketLike } from "@/lib/realtime/mock/socket";
 import type {
   RealtimeChannelState,
   RealtimeConnectionState,
   RealtimeEvent,
+  RealtimeEventKind,
   RealtimeSnapshot,
   RealtimeVisit,
   RealtimeVisitorPoint,
@@ -15,6 +16,8 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY_MS = 2_000;
 const CONNECT_WATCHDOG_MS = 4_000;
 const RECORD_RECOMPUTE_INTERVAL_MS = 5_000;
+const EVENT_BATCH_INTERVAL_MS = 80;
+const CHANNEL_IDLE_GRACE_MS = 30_000;
 const MAX_RENDERABLE_POINTS = 800;
 const PRESENCE_LEAVE_EVENT = "__presence_leave";
 const VIEW_EVENT_TYPES = new Set(["visit", "pageview"]);
@@ -24,7 +27,7 @@ const SOCKET_STATE = {
   OPEN: 1,
 } as const;
 
-const USE_REALTIME_MOCK = process.env.NEXT_PUBLIC_DEMO_MODE === "1";
+const USE_REALTIME_MOCK = import.meta.env.VITE_DEMO_MODE === "1";
 
 interface ChannelContext {
   siteId: string;
@@ -35,6 +38,12 @@ interface ChannelContext {
   connectWatchdog: ReturnType<typeof setTimeout> | null;
   reconnectFailures: number;
   state: RealtimeChannelState;
+  snapshot: RealtimeChannelState;
+  subscribers: Set<() => void>;
+  pendingEvents: RealtimeEvent[];
+  eventFlushTimer: ReturnType<typeof setTimeout> | null;
+  releaseTimer: ReturnType<typeof setTimeout> | null;
+  running: boolean;
 }
 
 const channels = new Map<string, ChannelContext>();
@@ -59,11 +68,33 @@ export function createIdleRealtimeChannelState(
   };
 }
 
+const EMPTY_REALTIME_CHANNEL_STATE = createIdleRealtimeChannelState();
+
 export function getRealtimeChannelState(siteId?: string): RealtimeChannelState {
   if (!siteId) return createIdleRealtimeChannelState();
   const channel = channels.get(siteId);
   if (!channel) return createIdleRealtimeChannelState();
-  return cloneState(channel.state);
+  return cloneState(channel.snapshot, true);
+}
+
+export function getRealtimeChannelSnapshot(
+  siteId?: string,
+): RealtimeChannelState {
+  if (!siteId) return EMPTY_REALTIME_CHANNEL_STATE;
+  return channels.get(siteId)?.snapshot ?? EMPTY_REALTIME_CHANNEL_STATE;
+}
+
+export function subscribeRealtimeChannel(
+  siteId: string | undefined,
+  listener: () => void,
+): () => void {
+  if (!siteId) return () => {};
+
+  const channel = getOrCreateChannel(siteId);
+  channel.subscribers.add(listener);
+  return () => {
+    channel.subscribers.delete(listener);
+  };
 }
 
 export function acquireRealtimeChannel(siteId: string): () => void {
@@ -74,8 +105,13 @@ export function acquireRealtimeChannel(siteId: string): () => void {
   }
 
   const channel = getOrCreateChannel(siteId);
+  if (channel.releaseTimer) {
+    clearTimeout(channel.releaseTimer);
+    channel.releaseTimer = null;
+  }
+  const wasIdle = channel.refCount === 0;
   channel.refCount += 1;
-  if (channel.refCount === 1) {
+  if (wasIdle && !channel.running) {
     startChannel(channel);
   } else {
     publishChannelState(channel);
@@ -98,7 +134,13 @@ function getOrCreateChannel(siteId: string): ChannelContext {
     cleanupTimer: null,
     connectWatchdog: null,
     reconnectFailures: 0,
-    state: createIdleRealtimeChannelState("connecting"),
+    state: createIdleRealtimeChannelState(),
+    snapshot: EMPTY_REALTIME_CHANNEL_STATE,
+    subscribers: new Set(),
+    pendingEvents: [],
+    eventFlushTimer: null,
+    releaseTimer: null,
+    running: false,
   };
   channels.set(siteId, context);
   return context;
@@ -111,23 +153,34 @@ function releaseRealtimeChannel(siteId: string): void {
   channel.refCount = Math.max(0, channel.refCount - 1);
   if (channel.refCount > 0) return;
 
-  stopChannel(channel);
-  channels.delete(siteId);
+  if (channel.releaseTimer) return;
+  channel.releaseTimer = setTimeout(() => {
+    channel.releaseTimer = null;
+    if (channel.refCount > 0) return;
+    stopChannel(channel);
+    channels.delete(siteId);
+  }, CHANNEL_IDLE_GRACE_MS);
 }
 
 function startChannel(channel: ChannelContext): void {
+  channel.running = true;
   channel.reconnectFailures = 0;
   channel.state = createIdleRealtimeChannelState("connecting");
   publishChannelState(channel);
 
   connect(channel);
   channel.cleanupTimer = setInterval(() => {
-    recomputeDerivedState(channel);
-    publishChannelState(channel);
+    if (channel.refCount === 0) return;
+    pruneExpiredChannelState(channel);
   }, RECORD_RECOMPUTE_INTERVAL_MS);
 }
 
 function stopChannel(channel: ChannelContext): void {
+  channel.running = false;
+  if (channel.releaseTimer) {
+    clearTimeout(channel.releaseTimer);
+    channel.releaseTimer = null;
+  }
   if (channel.reconnectTimer) {
     clearTimeout(channel.reconnectTimer);
     channel.reconnectTimer = null;
@@ -140,6 +193,11 @@ function stopChannel(channel: ChannelContext): void {
     clearTimeout(channel.connectWatchdog);
     channel.connectWatchdog = null;
   }
+  if (channel.eventFlushTimer) {
+    clearTimeout(channel.eventFlushTimer);
+    channel.eventFlushTimer = null;
+  }
+  channel.pendingEvents = [];
   if (
     channel.socket &&
     (channel.socket.readyState === SOCKET_STATE.OPEN ||
@@ -156,14 +214,16 @@ function connect(channel: ChannelContext): void {
   setChannelStatus(channel, "connecting");
 
   if (USE_REALTIME_MOCK) {
-    import("@/lib/realtime/mock").then(({ createMockRealtimeSocket }) => {
-      if (channel.refCount <= 0) return;
-      channel.socket = createMockRealtimeSocket({
-        siteId: channel.siteId,
-        activeWindowMs: ACTIVE_WINDOW_MS,
-      });
-      attachSocketHandlers(channel);
-    });
+    import("@/lib/realtime/mock/socket").then(
+      ({ createMockRealtimeSocket }) => {
+        if (channel.refCount <= 0) return;
+        channel.socket = createMockRealtimeSocket({
+          siteId: channel.siteId,
+          activeWindowMs: ACTIVE_WINDOW_MS,
+        });
+        attachSocketHandlers(channel);
+      },
+    );
   } else {
     channel.socket = new WebSocket(toRealtimeWsUrl(channel.siteId));
     attachSocketHandlers(channel);
@@ -209,7 +269,6 @@ function attachSocketHandlers(channel: ChannelContext): void {
 
     if (payload.type === "event") {
       applyEvent(channel, payload.data);
-      publishChannelState(channel);
     }
   };
 
@@ -246,6 +305,11 @@ function attachSocketHandlers(channel: ChannelContext): void {
 }
 
 function applySnapshot(channel: ChannelContext, payload: unknown): void {
+  if (channel.eventFlushTimer) {
+    clearTimeout(channel.eventFlushTimer);
+    channel.eventFlushTimer = null;
+  }
+  channel.pendingEvents = [];
   const snapshot = normalizeRealtimeSnapshot(payload);
   const now = Date.now();
   const snapshotEvents = resolveSnapshotEvents(snapshot);
@@ -259,12 +323,39 @@ function applyEvent(channel: ChannelContext, payload: unknown): void {
   const event = normalizeRealtimeEvent(payload);
   if (!event) return;
 
+  channel.pendingEvents.push(event);
+  if (channel.eventFlushTimer) return;
+  channel.eventFlushTimer = setTimeout(() => {
+    channel.eventFlushTimer = null;
+    flushPendingEvents(channel);
+  }, EVENT_BATCH_INTERVAL_MS);
+}
+
+function flushPendingEvents(channel: ChannelContext): void {
+  if (channel.pendingEvents.length === 0) return;
+  const pendingEvents = channel.pendingEvents;
+  channel.pendingEvents = [];
   channel.state.events = mergeEvents(
-    [event],
+    pendingEvents,
     channel.state.events,
-    event.eventAt,
+    Date.now(),
   );
-  recomputeDerivedState(channel, event.eventAt || Date.now());
+  recomputeDerivedState(channel, Date.now());
+  publishChannelState(channel);
+}
+
+function pruneExpiredChannelState(channel: ChannelContext): void {
+  const events = sortAndPruneEvents(channel.state.events, Date.now());
+  if (events === channel.state.events) return;
+
+  channel.state.events = events;
+  const derived = buildDerivedState(events, Date.now());
+  channel.state.activeNow = derived.activeNow;
+  channel.state.visitorsLast30m = derived.visitorsLast30m;
+  channel.state.viewsLast30m = derived.viewsLast30m;
+  channel.state.points = derived.points;
+  channel.state.visits = derived.visits;
+  publishChannelState(channel);
 }
 
 function recomputeDerivedState(
@@ -291,13 +382,25 @@ function setChannelStatus(
 }
 
 function publishChannelState(channel: ChannelContext): void {
+  channel.snapshot = cloneState(channel.state, true);
+  for (const subscriber of channel.subscribers) {
+    try {
+      subscriber();
+    } catch {
+      // Keep one subscriber from interrupting the realtime channel.
+    }
+  }
+
   void broadcastRealtimeMessage({
     siteId: channel.siteId,
-    state: cloneState(channel.state),
+    state: cloneState(channel.snapshot, true),
   });
 }
 
-function cloneState(state: RealtimeChannelState): RealtimeChannelState {
+function cloneState(
+  state: RealtimeChannelState,
+  copyCollections = false,
+): RealtimeChannelState {
   return {
     status: state.status,
     hasConnected: state.hasConnected,
@@ -305,9 +408,9 @@ function cloneState(state: RealtimeChannelState): RealtimeChannelState {
     visitorsLast30m: state.visitorsLast30m,
     viewsLast30m: state.viewsLast30m,
     snapshotActiveNow: state.snapshotActiveNow,
-    events: [...state.events],
-    points: [...state.points],
-    visits: [...state.visits],
+    events: copyCollections ? [...state.events] : state.events,
+    points: copyCollections ? [...state.points] : state.points,
+    visits: copyCollections ? [...state.visits] : state.visits,
   };
 }
 
@@ -320,6 +423,7 @@ function resolveSnapshotEvents(snapshot: RealtimeSnapshot): RealtimeEvent[] {
     return snapshot.visits.map((visit) => ({
       id: `snapshot:${visit.visitId}:${visit.lastActivityAt}`,
       eventType: "visit",
+      eventKind: "pageview",
       eventAt: visit.lastActivityAt,
       visitId: visit.visitId,
       sessionId: visit.sessionId,
@@ -337,11 +441,27 @@ function resolveSnapshotEvents(snapshot: RealtimeSnapshot): RealtimeEvent[] {
       continent: visit.continent,
       timezone: visit.timezone,
       organization: visit.organization,
+      siteId: visit.siteId,
+      queryString: visit.queryString,
+      utmSource: visit.utmSource,
+      utmMedium: visit.utmMedium,
+      utmCampaign: visit.utmCampaign,
+      utmTerm: visit.utmTerm,
+      utmContent: visit.utmContent,
+      userId: visit.userId,
+      userName: visit.userName,
+      isEU: visit.isEU,
+      postalCode: visit.postalCode,
+      metroCode: visit.metroCode,
+      browserVersion: visit.browserVersion,
+      os: visit.os,
       browser: visit.browser,
       osVersion: visit.osVersion,
       deviceType: visit.deviceType,
       language: visit.language,
       screenSize: visit.screenSize,
+      screenWidth: visit.screenWidth,
+      screenHeight: visit.screenHeight,
       latitude: visit.latitude,
       longitude: visit.longitude,
     }));
@@ -350,6 +470,7 @@ function resolveSnapshotEvents(snapshot: RealtimeSnapshot): RealtimeEvent[] {
   return snapshot.points.map((point) => ({
     id: `snapshot-point:${point.visitorId}:${point.eventAt}`,
     eventType: "visit",
+    eventKind: "pageview",
     eventAt: point.eventAt,
     visitId: "",
     sessionId: "",
@@ -386,12 +507,26 @@ function buildDerivedState(
 > {
   const activeCutoff = now - ACTIVE_WINDOW_MS;
   const latestVisitorEvents = new Map<string, RealtimeEvent>();
+  const latestVisitVisibility = new Map<string, "hidden" | "visible">();
   const visitsById = new Map<string, RealtimeVisit>();
   const visitorsLast30m = new Set<string>();
   let viewsLast30m = 0;
 
   for (const event of events) {
-    upsertRecentVisit(visitsById, event);
+    const eventKind =
+      event.eventKind ?? normalizeRealtimeEventKind(undefined, event.eventType);
+    if (eventKind === "visibility") {
+      if (event.visitId && !latestVisitVisibility.has(event.visitId)) {
+        latestVisitVisibility.set(
+          event.visitId,
+          event.visibilityState === "visible" ? "visible" : "hidden",
+        );
+      }
+      continue;
+    }
+    if (eventKind !== "identify") {
+      upsertRecentVisit(visitsById, event);
+    }
     if (event.visitorId) {
       visitorsLast30m.add(event.visitorId);
     }
@@ -399,7 +534,15 @@ function buildDerivedState(
       viewsLast30m += 1;
     }
 
-    if (!event.visitorId || event.eventAt < activeCutoff) continue;
+    if (
+      !event.visitorId ||
+      event.eventAt < activeCutoff ||
+      eventKind === "identify" ||
+      event.status === "hidden_pending" ||
+      latestVisitVisibility.get(event.visitId) === "hidden"
+    ) {
+      continue;
+    }
     const existing = latestVisitorEvents.get(event.visitorId);
     if (!existing || compareRealtimeEventsDesc(event, existing) < 0) {
       latestVisitorEvents.set(event.visitorId, event);
@@ -450,7 +593,7 @@ function upsertRecentVisit(
       visitId: event.visitId,
       visitorId: event.visitorId,
       sessionId: event.sessionId,
-      startedAt: event.eventAt,
+      startedAt: event.startedAt ?? event.eventAt,
       lastActivityAt: event.eventAt,
       pathname: event.pathname,
       hash: event.hash,
@@ -465,11 +608,35 @@ function upsertRecentVisit(
       continent: event.continent,
       timezone: event.timezone,
       organization: event.organization,
+      siteId: event.siteId,
+      queryString: event.queryString,
+      utmSource: event.utmSource,
+      utmMedium: event.utmMedium,
+      utmCampaign: event.utmCampaign,
+      utmTerm: event.utmTerm,
+      utmContent: event.utmContent,
+      userId: event.userId,
+      userName: event.userName,
+      isEU: event.isEU,
+      postalCode: event.postalCode,
+      metroCode: event.metroCode,
+      browserVersion: event.browserVersion,
+      os: event.os,
       browser: event.browser,
       osVersion: event.osVersion,
       deviceType: event.deviceType,
       language: event.language,
       screenSize: event.screenSize,
+      screenWidth: event.screenWidth,
+      screenHeight: event.screenHeight,
+      status: event.status,
+      hiddenAt: event.hiddenAt,
+      endedAt: event.endedAt,
+      finalizedAt: event.finalizedAt,
+      durationMs: event.durationMs,
+      durationSource: event.durationSource,
+      exitReason: event.exitReason,
+      performance: event.performance,
       latitude: event.latitude,
       longitude: event.longitude,
     });
@@ -493,11 +660,26 @@ function upsertRecentVisit(
   previous.continent ||= event.continent;
   previous.timezone ||= event.timezone;
   previous.organization ||= event.organization;
+  previous.siteId ||= event.siteId;
+  previous.queryString ||= event.queryString;
+  previous.utmSource ||= event.utmSource;
+  previous.utmMedium ||= event.utmMedium;
+  previous.utmCampaign ||= event.utmCampaign;
+  previous.utmTerm ||= event.utmTerm;
+  previous.utmContent ||= event.utmContent;
+  previous.userId ||= event.userId;
+  previous.userName ||= event.userName;
+  previous.postalCode ||= event.postalCode;
+  previous.metroCode ||= event.metroCode;
+  previous.browserVersion ||= event.browserVersion;
+  previous.os ||= event.os;
   previous.browser ||= event.browser;
   previous.osVersion ||= event.osVersion;
   previous.deviceType ||= event.deviceType;
   previous.language ||= event.language;
   previous.screenSize ||= event.screenSize;
+  previous.screenWidth ??= event.screenWidth;
+  previous.screenHeight ??= event.screenHeight;
   previous.latitude ??= event.latitude;
   previous.longitude ??= event.longitude;
 }
@@ -508,16 +690,35 @@ function sortAndPruneEvents(
 ): RealtimeEvent[] {
   const cutoff = now - RECORD_WINDOW_MS;
   const deduped = new Map<string, RealtimeEvent>();
+  let changed = false;
 
-  for (const event of events) {
-    if (!event.id) continue;
-    if (!Number.isFinite(event.eventAt) || event.eventAt < cutoff) continue;
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (!event.id) {
+      changed = true;
+      continue;
+    }
+    if (!Number.isFinite(event.eventAt) || event.eventAt < cutoff) {
+      changed = true;
+      continue;
+    }
+    if (index > 0 && compareRealtimeEventsDesc(events[index - 1], event) > 0) {
+      changed = true;
+    }
 
     const existing = deduped.get(event.id);
-    if (!existing || compareRealtimeEventsDesc(event, existing) < 0) {
+    if (!existing) {
+      deduped.set(event.id, event);
+      continue;
+    }
+
+    changed = true;
+    if (compareRealtimeEventsDesc(event, existing) < 0) {
       deduped.set(event.id, event);
     }
   }
+
+  if (!changed && deduped.size === events.length) return events;
 
   return Array.from(deduped.values()).sort(compareRealtimeEventsDesc);
 }
@@ -555,25 +756,64 @@ function normalizeRealtimeEvent(payload: unknown): RealtimeEvent | null {
   const id = String(record.id ?? `${eventAt}-${visitorId}`);
   const latitude = normalizeCoordinate(record.latitude, -90, 90);
   const longitude = normalizeCoordinate(record.longitude, -180, 180);
+  const eventType = String(record.eventType ?? record.event_type ?? "");
+  const eventKind = normalizeRealtimeEventKind(record.eventKind, eventType);
+  const screenSize = normalizeScreenSize(
+    record.screenSize ?? record.screen_size,
+    record.screenWidth ?? record.screen_width,
+    record.screenHeight ?? record.screen_height,
+  );
 
   return {
     id,
-    eventType: String(record.eventType ?? record.event_type ?? ""),
+    eventType,
+    eventKind,
     eventAt: Number.isFinite(eventAt) ? eventAt : Date.now(),
+    siteId: String(record.siteId ?? record.site_id ?? ""),
+    traceId: String(record.traceId ?? record.trace_id ?? ""),
+    receivedAt: normalizeNullableNumber(
+      record.receivedAt ?? record.received_at,
+    ),
+    sequence: normalizeNullableNumber(record.sequence),
+    eventId: String(record.eventId ?? record.event_id ?? ""),
+    eventName: String(
+      record.eventName ??
+        record.event_name ??
+        (eventKind === "custom_event" ? eventType : ""),
+    ),
+    eventData: record.eventData ?? record.event_data ?? {},
     visitId: String(record.visitId ?? record.visit_id ?? ""),
     sessionId: String(record.sessionId ?? record.session_id ?? ""),
+    startedAt: normalizeNullableNumber(record.startedAt ?? record.started_at),
+    previousVisitId: String(
+      record.previousVisitId ?? record.previous_visit_id ?? "",
+    ),
+    previousVisitStartedAt: normalizeNullableNumber(
+      record.previousVisitStartedAt ?? record.previous_visit_started_at,
+    ),
     pathname: String(record.pathname ?? "/"),
+    queryString: String(record.queryString ?? record.query_string ?? ""),
     hash: String(record.hash ?? record.hash_fragment ?? ""),
     title: String(record.title ?? ""),
     hostname: String(record.hostname ?? ""),
     referrerUrl: String(record.referrerUrl ?? record.referrer_url ?? ""),
     referrerHost: String(record.referrerHost ?? record.referrer_host ?? ""),
+    utmSource: String(record.utmSource ?? record.utm_source ?? ""),
+    utmMedium: String(record.utmMedium ?? record.utm_medium ?? ""),
+    utmCampaign: String(record.utmCampaign ?? record.utm_campaign ?? ""),
+    utmTerm: String(record.utmTerm ?? record.utm_term ?? ""),
+    utmContent: String(record.utmContent ?? record.utm_content ?? ""),
     visitorId,
+    userId: String(record.userId ?? record.user_id ?? ""),
+    userName: String(record.userName ?? record.user_name ?? ""),
+    isEU: normalizeBoolean(record.isEU ?? record.is_eu),
     country: String(record.country ?? ""),
     region: String(record.region ?? ""),
     regionCode: String(record.regionCode ?? record.region_code ?? ""),
     city: String(record.city ?? ""),
     continent: String(record.continent ?? ""),
+    postalCode: String(record.postalCode ?? record.postal_code ?? ""),
+    metroCode: String(record.metroCode ?? record.metro_code ?? ""),
     timezone: String(record.timezone ?? ""),
     organization: String(
       record.organization ??
@@ -581,14 +821,98 @@ function normalizeRealtimeEvent(payload: unknown): RealtimeEvent | null {
         record.as_organization ??
         "",
     ),
+    uaRaw: String(record.uaRaw ?? record.ua_raw ?? ""),
     browser: String(record.browser ?? ""),
+    browserVersion: String(
+      record.browserVersion ?? record.browser_version ?? "",
+    ),
+    os: String(record.os ?? ""),
     osVersion: String(record.osVersion ?? record.os_version ?? ""),
     deviceType: String(record.deviceType ?? record.device_type ?? ""),
     language: String(record.language ?? ""),
-    screenSize: String(record.screenSize ?? record.screen_size ?? ""),
+    screenSize,
+    screenWidth: normalizeNullableNumber(
+      record.screenWidth ?? record.screen_width,
+    ),
+    screenHeight: normalizeNullableNumber(
+      record.screenHeight ?? record.screen_height,
+    ),
+    status: String(record.status ?? ""),
+    hiddenAt: normalizeNullableNumber(record.hiddenAt ?? record.hidden_at),
+    endedAt: normalizeNullableNumber(record.endedAt ?? record.ended_at),
+    finalizedAt: normalizeNullableNumber(
+      record.finalizedAt ?? record.finalized_at,
+    ),
+    durationMs: normalizeNullableNumber(
+      record.durationMs ?? record.duration_ms,
+    ),
+    durationSource: String(
+      record.durationSource ?? record.duration_source ?? "",
+    ),
+    exitReason: String(record.exitReason ?? record.exit_reason ?? ""),
+    leaveAt: normalizeNullableNumber(record.leaveAt ?? record.leave_at),
+    performanceVisitId: String(
+      record.performanceVisitId ?? record.performance_visit_id ?? "",
+    ),
+    performance: record.performance ?? null,
+    visibilityState: String(
+      record.visibilityState ?? record.visibility_state ?? "",
+    ),
     latitude,
     longitude,
   };
+}
+
+function normalizeRealtimeEventKind(
+  value: unknown,
+  eventType: string,
+): RealtimeEventKind {
+  if (
+    value === "pageview" ||
+    value === "custom_event" ||
+    value === "leave" ||
+    value === "visibility" ||
+    value === "identify"
+  ) {
+    return value;
+  }
+  if (eventType === "visit" || eventType === "pageview") return "pageview";
+  if (eventType === PRESENCE_LEAVE_EVENT) return "leave";
+  if (eventType === "visibility") return "visibility";
+  if (eventType === "identify") return "identify";
+  return "custom_event";
+}
+
+function normalizeNullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizeBoolean(value: unknown): boolean | undefined {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+  if (value === true || value === 1 || value === "1" || value === "true") {
+    return true;
+  }
+  if (value === false || value === 0 || value === "0" || value === "false") {
+    return false;
+  }
+  return undefined;
+}
+
+function normalizeScreenSize(
+  value: unknown,
+  width: unknown,
+  height: unknown,
+): string {
+  const explicit = String(value ?? "").trim();
+  if (explicit) return explicit;
+  const normalizedWidth = normalizeNullableNumber(width);
+  const normalizedHeight = normalizeNullableNumber(height);
+  if (normalizedWidth === null || normalizedHeight === null) return "";
+  return `${Math.round(normalizedWidth)}x${Math.round(normalizedHeight)}`;
 }
 
 function normalizeCoordinate(
@@ -678,6 +1002,11 @@ function normalizeRealtimeVisit(payload: unknown): RealtimeVisit | null {
   );
   const latitude = normalizeCoordinate(record.latitude, -90, 90);
   const longitude = normalizeCoordinate(record.longitude, -180, 180);
+  const screenSize = normalizeScreenSize(
+    record.screenSize ?? record.screen_size,
+    record.screenWidth ?? record.screen_width,
+    record.screenHeight ?? record.screen_height,
+  );
 
   return {
     visitId,
@@ -705,11 +1034,48 @@ function normalizeRealtimeVisit(payload: unknown): RealtimeVisit | null {
         record.as_organization ??
         "",
     ),
+    siteId: String(record.siteId ?? record.site_id ?? ""),
+    queryString: String(record.queryString ?? record.query_string ?? ""),
+    utmSource: String(record.utmSource ?? record.utm_source ?? ""),
+    utmMedium: String(record.utmMedium ?? record.utm_medium ?? ""),
+    utmCampaign: String(record.utmCampaign ?? record.utm_campaign ?? ""),
+    utmTerm: String(record.utmTerm ?? record.utm_term ?? ""),
+    utmContent: String(record.utmContent ?? record.utm_content ?? ""),
+    userId: String(record.userId ?? record.user_id ?? ""),
+    userName: String(record.userName ?? record.user_name ?? ""),
+    isEU: normalizeBoolean(record.isEU ?? record.is_eu),
+    postalCode: String(record.postalCode ?? record.postal_code ?? ""),
+    metroCode: String(record.metroCode ?? record.metro_code ?? ""),
+    uaRaw: String(record.uaRaw ?? record.ua_raw ?? ""),
     browser: String(record.browser ?? ""),
+    browserVersion: String(
+      record.browserVersion ?? record.browser_version ?? "",
+    ),
+    os: String(record.os ?? ""),
     osVersion: String(record.osVersion ?? record.os_version ?? ""),
     deviceType: String(record.deviceType ?? record.device_type ?? ""),
     language: String(record.language ?? ""),
-    screenSize: String(record.screenSize ?? record.screen_size ?? ""),
+    screenSize,
+    screenWidth: normalizeNullableNumber(
+      record.screenWidth ?? record.screen_width,
+    ),
+    screenHeight: normalizeNullableNumber(
+      record.screenHeight ?? record.screen_height,
+    ),
+    status: String(record.status ?? ""),
+    hiddenAt: normalizeNullableNumber(record.hiddenAt ?? record.hidden_at),
+    endedAt: normalizeNullableNumber(record.endedAt ?? record.ended_at),
+    finalizedAt: normalizeNullableNumber(
+      record.finalizedAt ?? record.finalized_at,
+    ),
+    durationMs: normalizeNullableNumber(
+      record.durationMs ?? record.duration_ms,
+    ),
+    durationSource: String(
+      record.durationSource ?? record.duration_source ?? "",
+    ),
+    exitReason: String(record.exitReason ?? record.exit_reason ?? ""),
+    performance: record.performance ?? null,
     latitude,
     longitude,
   };

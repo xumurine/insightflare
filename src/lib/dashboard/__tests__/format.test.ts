@@ -5,6 +5,7 @@ import {
   intlLocale,
   numberFormat,
   percentFormat,
+  percentFormatWithOneDecimal,
   shortDate,
   shortDateTime,
   shortDateTimeWithSeconds,
@@ -44,6 +45,13 @@ describe("Dashboard Format Utilities", () => {
     });
   });
 
+  describe("percentFormatWithOneDecimal", () => {
+    it("should always include one fraction digit", () => {
+      expect(percentFormatWithOneDecimal("en", 0.05)).toMatch(/5\.0\s*%/);
+      expect(percentFormatWithOneDecimal("en", 0)).toMatch(/0\.0\s*%/);
+    });
+  });
+
   describe("shortDateTime & shortDate edge cases (toValidDate internal logic)", () => {
     it("should return double-dash fallback for null, undefined, empty, or whitespace values", () => {
       expect(shortDateTime("en", null)).toBe("--");
@@ -66,6 +74,13 @@ describe("Dashboard Format Utilities", () => {
       expect(shortDateTime("en", -123456789)).toBe("--");
       expect(shortDateTime("en", "-500")).toBe("--");
       expect(shortDateTime("en", "0")).toBe("--");
+    });
+
+    it("should return fallback for positive numbers that exceed the valid date range", () => {
+      // Finite and > 0, but `new Date(value)` produces an Invalid Date.
+      expect(shortDateTime("en", (8.64e15 + 1000) as any)).toBe("--");
+      // Numeric-string path reaching the same invalid-Date branch.
+      expect(shortDateTime("en", "1e20" as any)).toBe("--");
     });
 
     it("should correctly parse and format valid Date objects", () => {

@@ -1,6 +1,11 @@
-"use client";
-
-import { startTransition, useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Icon } from "@iconify/react";
 import {
   RiCheckboxCircleFill,
@@ -11,17 +16,14 @@ import {
   RiRouteLine,
   RiSpeedUpLine,
 } from "@remixicon/react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
-import {
-  CartesianGrid,
-  Customized,
-  Line,
-  LineChart,
-  ReferenceLine,
-  XAxis,
-  YAxis,
-} from "recharts";
 
+import {
+  PerformanceTrendChart,
+  type PerformanceTrendChartLabels,
+  type PerformanceTrendChartPoint,
+} from "@/components/dashboard/charts/performance-trend-chart";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import {
   type CountriesFeatureCollection,
@@ -38,23 +40,18 @@ import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboa
 import {
   TabbedDataTableCard,
   type TabbedDataTableColumn,
+  type TabbedDataTableRowAdapter,
+  type TabbedDataTableSortState,
 } from "@/components/dashboard/tabbed-data-table-card";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
 import { Clickable } from "@/components/ui/clickable";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { fetchPerformance } from "@/lib/dashboard/client-data";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import {
   addZonedInterval,
   startOfZonedInterval,
@@ -69,6 +66,7 @@ import type {
   PerformanceSummary,
   PerformanceTrendPoint,
 } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import {
   resolveCountryFlagCode,
   resolveCountryLabel,
@@ -129,32 +127,14 @@ interface CountryMapHover {
   status: PerformanceStatus;
 }
 
-interface ChartPoint {
-  timestampMs: number;
-  p50: number | null;
-  p75: number | null;
-  p95: number | null;
-  avg: number | null;
-  samples: number;
+interface PerformanceMapFeature {
+  code: string | null;
+  feature: CountryFeature;
+  hoverKey: string;
+  path: string;
 }
 
-interface TrendConnectorLinePoint {
-  x?: number;
-  y?: number;
-  value?: number | null;
-  payload?: ChartPoint;
-}
-
-interface TrendFormattedGraphicalItem {
-  item?: {
-    props?: {
-      dataKey?: unknown;
-    };
-  };
-  props?: {
-    points?: TrendConnectorLinePoint[];
-  };
-}
+type ChartPoint = PerformanceTrendChartPoint;
 
 const PERFORMANCE_METRICS: PerformanceMetricKey[] = [
   "ttfb",
@@ -195,23 +175,6 @@ const METRIC_THRESHOLDS: Record<
   cls: { good: 0.1, poor: 0.25 },
   inp: { good: 200, poor: 500 },
 };
-
-const PERFORMANCE_SERIES_COLORS = {
-  p50: "var(--color-chart-1)",
-  p75: "var(--color-chart-4)",
-  p95: "var(--color-chart-5)",
-} as const;
-const PERFORMANCE_TREND_ANIMATION_DURATION_MS = 1200;
-const PERFORMANCE_TREND_CONNECTOR_DELAY_MS =
-  PERFORMANCE_TREND_ANIMATION_DURATION_MS + 120;
-
-type PerformanceSeriesKey = "p50" | "p75" | "p95";
-
-const ZONE_COLORS = {
-  great: "var(--color-chart-2)",
-  needsImprovement: "oklch(0.75 0.16 80)",
-  poor: "var(--color-destructive)",
-} as const;
 
 const STATUS_STYLE: Record<
   PerformanceStatus,
@@ -272,61 +235,6 @@ function intervalStepMs(interval: TimeWindow["interval"]): number {
   if (interval === "day") return 24 * 60 * 60_000;
   if (interval === "week") return 7 * 24 * 60 * 60_000;
   return 30 * 24 * 60 * 60_000;
-}
-
-function tickDateFormat(
-  localeCode: string,
-  interval: TimeWindow["interval"],
-  timeZone: string,
-) {
-  if (interval === "minute" || interval === "hour") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  if (interval === "month") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      year: "numeric",
-      month: "short",
-    });
-  }
-  return new Intl.DateTimeFormat(localeCode, {
-    timeZone,
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function tooltipDateFormat(
-  localeCode: string,
-  interval: TimeWindow["interval"],
-  timeZone: string,
-) {
-  if (interval === "minute" || interval === "hour") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  if (interval === "month") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      year: "numeric",
-      month: "long",
-    });
-  }
-  return new Intl.DateTimeFormat(localeCode, {
-    timeZone,
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function metricLabel(
@@ -564,50 +472,6 @@ function formatPanelValue(
     return score == null ? "--" : numberFormat(locale, score);
   }
   return formatMetricValue(locale, messages, key, value);
-}
-
-function chartDomain(
-  key: PerformancePanelKey,
-  points: ChartPoint[],
-): [number, number] {
-  if (key === "score") return [0, 100];
-  const thresholds = METRIC_THRESHOLDS[key];
-  const observedMax = points.reduce((max, point) => {
-    const values = [point.p50, point.p75, point.p95].filter(
-      (value): value is number => value != null && Number.isFinite(value),
-    );
-    return Math.max(max, ...values);
-  }, thresholds.poor);
-
-  if (key === "cls") {
-    return [0, Math.max(0.3, Math.ceil(observedMax * 120) / 100)];
-  }
-  return [
-    0,
-    Math.max(thresholds.poor * 1.2, Math.ceil((observedMax * 1.2) / 100) * 100),
-  ];
-}
-
-function zoneBackground(key: PerformancePanelKey, domainMax: number): string {
-  const great = "color-mix(in oklch, var(--color-chart-4) 26%, transparent)";
-  const needs = "color-mix(in oklch, oklch(0.75 0.16 80) 24%, transparent)";
-  const poor = "color-mix(in oklch, var(--color-destructive) 24%, transparent)";
-
-  if (key === "score") {
-    return `linear-gradient(to bottom, ${great} 0% 10%, ${needs} 10% 50%, ${poor} 50% 100%)`;
-  }
-
-  const thresholds = METRIC_THRESHOLDS[key];
-  const safeDomainMax = Math.max(domainMax, thresholds.poor);
-  const poorEnd = Math.max(
-    0,
-    Math.min(100, 100 - (thresholds.poor / safeDomainMax) * 100),
-  );
-  const needsEnd = Math.max(
-    poorEnd,
-    Math.min(100, 100 - (thresholds.good / safeDomainMax) * 100),
-  );
-  return `linear-gradient(to bottom, ${poor} 0% ${poorEnd}%, ${needs} ${poorEnd}% ${needsEnd}%, ${great} ${needsEnd}% 100%)`;
 }
 
 function statusColor(status: PerformanceStatus): string {
@@ -892,378 +756,153 @@ function buildMetricTrend(
   return filled;
 }
 
-function TrendZones({ activePanel }: { activePanel: PerformancePanelKey }) {
-  if (activePanel === "score") {
-    return (
-      <>
-        <ReferenceLine
-          y={50}
-          stroke={ZONE_COLORS.needsImprovement}
-          strokeDasharray="7 5"
-          strokeWidth={2}
-        />
-        <ReferenceLine
-          y={90}
-          stroke={ZONE_COLORS.great}
-          strokeDasharray="7 5"
-          strokeWidth={2}
-        />
-      </>
-    );
-  }
+const PERFORMANCE_TABLE_SKELETON_ROWS = 4;
+const PATH_TABLE_SKELETON_ROWS: PathPerformanceRow[] = Array.from(
+  { length: PERFORMANCE_TABLE_SKELETON_ROWS },
+  (_, index) => ({
+    key: `performance-path-skeleton-${index}`,
+    pathname: "",
+    views: 0,
+    samples: 0,
+    value: null,
+    score: null,
+    status: "none",
+  }),
+);
+const COUNTRY_TABLE_SKELETON_ROWS: CountryHealthRow[] = Array.from(
+  { length: PERFORMANCE_TABLE_SKELETON_ROWS },
+  (_, index) => ({
+    key: `performance-country-skeleton-${index}`,
+    country: "",
+    label: "",
+    iconName: null,
+    views: 0,
+    samples: 0,
+    value: null,
+    score: null,
+    status: "none",
+  }),
+);
 
-  const { good, poor } = METRIC_THRESHOLDS[activePanel];
-  return (
-    <>
-      <ReferenceLine
-        y={good}
-        stroke={ZONE_COLORS.great}
-        strokeDasharray="7 5"
-        strokeWidth={2}
-      />
-      <ReferenceLine
-        y={poor}
-        stroke={ZONE_COLORS.needsImprovement}
-        strokeDasharray="7 5"
-        strokeWidth={2}
-      />
-    </>
-  );
-}
-
-function hasTrendValue(
-  point: ChartPoint | undefined,
-  seriesKey: PerformanceSeriesKey,
-): boolean {
-  const value = point?.[seriesKey];
-  return value != null && Number.isFinite(value);
-}
-
-function isIsolatedTrendPoint(
-  points: ChartPoint[],
-  seriesKey: PerformanceSeriesKey,
-  index: number,
-): boolean {
-  return (
-    hasTrendValue(points[index], seriesKey) &&
-    !hasTrendValue(points[index - 1], seriesKey) &&
-    !hasTrendValue(points[index + 1], seriesKey)
-  );
-}
-
-function createIsolatedTrendDot(
-  points: ChartPoint[],
-  seriesKey: PerformanceSeriesKey,
-  color: string,
-) {
-  return function IsolatedTrendDot({
-    cx,
-    cy,
-    index,
-    payload,
-  }: {
-    cx?: number;
-    cy?: number;
-    index?: number;
-    payload?: ChartPoint;
-  }) {
-    const pointIndex =
-      typeof index === "number"
-        ? index
-        : points.findIndex(
-            (point) => point.timestampMs === payload?.timestampMs,
-          );
-
-    if (
-      pointIndex < 0 ||
-      !isIsolatedTrendPoint(points, seriesKey, pointIndex) ||
-      !Number.isFinite(cx) ||
-      !Number.isFinite(cy)
-    ) {
-      return <g />;
-    }
-
-    return <circle cx={cx} cy={cy} r={3.2} fill={color} />;
-  };
-}
-
-function isPerformanceSeriesKey(value: unknown): value is PerformanceSeriesKey {
-  return value === "p50" || value === "p75" || value === "p95";
-}
-
-function isRenderedTrendPoint(
-  point: TrendConnectorLinePoint,
-  seriesKey: PerformanceSeriesKey,
-): point is TrendConnectorLinePoint & { x: number; y: number } {
-  const value = point.value ?? point.payload?.[seriesKey];
-  return (
-    value != null &&
-    Number.isFinite(value) &&
-    Number.isFinite(point.x) &&
-    Number.isFinite(point.y)
-  );
-}
-
-function gapConnectorPaths(
-  points: TrendConnectorLinePoint[],
-  seriesKey: PerformanceSeriesKey,
-): string[] {
-  const paths: string[] = [];
-  let previous:
-    | (TrendConnectorLinePoint & { x: number; y: number; index: number })
-    | null = null;
-
-  points.forEach((point, index) => {
-    if (!isRenderedTrendPoint(point, seriesKey)) return;
-
-    if (previous && index - previous.index > 1) {
-      paths.push(
-        `M${previous.x.toFixed(1)} ${previous.y.toFixed(1)}L${point.x.toFixed(
-          1,
-        )} ${point.y.toFixed(1)}`,
-      );
-    }
-
-    previous = {
-      ...point,
-      index,
-    };
-  });
-
-  return paths;
-}
-
-function TrendGapConnectorOverlay({
-  visible,
-  renderKey,
-  formattedGraphicalItems,
+const PerformanceDynamicValue = memo(function PerformanceDynamicValue({
+  children,
+  loading,
+  skeletonClassName,
+  className,
+  transitionKey,
 }: {
-  visible: boolean;
-  renderKey: string;
-  formattedGraphicalItems?: TrendFormattedGraphicalItem[];
+  children: ReactNode;
+  loading: boolean;
+  skeletonClassName: string;
+  className?: string;
+  transitionKey?: string | number;
 }) {
-  const connectorPaths =
-    formattedGraphicalItems?.flatMap((item) => {
-      const seriesKey = item.item?.props?.dataKey;
-      if (!isPerformanceSeriesKey(seriesKey)) {
-        return [];
-      }
-
-      const points = item.props?.points ?? [];
-      return gapConnectorPaths(points, seriesKey).map((path, index) => ({
-        key: `${seriesKey}-${index}`,
-        path,
-        seriesKey,
-      }));
-    }) ?? [];
-
   return (
-    <AutoTransition
-      as="g"
-      className="performance-trend-gap-connectors"
-      duration={0.22}
-      type="fade"
-      initial={false}
-      presenceMode="wait"
-    >
-      {visible && connectorPaths.length > 0 ? (
-        <g key={`gap-connectors-${renderKey}`}>
-          {connectorPaths.map(({ key, path, seriesKey }) => (
-            <path
-              key={key}
-              d={path}
-              fill="none"
-              stroke={PERFORMANCE_SERIES_COLORS[seriesKey]}
-              strokeDasharray="5 6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeOpacity={0.58}
-              strokeWidth={seriesKey === "p75" ? 2 : 1.6}
-            />
-          ))}
-        </g>
-      ) : (
-        <g key={`gap-connectors-empty-${renderKey}`} />
-      )}
-    </AutoTransition>
+    <AutoResizer className={cn("min-w-0", className)} duration={0.2}>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : (transitionKey ?? "ready")}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+        className="flex min-h-5 min-w-0 items-center"
+      >
+        {loading ? (
+          <Skeleton key="loading" className={skeletonClassName} />
+        ) : (
+          <div key="ready" className="min-h-5 min-w-0">
+            {children}
+          </div>
+        )}
+      </AutoTransition>
+    </AutoResizer>
   );
-}
+});
 
-function PerformanceSkeleton() {
+const PerformancePanelText = memo(function PerformancePanelText({
+  children,
+  transitionKey,
+  className,
+  resizerClassName,
+  animateWidth = false,
+}: {
+  children: ReactNode;
+  transitionKey: string | number;
+  className?: string;
+  resizerClassName?: string;
+  animateWidth?: boolean;
+}) {
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <div className="space-y-3 self-start">
-        {Array.from({ length: 6 }, (_, index) => (
-          <Card
-            key={`performance-rail-skeleton-${index}`}
-            className="overflow-hidden"
-          >
-            <CardContent className="space-y-3 p-4">
-              <Skeleton className="h-3 w-32" />
-              <Skeleton className="h-8 w-24" />
-              <Skeleton className="h-1.5 w-full" />
-            </CardContent>
-          </Card>
+    <AutoResizer
+      className={cn("min-w-0", resizerClassName)}
+      duration={0.2}
+      animateWidth={animateWidth}
+      animateHeight={!animateWidth}
+    >
+      <AutoTransition
+        className={cn("min-w-0", className)}
+        initial={false}
+        transitionKey={transitionKey}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+      >
+        {children}
+      </AutoTransition>
+    </AutoResizer>
+  );
+});
+
+const PerformanceSpinnerValue = memo(function PerformanceSpinnerValue({
+  children,
+  loading,
+  transitionKey,
+}: {
+  children: ReactNode;
+  loading: boolean;
+  transitionKey?: string | number;
+}) {
+  return (
+    <AutoResizer initial animateHeight={false} className="mt-2 h-7">
+      <AutoTransition
+        className="h-7"
+        transitionKey={loading ? "loading" : (transitionKey ?? "ready")}
+        initial={false}
+        duration={0.2}
+        type="fade"
+        presenceMode="wait"
+      >
+        {loading ? (
+          <div key="loading" className="flex h-7 items-center">
+            <Spinner className="size-5" />
+          </div>
+        ) : (
+          <div key="ready" className="h-7 min-w-0">
+            {children}
+          </div>
+        )}
+      </AutoTransition>
+    </AutoResizer>
+  );
+});
+
+function PerformanceTrendLoadingState({ messages }: { messages: AppMessages }) {
+  const legend = [
+    messages.performance.p50Label,
+    messages.performance.p75Label,
+    messages.performance.p95Label,
+  ];
+
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-[360px] w-full rounded-none" />
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+        {legend.map((label) => (
+          <span key={label} className="inline-flex items-center gap-2">
+            <span className="size-2.5 shrink-0 rounded-none bg-muted" />
+            {label}
+          </span>
         ))}
-      </div>
-      <div className="min-w-0 space-y-4">
-        <Card className="overflow-hidden">
-          <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-            <div className="flex min-w-0 flex-col gap-4">
-              <div className="space-y-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 space-y-2">
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-9 w-16" />
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="size-5 rounded-full" />
-                      <Skeleton className="h-5 w-12" />
-                    </div>
-                  </div>
-                  <Skeleton className="size-[4.5rem] shrink-0 rounded-full" />
-                </div>
-                <div className="max-w-xl space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-10/12" />
-                </div>
-              </div>
-              <div className="mt-auto grid grid-cols-2 gap-3">
-                {Array.from({ length: 2 }, (_, index) => (
-                  <div
-                    key={`performance-summary-stat-skeleton-${index}`}
-                    className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3"
-                  >
-                    <Skeleton className="h-3 w-20 bg-background/70" />
-                    <Skeleton className="h-6 w-12 bg-background/70" />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex min-w-0 flex-col gap-4">
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-24" />
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-11/12" />
-                  <Skeleton className="h-4 w-7/12" />
-                </div>
-              </div>
-              <div className="rounded-none bg-muted/45 p-4">
-                <div className="mb-3 flex items-center gap-2">
-                  <Skeleton className="size-4 bg-background/70" />
-                  <Skeleton className="h-5 w-28 bg-background/70" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full bg-background/70" />
-                  <Skeleton className="h-4 w-10/12 bg-background/70" />
-                </div>
-              </div>
-
-              <div className="mt-auto grid gap-3 sm:grid-cols-3">
-                {Array.from({ length: 3 }, (_, index) => (
-                  <div
-                    key={`performance-percentile-skeleton-${index}`}
-                    className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3"
-                  >
-                    <Skeleton className="h-3 w-10 bg-background/70" />
-                    <Skeleton className="h-5 w-12 bg-background/70" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-24" />
-          </CardHeader>
-          <CardContent className="p-6">
-            <Skeleton className="h-[360px] w-full rounded-none" />
-            <div className="mt-4 flex justify-center gap-4">
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-3 w-16" />
-              <Skeleton className="h-3 w-16" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <Skeleton className="h-5 w-44" />
-            <Skeleton className="h-4 w-64 max-w-full" />
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="border-t border-border/70 bg-muted/20 p-3">
-              <Skeleton className="mx-auto aspect-[960/500] w-full rounded-none" />
-            </div>
-            <div className="grid min-h-[18rem] divide-y divide-border/70 border-t border-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-              {Array.from({ length: 3 }, (_, columnIndex) => (
-                <div
-                  key={`performance-country-table-skeleton-${columnIndex}`}
-                  className="space-y-3 p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-3 w-20" />
-                    </div>
-                    <Skeleton className="h-4 w-8" />
-                  </div>
-                  {Array.from({ length: 4 }, (_, rowIndex) => (
-                    <div
-                      key={`performance-country-row-skeleton-${columnIndex}-${rowIndex}`}
-                      className="grid grid-cols-[minmax(0,1fr)_3rem_4rem] gap-3"
-                    >
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-full" />
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-40" />
-                <Skeleton className="h-4 w-20" />
-              </div>
-              <Skeleton className="h-4 w-32" />
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="grid min-h-[18rem] divide-y divide-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-              {Array.from({ length: 3 }, (_, columnIndex) => (
-                <div
-                  key={`performance-path-table-skeleton-${columnIndex}`}
-                  className="space-y-3 p-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-24" />
-                      <Skeleton className="h-3 w-20" />
-                    </div>
-                    <Skeleton className="h-4 w-8" />
-                  </div>
-                  {Array.from({ length: 4 }, (_, rowIndex) => (
-                    <div
-                      key={`performance-path-row-skeleton-${columnIndex}-${rowIndex}`}
-                      className="grid grid-cols-[minmax(0,1fr)_3rem_4rem] gap-3"
-                    >
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-full" />
-                      <Skeleton className="h-4 w-full" />
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
@@ -1273,11 +912,21 @@ function SegmentedThresholdBar({
   panelKey,
   summary,
   status,
+  loading = false,
 }: {
   panelKey: PerformancePanelKey;
   summary: PerformanceSummary;
   status: PerformanceStatus;
+  loading?: boolean;
 }) {
+  if (loading) {
+    return (
+      <div className="relative h-5">
+        <Skeleton className="absolute inset-x-0 top-1/2 h-2 w-full -translate-y-1/2 rounded-full" />
+      </div>
+    );
+  }
+
   const marker = summary.p75 == null ? null : 75;
   const segments = railSegments(panelKey, summary);
 
@@ -1308,14 +957,16 @@ function SegmentedThresholdBar({
   );
 }
 
-function PerformanceRail({
+const PerformanceRail = memo(function PerformanceRail({
   activePanel,
   cards,
   onSelect,
+  loading = false,
 }: {
   activePanel: PerformancePanelKey;
   cards: MetricCardModel[];
   onSelect: (key: PerformancePanelKey) => void;
+  loading?: boolean;
 }) {
   return (
     <div className="space-y-3 self-start lg:sticky lg:top-[7.5rem]">
@@ -1350,28 +1001,34 @@ function PerformanceRail({
                     <div className="truncate text-sm font-medium text-muted-foreground">
                       {card.label}
                     </div>
-                    <AutoTransition className="mt-2" duration={0.18}>
-                      <div
-                        key={`${card.key}-${card.valueLabel}`}
-                        className="text-2xl font-semibold tracking-tight"
-                      >
+                    <PerformanceDynamicValue
+                      loading={loading}
+                      skeletonClassName="h-8 w-24"
+                      className="mt-2"
+                    >
+                      <div className="text-2xl font-semibold tracking-tight">
                         {card.valueLabel}
                       </div>
-                    </AutoTransition>
+                    </PerformanceDynamicValue>
                   </div>
-                  <div
-                    className={cn(
-                      "flex size-9 shrink-0 items-center justify-center rounded-full",
-                      statusStyle.softClassName,
-                    )}
-                  >
-                    <StatusIcon className="size-4" />
-                  </div>
+                  {loading ? (
+                    <Skeleton className="size-9 shrink-0 rounded-full" />
+                  ) : (
+                    <div
+                      className={cn(
+                        "flex size-9 shrink-0 items-center justify-center rounded-full",
+                        statusStyle.softClassName,
+                      )}
+                    >
+                      <StatusIcon className="size-4" />
+                    </div>
+                  )}
                 </div>
                 <SegmentedThresholdBar
                   panelKey={card.key}
                   summary={card.summary}
                   status={card.status}
+                  loading={loading}
                 />
               </div>
             </div>
@@ -1380,15 +1037,16 @@ function PerformanceRail({
       })}
     </div>
   );
-}
+});
 
-function MetricSummaryCard({
+const MetricSummaryCard = memo(function MetricSummaryCard({
   locale,
   messages,
   activePanel,
   activeSummary,
   activeValue,
   pathCount,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1396,6 +1054,7 @@ function MetricSummaryCard({
   activeSummary: PerformanceSummary;
   activeValue: number | null;
   pathCount: number;
+  loading?: boolean;
 }) {
   const activeStatus =
     activePanel === "score"
@@ -1445,94 +1104,178 @@ function MetricSummaryCard({
   const ringPercent =
     scoreValue == null ? 0 : Math.max(0, Math.min(100, scoreValue));
   const ringColor = statusColor(activeStatus);
+  const activeStatusLabel = statusLabel(messages, activeStatus);
 
   return (
     <Card className="overflow-hidden">
-      <CardContent className="grid gap-5 p-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <AutoTransition duration={0.2}>
-            <div key={`${activePanel}-${displayValue}`} className="space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0 space-y-2">
-                  <div className="text-sm text-muted-foreground">
-                    {panelLabel(messages, activePanel)}
-                  </div>
-                  <div className="text-3xl font-semibold tracking-tight">
-                    {displayValue}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StatusIcon
-                      className={cn("size-5", statusStyle.labelClassName)}
-                    />
-                    <span
-                      className={cn("font-medium", statusStyle.labelClassName)}
+      <CardContent className="space-y-5 p-5">
+        <AutoResizer className="w-full" duration={0.24}>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+            <div className="min-w-0">
+              <div className="space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 space-y-2">
+                    <PerformancePanelText
+                      transitionKey={activePanel}
+                      className="text-sm text-muted-foreground"
                     >
-                      {statusLabel(messages, activeStatus)}
-                    </span>
+                      {panelLabel(messages, activePanel)}
+                    </PerformancePanelText>
+                    <PerformanceDynamicValue
+                      loading={loading}
+                      skeletonClassName="h-9 w-24"
+                      transitionKey={displayValue}
+                    >
+                      <div className="text-3xl font-semibold tracking-tight">
+                        {displayValue}
+                      </div>
+                    </PerformanceDynamicValue>
+                    <PerformanceDynamicValue
+                      loading={loading}
+                      skeletonClassName="h-5 w-24"
+                      transitionKey={activeStatusLabel}
+                    >
+                      <div className="flex items-center gap-2">
+                        <StatusIcon
+                          className={cn("size-5", statusStyle.labelClassName)}
+                        />
+                        <span
+                          className={cn(
+                            "font-medium",
+                            statusStyle.labelClassName,
+                          )}
+                        >
+                          {activeStatusLabel}
+                        </span>
+                      </div>
+                    </PerformanceDynamicValue>
                   </div>
-                </div>
-                <div
-                  className="relative flex size-[4.5rem] shrink-0 items-center justify-center rounded-full"
-                  style={{
-                    background: `conic-gradient(${ringColor} ${ringPercent * 3.6}deg, var(--muted) 0deg)`,
-                  }}
-                >
-                  <div className="absolute inset-[6px] rounded-full bg-card" />
-                  <div className="relative z-10 flex items-baseline">
-                    <span className="text-xl font-semibold tracking-tight">
-                      {scoreValue ?? "--"}
-                    </span>
-                    {scoreValue == null ? null : (
-                      <span className="ml-0.5 text-[0.65rem] font-medium text-muted-foreground">
-                        %
-                      </span>
+                  <AutoTransition
+                    initial={false}
+                    transitionKey={
+                      loading
+                        ? "loading"
+                        : `${activePanel}:${scoreValue ?? "--"}`
+                    }
+                    duration={0.2}
+                    type="fade"
+                    presenceMode="wait"
+                    className="size-[4.5rem] shrink-0"
+                  >
+                    {loading ? (
+                      <Skeleton
+                        key="loading"
+                        className="size-[4.5rem] rounded-full"
+                      />
+                    ) : (
+                      <div
+                        key="ready"
+                        className="relative flex size-[4.5rem] items-center justify-center rounded-full"
+                        style={{
+                          background: `conic-gradient(${ringColor} ${ringPercent * 3.6}deg, var(--muted) 0deg)`,
+                        }}
+                      >
+                        <div className="absolute inset-[6px] rounded-full bg-card" />
+                        <div className="relative z-10 flex items-baseline">
+                          <span className="text-xl font-semibold tracking-tight">
+                            {scoreValue ?? "--"}
+                          </span>
+                          {scoreValue == null ? null : (
+                            <span className="ml-0.5 text-[0.65rem] font-medium text-muted-foreground">
+                              %
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     )}
-                  </div>
+                  </AutoTransition>
                 </div>
+                <PerformancePanelText
+                  transitionKey={description}
+                  className="max-w-xl text-sm leading-6 text-muted-foreground"
+                >
+                  {description}
+                </PerformancePanelText>
               </div>
-              <p className="max-w-xl text-sm leading-6 text-muted-foreground">
-                {description}
-              </p>
             </div>
-          </AutoTransition>
-          <div className="mt-auto grid grid-cols-2 gap-3">
+
+            <div className="flex min-w-0 flex-col gap-4">
+              <div className="space-y-1">
+                <div className="text-sm font-medium">
+                  {messages.performance.interpretationTitle}
+                </div>
+                <AutoResizer className="max-w-xl" duration={0.2}>
+                  <AutoTransition
+                    initial={false}
+                    transitionKey={loading ? "loading" : reading}
+                    duration={0.18}
+                    type="fade"
+                    presenceMode="wait"
+                    className="space-y-2"
+                  >
+                    {loading ? (
+                      <div key="loading" className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-7/12" />
+                      </div>
+                    ) : (
+                      <p
+                        key="ready"
+                        className="text-sm leading-6 text-muted-foreground"
+                      >
+                        {reading}
+                      </p>
+                    )}
+                  </AutoTransition>
+                </AutoResizer>
+              </div>
+              <div className="rounded-none bg-muted/45 p-4">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <RiSpeedUpLine className="size-4 text-muted-foreground" />
+                  {messages.performance.datasetTitle}
+                </div>
+                <PerformancePanelText
+                  transitionKey={thresholdText}
+                  className="text-sm leading-6 text-muted-foreground"
+                >
+                  {thresholdText}
+                </PerformancePanelText>
+              </div>
+            </div>
+          </div>
+        </AutoResizer>
+
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3">
               <div className="text-xs text-muted-foreground">
                 {messages.performance.pathsAnalyzedLabel}
               </div>
-              <div className="font-mono text-lg font-semibold tabular-nums">
-                {numberFormat(locale, pathCount)}
-              </div>
+              <PerformanceSpinnerValue
+                loading={loading}
+                transitionKey={pathCount}
+              >
+                <div className="font-mono text-lg font-semibold tabular-nums">
+                  {numberFormat(locale, pathCount)}
+                </div>
+              </PerformanceSpinnerValue>
             </div>
             <div className="flex min-h-[4.75rem] flex-col justify-between rounded-none bg-muted/45 p-3">
               <div className="text-xs text-muted-foreground">
                 {messages.performance.samplesLabel}
               </div>
-              <div className="font-mono text-lg font-semibold tabular-nums">
-                {numberFormat(locale, activeSummary.samples)}
-              </div>
+              <PerformanceSpinnerValue
+                loading={loading}
+                transitionKey={activeSummary.samples}
+              >
+                <div className="font-mono text-lg font-semibold tabular-nums">
+                  {numberFormat(locale, activeSummary.samples)}
+                </div>
+              </PerformanceSpinnerValue>
             </div>
-          </div>
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-4">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">
-              {messages.performance.interpretationTitle}
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">{reading}</p>
-          </div>
-          <div className="rounded-none bg-muted/45 p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <RiSpeedUpLine className="size-4 text-muted-foreground" />
-              {messages.performance.datasetTitle}
-            </div>
-            <p className="text-sm leading-6 text-muted-foreground">
-              {thresholdText}
-            </p>
           </div>
 
-          <div className="mt-auto grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             {[
               ["p50", messages.performance.p50Label, activeSummary.p50],
               ["p75", messages.performance.p75Label, activeSummary.p75],
@@ -1545,14 +1288,24 @@ function MetricSummaryCard({
                 <div className="text-xs text-muted-foreground">
                   {label as string}
                 </div>
-                <div className="font-mono text-sm font-medium tabular-nums">
-                  {formatPanelValue(
+                <PerformanceSpinnerValue
+                  loading={loading}
+                  transitionKey={formatPanelValue(
                     locale,
                     messages,
                     activePanel,
                     value as number | null,
                   )}
-                </div>
+                >
+                  <div className="font-mono text-lg font-semibold tabular-nums">
+                    {formatPanelValue(
+                      locale,
+                      messages,
+                      activePanel,
+                      value as number | null,
+                    )}
+                  </div>
+                </PerformanceSpinnerValue>
               </div>
             ))}
           </div>
@@ -1560,243 +1313,7 @@ function MetricSummaryCard({
       </CardContent>
     </Card>
   );
-}
-
-function PerformanceTrendCard({
-  locale,
-  messages,
-  activePanel,
-  dataWindow,
-  points,
-}: {
-  locale: Locale;
-  messages: AppMessages;
-  activePanel: PerformancePanelKey;
-  dataWindow: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">;
-  points: ChartPoint[];
-}) {
-  const localeCode = intlLocale(locale);
-  const axisTickFormatter = useMemo(
-    () => tickDateFormat(localeCode, dataWindow.interval, dataWindow.timeZone),
-    [dataWindow.interval, dataWindow.timeZone, localeCode],
-  );
-  const tooltipFormatter = useMemo(
-    () =>
-      tooltipDateFormat(localeCode, dataWindow.interval, dataWindow.timeZone),
-    [dataWindow.interval, dataWindow.timeZone, localeCode],
-  );
-  const chartConfig = useMemo(
-    () =>
-      ({
-        p50: {
-          label: messages.performance.p50Label,
-          color: PERFORMANCE_SERIES_COLORS.p50,
-        },
-        p75: {
-          label: messages.performance.p75Label,
-          color: PERFORMANCE_SERIES_COLORS.p75,
-        },
-        p95: {
-          label: messages.performance.p95Label,
-          color: PERFORMANCE_SERIES_COLORS.p95,
-        },
-      }) satisfies ChartConfig,
-    [
-      messages.performance.p50Label,
-      messages.performance.p75Label,
-      messages.performance.p95Label,
-    ],
-  );
-  const [, domainMax] = chartDomain(activePanel, points);
-  const xStart = points[0]?.timestampMs ?? dataWindow.from;
-  const rawXEnd = points[points.length - 1]?.timestampMs ?? dataWindow.to;
-  const xEnd = rawXEnd > xStart ? rawXEnd : xStart + 1;
-  const trendRenderKey = useMemo(() => {
-    const totals = points.reduce(
-      (acc, point) => ({
-        samples: acc.samples + point.samples,
-        p50: acc.p50 + (point.p50 ?? 0),
-        p75: acc.p75 + (point.p75 ?? 0),
-        p95: acc.p95 + (point.p95 ?? 0),
-      }),
-      { samples: 0, p50: 0, p75: 0, p95: 0 },
-    );
-    return [
-      activePanel,
-      points.length,
-      xStart,
-      rawXEnd,
-      totals.samples,
-      totals.p50.toFixed(3),
-      totals.p75.toFixed(3),
-      totals.p95.toFixed(3),
-    ].join(":");
-  }, [activePanel, points, rawXEnd, xStart]);
-  const [showGapConnectors, setShowGapConnectors] = useState(false);
-  const isolatedDots = useMemo(
-    () => ({
-      p50: createIsolatedTrendDot(points, "p50", PERFORMANCE_SERIES_COLORS.p50),
-      p75: createIsolatedTrendDot(points, "p75", PERFORMANCE_SERIES_COLORS.p75),
-      p95: createIsolatedTrendDot(points, "p95", PERFORMANCE_SERIES_COLORS.p95),
-    }),
-    [points],
-  );
-
-  useEffect(() => {
-    setShowGapConnectors(false);
-    const timeoutId = globalThis.setTimeout(() => {
-      setShowGapConnectors(true);
-    }, PERFORMANCE_TREND_CONNECTOR_DELAY_MS);
-
-    return () => {
-      globalThis.clearTimeout(timeoutId);
-    };
-  }, [trendRenderKey]);
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="inline-flex items-center gap-2">
-              <RiSpeedUpLine className="size-4" />
-              {messages.performance.chartTitle}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {panelLabel(messages, activePanel)}
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="relative">
-          <div
-            className="pointer-events-none absolute top-3 right-3 bottom-16 left-20 rounded-none"
-            style={{ background: zoneBackground(activePanel, domainMax) }}
-          />
-          <ChartContainer
-            className="relative z-10 h-[360px] w-full aspect-auto"
-            config={chartConfig}
-          >
-            <LineChart
-              accessibilityLayer
-              data={points}
-              margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
-            >
-              <TrendZones activePanel={activePanel} />
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis
-                type="number"
-                dataKey="timestampMs"
-                domain={[xStart, xEnd]}
-                tickFormatter={(value) =>
-                  axisTickFormatter.format(new Date(Number(value ?? 0)))
-                }
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-                minTickGap={12}
-              />
-              <YAxis
-                domain={[0, domainMax]}
-                tickFormatter={(value) =>
-                  formatPanelValue(
-                    locale,
-                    messages,
-                    activePanel,
-                    Number(value ?? 0),
-                  )
-                }
-                tickLine={false}
-                axisLine={false}
-                width={activePanel === "cls" ? 64 : 80}
-              />
-              <ChartTooltip
-                cursor={false}
-                content={
-                  <ChartTooltipContent
-                    className="min-w-[14rem]"
-                    indicator="line"
-                    labelFormatter={(value, payload) => {
-                      const timestamp = Number(
-                        payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                      );
-                      return tooltipFormatter.format(new Date(timestamp));
-                    }}
-                    formatter={(value, name) => (
-                      <div className="flex w-full items-center justify-between gap-3">
-                        <span className="text-muted-foreground">
-                          {String(name ?? "")}
-                        </span>
-                        <span className="font-mono text-foreground tabular-nums">
-                          {formatPanelValue(
-                            locale,
-                            messages,
-                            activePanel,
-                            Number(value ?? 0),
-                          )}
-                        </span>
-                      </div>
-                    )}
-                  />
-                }
-              />
-              <ChartLegend
-                content={
-                  <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
-                }
-              />
-              <Line
-                type="monotone"
-                dataKey="p50"
-                name={messages.performance.p50Label}
-                stroke={PERFORMANCE_SERIES_COLORS.p50}
-                strokeWidth={2}
-                dot={isolatedDots.p50}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-                isAnimationActive
-                animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
-              />
-              <Line
-                type="monotone"
-                dataKey="p75"
-                name={messages.performance.p75Label}
-                stroke={PERFORMANCE_SERIES_COLORS.p75}
-                strokeWidth={2.4}
-                dot={isolatedDots.p75}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-                isAnimationActive
-                animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
-              />
-              <Line
-                type="monotone"
-                dataKey="p95"
-                name={messages.performance.p95Label}
-                stroke={PERFORMANCE_SERIES_COLORS.p95}
-                strokeWidth={2}
-                dot={isolatedDots.p95}
-                activeDot={{ r: 4 }}
-                connectNulls={false}
-                isAnimationActive
-                animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
-              />
-              <Customized
-                component={
-                  <TrendGapConnectorOverlay
-                    visible={showGapConnectors}
-                    renderKey={trendRenderKey}
-                  />
-                }
-              />
-            </LineChart>
-          </ChartContainer>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+});
 
 function CountryLabelWithFlag({
   label,
@@ -1821,96 +1338,30 @@ function CountryLabelWithFlag({
   );
 }
 
-function PerformanceHealthMapCard({
+const PerformanceHealthMapVisual = memo(function PerformanceHealthMapVisual({
   locale,
   messages,
   activePanel,
-  countries,
+  featureCollection,
+  mapFeatures,
+  countryMap,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
   activePanel: PerformancePanelKey;
-  countries: CountryHealthRow[];
+  featureCollection: CountriesFeatureCollection | null;
+  mapFeatures: PerformanceMapFeature[];
+  countryMap: Map<string, CountryHealthRow>;
+  loading?: boolean;
 }) {
-  const [featureCollection, setFeatureCollection] =
-    useState<CountriesFeatureCollection | null>(null);
   const [hoveredCountry, setHoveredCountry] = useState<CountryMapHover | null>(
     null,
   );
 
   useEffect(() => {
-    let active = true;
-
-    fetch("/api/public/resources/world-countries", { cache: "force-cache" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => {
-        if (!active) return;
-        const next =
-          payload &&
-          typeof payload === "object" &&
-          (payload as { type?: unknown }).type === "FeatureCollection" &&
-          Array.isArray((payload as { features?: unknown }).features)
-            ? (payload as CountriesFeatureCollection)
-            : null;
-        setFeatureCollection(next);
-      })
-      .catch(() => {
-        if (!active) return;
-        setFeatureCollection(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const countryMap = useMemo(() => {
-    const map = new Map<string, CountryHealthRow>();
-    for (const country of countries) {
-      const code = normalizeCountryCode(country.country);
-      if (!code) continue;
-      map.set(code, country);
-    }
-    return map;
-  }, [countries]);
-  const [sort, setSort] = useState<{
-    key: PathSortKey;
-    direction: SortDirection;
-  }>({
-    key: "samples",
-    direction: "desc",
-  });
-  const sortedCountries = useMemo(() => {
-    const direction = sort.direction === "asc" ? 1 : -1;
-    return [...countries].sort((a, b) => {
-      if (sort.key === "samples") return (a.samples - b.samples) * direction;
-      if (sort.key === "score") {
-        return ((a.score ?? -1) - (b.score ?? -1)) * direction;
-      }
-      return ((a.value ?? -1) - (b.value ?? -1)) * direction;
-    });
-  }, [countries, sort.direction, sort.key]);
-  const groupedRows = useMemo(
-    () => ({
-      poor: sortedCountries.filter((row) => row.status === "poor"),
-      "needs-improvement": sortedCountries.filter(
-        (row) => row.status === "needs-improvement",
-      ),
-      great: sortedCountries.filter((row) => row.status === "great"),
-    }),
-    [sortedCountries],
-  );
-
-  const updateSort = (key: PathSortKey) => {
-    setSort((current) =>
-      current.key === key
-        ? {
-            key,
-            direction: current.direction === "asc" ? "desc" : "asc",
-          }
-        : { key, direction: "desc" },
-    );
-  };
+    setHoveredCountry(null);
+  }, [activePanel]);
 
   const updateCountryHover = (
     hoverKey: string,
@@ -1927,40 +1378,52 @@ function PerformanceHealthMapCard({
         locale,
         messages.common.unknown,
       );
-    setHoveredCountry({
-      key: hoverKey,
-      label,
-      samples: country?.samples ?? 0,
-      score: country?.score ?? null,
-      status,
+    const samples = country?.samples ?? 0;
+    const score = country?.score ?? null;
+    setHoveredCountry((current) => {
+      if (
+        current?.key === hoverKey &&
+        current.label === label &&
+        current.samples === samples &&
+        current.score === score &&
+        current.status === status
+      ) {
+        return current;
+      }
+
+      return {
+        key: hoverKey,
+        label,
+        samples,
+        score,
+        status,
+      };
     });
   };
   const hoverScore = roundedScore(hoveredCountry?.score);
   const hoveredSamplesText = numberFormat(locale, hoveredCountry?.samples ?? 0);
   const hoveredScoreText =
     hoverScore == null ? "-" : numberFormat(locale, hoverScore);
+  const mapTransitionKey = loading
+    ? "loading"
+    : featureCollection
+      ? activePanel
+      : "resource-loading";
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="pb-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <CardTitle className="inline-flex items-center gap-2">
-              <RiMapPin2Line className="size-4" />
-              {messages.performance.countryHealthTitle}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {formatI18nTemplate(messages.performance.countryHealthSubtitle, {
-                metric: panelLabel(messages, activePanel),
-              })}
-            </p>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="relative overflow-hidden border-t border-border/70 bg-muted/20 p-3">
-          {featureCollection ? (
+    <div className="relative overflow-hidden border-t border-border/70 bg-muted/20 p-3">
+      <AutoResizer className="w-full" duration={0.24}>
+        <AutoTransition
+          initial={false}
+          transitionKey={mapTransitionKey}
+          duration={0.22}
+          type="fade"
+          presenceMode="wait"
+          className="w-full"
+        >
+          {featureCollection && !loading ? (
             <div
+              key={`map-${activePanel}`}
               className="relative mx-auto aspect-[960/500] w-full"
               onMouseLeave={() => setHoveredCountry(null)}
             >
@@ -1976,14 +1439,10 @@ function PerformanceHealthMapCard({
                   height={WORLD_MAP_HEIGHT}
                   fill="transparent"
                 />
-                {featureCollection.features.map((feature, index) => {
-                  const code = resolveCountryCodeFromFeature(feature);
+                {mapFeatures.map(({ code, feature, hoverKey, path }) => {
                   const country = code ? countryMap.get(code) : null;
                   const status = country?.status ?? "none";
-                  const path = geometryToPath(feature.geometry);
-                  const hoverKey = `${code ?? "country"}-${index}`;
                   const isHovered = hoveredCountry?.key === hoverKey;
-                  if (!path) return null;
                   return (
                     <path
                       key={hoverKey}
@@ -2131,9 +1590,154 @@ function PerformanceHealthMapCard({
               </AnimatePresence>
             </div>
           ) : (
-            <Skeleton className="mx-auto aspect-[2/1] w-full rounded-none" />
+            <Skeleton
+              key={loading ? "loading" : "resource-loading"}
+              className="mx-auto aspect-[2/1] w-full rounded-none"
+            />
           )}
+        </AutoTransition>
+      </AutoResizer>
+    </div>
+  );
+});
+
+const PerformanceHealthMapCard = memo(function PerformanceHealthMapCard({
+  locale,
+  messages,
+  activePanel,
+  countries,
+  loading = false,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  activePanel: PerformancePanelKey;
+  countries: CountryHealthRow[];
+  loading?: boolean;
+}) {
+  const [featureCollection, setFeatureCollection] =
+    useState<CountriesFeatureCollection | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/public/resources/world-countries", { cache: "force-cache" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!active) return;
+        const next =
+          payload &&
+          typeof payload === "object" &&
+          (payload as { type?: unknown }).type === "FeatureCollection" &&
+          Array.isArray((payload as { features?: unknown }).features)
+            ? (payload as CountriesFeatureCollection)
+            : null;
+        setFeatureCollection(next);
+      })
+      .catch(() => {
+        if (!active) return;
+        setFeatureCollection(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const countryMap = useMemo(() => {
+    const map = new Map<string, CountryHealthRow>();
+    for (const country of countries) {
+      const code = normalizeCountryCode(country.country);
+      if (!code) continue;
+      map.set(code, country);
+    }
+    return map;
+  }, [countries]);
+  const mapFeatures = useMemo(() => {
+    if (!featureCollection) return [];
+
+    return featureCollection.features
+      .map((feature, index) => {
+        const code = resolveCountryCodeFromFeature(feature);
+        return {
+          code,
+          feature,
+          hoverKey: `${code ?? "country"}-${index}`,
+          path: geometryToPath(feature.geometry),
+        };
+      })
+      .filter((entry) => entry.path.length > 0);
+  }, [featureCollection]);
+  const [sort, setSort] = useState<{
+    key: PathSortKey;
+    direction: SortDirection;
+  }>({
+    key: "samples",
+    direction: "desc",
+  });
+  const sortedCountries = useMemo(() => {
+    const direction = sort.direction === "asc" ? 1 : -1;
+    return [...countries].sort((a, b) => {
+      if (sort.key === "samples") return (a.samples - b.samples) * direction;
+      if (sort.key === "score") {
+        return ((a.score ?? -1) - (b.score ?? -1)) * direction;
+      }
+      return ((a.value ?? -1) - (b.value ?? -1)) * direction;
+    });
+  }, [countries, sort.direction, sort.key]);
+  const groupedRows = useMemo(
+    () => ({
+      poor: sortedCountries.filter((row) => row.status === "poor"),
+      "needs-improvement": sortedCountries.filter(
+        (row) => row.status === "needs-improvement",
+      ),
+      great: sortedCountries.filter((row) => row.status === "great"),
+    }),
+    [sortedCountries],
+  );
+  const countryHealthSubtitle = formatI18nTemplate(
+    messages.performance.countryHealthSubtitle,
+    { metric: panelLabel(messages, activePanel) },
+  );
+
+  const updateSort = useCallback((key: PathSortKey) => {
+    setSort((current) =>
+      current.key === key
+        ? {
+            key,
+            direction: current.direction === "asc" ? "desc" : "asc",
+          }
+        : { key, direction: "desc" },
+    );
+  }, []);
+
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="inline-flex items-center gap-2">
+              <RiMapPin2Line className="size-4" />
+              {messages.performance.countryHealthTitle}
+            </CardTitle>
+            <PerformancePanelText
+              transitionKey={countryHealthSubtitle}
+              className="text-sm text-muted-foreground"
+            >
+              {countryHealthSubtitle}
+            </PerformancePanelText>
+          </div>
         </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <PerformanceHealthMapVisual
+          locale={locale}
+          messages={messages}
+          activePanel={activePanel}
+          featureCollection={featureCollection}
+          mapFeatures={mapFeatures}
+          countryMap={countryMap}
+          loading={loading}
+        />
         <div className="grid min-h-[18rem] divide-y divide-border/70 border-t border-border/70 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
           {(["poor", "needs-improvement", "great"] as const).map((status) => (
             <CountryStatusColumn
@@ -2145,15 +1749,16 @@ function PerformanceHealthMapCard({
               rows={groupedRows[status]}
               sort={sort}
               onSort={updateSort}
+              loading={loading}
             />
           ))}
         </div>
       </CardContent>
     </Card>
   );
-}
+});
 
-function CountryStatusColumn({
+const CountryStatusColumn = memo(function CountryStatusColumn({
   locale,
   messages,
   activePanel,
@@ -2161,6 +1766,7 @@ function CountryStatusColumn({
   rows,
   sort,
   onSort,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -2169,9 +1775,17 @@ function CountryStatusColumn({
   rows: CountryHealthRow[];
   sort: { key: PathSortKey; direction: SortDirection };
   onSort: (key: PathSortKey) => void;
+  loading?: boolean;
 }) {
   const statusStyle = STATUS_STYLE[status];
   const StatusIcon = statusStyle.icon;
+  const displayRows = loading ? COUNTRY_TABLE_SKELETON_ROWS : rows;
+  const rangeLabel = pathStatusRangeLabel(
+    locale,
+    messages,
+    activePanel,
+    status,
+  );
   const columns = useMemo<
     readonly TabbedDataTableColumn<
       CountryHealthRow,
@@ -2184,7 +1798,12 @@ function CountryStatusColumn({
         key: "samples",
         label: messages.performance.samplesLabel,
         getValue: (row) => row.samples,
-        format: (value) => numberFormat(locale, value),
+        format: (value) =>
+          loading ? (
+            <Skeleton className="ml-auto h-4 w-12" />
+          ) : (
+            numberFormat(locale, value)
+          ),
         className: "font-mono tabular-nums",
       },
       {
@@ -2195,18 +1814,67 @@ function CountryStatusColumn({
             : messages.performance.metricValueColumn,
         getValue: (row) => row.value ?? row.score ?? 0,
         format: (_value, row) =>
-          formatPanelValue(locale, messages, activePanel, row.value),
+          loading ? (
+            <Skeleton className="ml-auto h-4 w-14" />
+          ) : (
+            formatPanelValue(locale, messages, activePanel, row.value)
+          ),
         className: "font-mono tabular-nums",
       },
     ],
     [
       activePanel,
+      loading,
       locale,
       messages,
       messages.performance.metricValueColumn,
       messages.performance.samplesLabel,
       messages.performance.score,
     ],
+  );
+  const tabs = useMemo(
+    () =>
+      [
+        {
+          value: status,
+          label: statusLabel(messages, status),
+          columnLabel: messages.common.country,
+          defaultSort: sort,
+        },
+      ] as const,
+    [messages, sort, status],
+  );
+  const rowsByTab = useMemo(
+    () =>
+      ({ [status]: displayRows }) as Record<typeof status, CountryHealthRow[]>,
+    [displayRows, status],
+  );
+  const sortByTab = useMemo(
+    () => ({ [status]: sort }) as Record<typeof status, typeof sort>,
+    [sort, status],
+  );
+  const handleSortChange = useCallback(
+    (_tab: typeof status, next: TabbedDataTableSortState<PathSortKey>) =>
+      onSort(next.key),
+    [onSort],
+  );
+  const rowAdapter = useMemo<
+    TabbedDataTableRowAdapter<CountryHealthRow, typeof status, PathSortKey>
+  >(
+    () => ({
+      renderLabel: (row) =>
+        loading ? (
+          <Skeleton className="h-4 w-[min(12rem,78%)]" />
+        ) : (
+          <span className="max-w-[18rem]">
+            <CountryLabelWithFlag label={row.label} iconName={row.iconName} />
+          </span>
+        ),
+      getSearchText: (row) => row.label,
+      getExportLabel: (row) => row.label,
+      getClassName: () => "hover:brightness-[0.98] dark:hover:brightness-125",
+    }),
+    [loading],
   );
 
   return (
@@ -2222,49 +1890,44 @@ function CountryStatusColumn({
             <StatusIcon className="size-4" />
             {statusLabel(messages, status)}
           </div>
-          <div className="text-xs text-muted-foreground">
-            {pathStatusRangeLabel(locale, messages, activePanel, status)}
+          <PerformancePanelText
+            transitionKey={rangeLabel}
+            className="text-xs text-muted-foreground"
+          >
+            {rangeLabel}
+          </PerformancePanelText>
+        </div>
+        <PerformanceDynamicValue
+          loading={loading}
+          skeletonClassName="h-4 w-8"
+          className="shrink-0"
+          transitionKey={rows.length}
+        >
+          <div className="font-mono text-sm text-muted-foreground tabular-nums">
+            {numberFormat(locale, rows.length)}
           </div>
-        </div>
-        <div className="font-mono text-sm text-muted-foreground tabular-nums">
-          {numberFormat(locale, rows.length)}
-        </div>
+        </PerformanceDynamicValue>
       </div>
       <div className="pb-4">
         <TabbedDataTableCard<typeof status, CountryHealthRow, PathSortKey>
-          tabs={[
-            {
-              value: status,
-              label: statusLabel(messages, status),
-              columnLabel: messages.common.country,
-              defaultSort: sort,
-            },
-          ]}
-          rowsByTab={
-            { [status]: rows } as Record<typeof status, CountryHealthRow[]>
-          }
+          tabs={tabs}
+          rowsByTab={rowsByTab}
           columns={columns}
           value={status}
-          sortByTab={{ [status]: sort } as Record<typeof status, typeof sort>}
-          onSortChange={(_tab, next) => onSort(next.key)}
-          renderLabel={(row) => (
-            <span className="max-w-[18rem]">
-              <CountryLabelWithFlag label={row.label} iconName={row.iconName} />
-            </span>
-          )}
+          sortByTab={sortByTab}
+          onSortChange={handleSortChange}
+          rowAdapter={rowAdapter}
+          requestKey={activePanel}
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           headerHidden
           search={false}
           progress="samples"
-          getRowClassName={() =>
-            "hover:brightness-[0.98] dark:hover:brightness-125"
-          }
         />
       </div>
     </div>
   );
-}
+});
 
 function pathStatusRangeLabel(
   locale: Locale,
@@ -2293,7 +1956,7 @@ function pathStatusRangeLabel(
   return `<=${formatMetricValue(locale, messages, activePanel, thresholds.good)}`;
 }
 
-function PathStatusColumn({
+const PathStatusColumn = memo(function PathStatusColumn({
   locale,
   messages,
   activePanel,
@@ -2301,6 +1964,7 @@ function PathStatusColumn({
   rows,
   sort,
   onSort,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -2309,9 +1973,17 @@ function PathStatusColumn({
   rows: PathPerformanceRow[];
   sort: { key: PathSortKey; direction: SortDirection };
   onSort: (key: PathSortKey) => void;
+  loading?: boolean;
 }) {
   const statusStyle = STATUS_STYLE[status];
   const StatusIcon = statusStyle.icon;
+  const displayRows = loading ? PATH_TABLE_SKELETON_ROWS : rows;
+  const rangeLabel = pathStatusRangeLabel(
+    locale,
+    messages,
+    activePanel,
+    status,
+  );
   const columns = useMemo<
     readonly TabbedDataTableColumn<
       PathPerformanceRow,
@@ -2324,7 +1996,12 @@ function PathStatusColumn({
         key: "samples",
         label: messages.performance.samplesLabel,
         getValue: (row) => row.samples,
-        format: (value) => numberFormat(locale, value),
+        format: (value) =>
+          loading ? (
+            <Skeleton className="ml-auto h-4 w-12" />
+          ) : (
+            numberFormat(locale, value)
+          ),
         className: "font-mono tabular-nums",
       },
       {
@@ -2335,18 +2012,70 @@ function PathStatusColumn({
             : messages.performance.metricValueColumn,
         getValue: (row) => row.value ?? row.score ?? 0,
         format: (_value, row) =>
-          formatPanelValue(locale, messages, activePanel, row.value),
+          loading ? (
+            <Skeleton className="ml-auto h-4 w-14" />
+          ) : (
+            formatPanelValue(locale, messages, activePanel, row.value)
+          ),
         className: "font-mono tabular-nums",
       },
     ],
     [
       activePanel,
+      loading,
       locale,
       messages,
       messages.performance.metricValueColumn,
       messages.performance.samplesLabel,
       messages.performance.score,
     ],
+  );
+  const tabs = useMemo(
+    () =>
+      [
+        {
+          value: status,
+          label: statusLabel(messages, status),
+          columnLabel: messages.common.path,
+          defaultSort: sort,
+        },
+      ] as const,
+    [messages, sort, status],
+  );
+  const rowsByTab = useMemo(
+    () =>
+      ({ [status]: displayRows }) as Record<
+        typeof status,
+        PathPerformanceRow[]
+      >,
+    [displayRows, status],
+  );
+  const sortByTab = useMemo(
+    () => ({ [status]: sort }) as Record<typeof status, typeof sort>,
+    [sort, status],
+  );
+  const handleSortChange = useCallback(
+    (_tab: typeof status, next: TabbedDataTableSortState<PathSortKey>) =>
+      onSort(next.key),
+    [onSort],
+  );
+  const rowAdapter = useMemo<
+    TabbedDataTableRowAdapter<PathPerformanceRow, typeof status, PathSortKey>
+  >(
+    () => ({
+      renderLabel: (row) =>
+        loading ? (
+          <Skeleton className="h-4 w-[min(14rem,82%)]" />
+        ) : (
+          <span className="max-w-[18rem] font-mono break-words">
+            {decodeUrlDisplayValue(row.pathname || "/")}
+          </span>
+        ),
+      getSearchText: (row) => row.pathname || "/",
+      getExportLabel: (row) => row.pathname || "/",
+      getClassName: () => "hover:brightness-[0.98] dark:hover:brightness-125",
+    }),
+    [loading],
   );
 
   return (
@@ -2362,60 +2091,53 @@ function PathStatusColumn({
             <StatusIcon className="size-4" />
             {statusLabel(messages, status)}
           </div>
-          <div className="text-xs text-muted-foreground">
-            {pathStatusRangeLabel(locale, messages, activePanel, status)}
-          </div>
+          <PerformancePanelText
+            transitionKey={rangeLabel}
+            className="text-xs text-muted-foreground"
+          >
+            {rangeLabel}
+          </PerformancePanelText>
         </div>
-        <div className="font-mono text-sm text-muted-foreground tabular-nums">
+        <PerformancePanelText
+          transitionKey={rows.length}
+          className="font-mono text-sm text-muted-foreground tabular-nums"
+        >
           {numberFormat(locale, rows.length)}
-        </div>
+        </PerformancePanelText>
       </div>
       <div className="pb-4">
         <TabbedDataTableCard<typeof status, PathPerformanceRow, PathSortKey>
-          tabs={[
-            {
-              value: status,
-              label: statusLabel(messages, status),
-              columnLabel: messages.common.path,
-              defaultSort: sort,
-            },
-          ]}
-          rowsByTab={
-            { [status]: rows } as Record<typeof status, PathPerformanceRow[]>
-          }
+          tabs={tabs}
+          rowsByTab={rowsByTab}
           columns={columns}
           value={status}
-          sortByTab={{ [status]: sort } as Record<typeof status, typeof sort>}
-          onSortChange={(_tab, next) => onSort(next.key)}
-          renderLabel={(row) => (
-            <span className="max-w-[18rem] font-mono break-words">
-              {decodeUrlDisplayValue(row.pathname || "/")}
-            </span>
-          )}
+          sortByTab={sortByTab}
+          onSortChange={handleSortChange}
+          rowAdapter={rowAdapter}
+          requestKey={activePanel}
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           headerHidden
           search={false}
           progress="samples"
-          getRowClassName={() =>
-            "hover:brightness-[0.98] dark:hover:brightness-125"
-          }
         />
       </div>
     </div>
   );
-}
+});
 
-function PathPerformanceTable({
+const PathPerformanceTable = memo(function PathPerformanceTable({
   locale,
   messages,
   activePanel,
   rows,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
   activePanel: PerformancePanelKey;
   rows: PathPerformanceRow[];
+  loading?: boolean;
 }) {
   const [sort, setSort] = useState<{
     key: PathSortKey;
@@ -2445,7 +2167,7 @@ function PathPerformanceTable({
     [sortedRows],
   );
 
-  const updateSort = (key: PathSortKey) => {
+  const updateSort = useCallback((key: PathSortKey) => {
     setSort((current) =>
       current.key === key
         ? {
@@ -2454,7 +2176,7 @@ function PathPerformanceTable({
           }
         : { key, direction: "desc" },
     );
-  };
+  }, []);
 
   return (
     <Card className="overflow-hidden">
@@ -2465,13 +2187,24 @@ function PathPerformanceTable({
               <RiRouteLine className="size-4" />
               {messages.performance.pathsTitle}
             </CardTitle>
-            <p className="text-sm text-muted-foreground">
+            <PerformancePanelText
+              transitionKey={activePanel}
+              className="text-sm text-muted-foreground"
+            >
               {panelLabel(messages, activePanel)}
-            </p>
+            </PerformancePanelText>
           </div>
-          <div className="text-sm text-muted-foreground">
+          <div className="inline-flex items-center gap-1 text-sm text-muted-foreground">
             {messages.performance.pathsAnalyzedLabel}:{" "}
-            {numberFormat(locale, rows.length)}
+            <PerformanceDynamicValue
+              loading={loading}
+              skeletonClassName="h-4 w-8"
+              className="shrink-0"
+            >
+              <span className="font-mono tabular-nums">
+                {numberFormat(locale, rows.length)}
+              </span>
+            </PerformanceDynamicValue>
           </div>
         </div>
       </CardHeader>
@@ -2487,78 +2220,74 @@ function PathPerformanceTable({
               rows={groupedRows[status]}
               sort={sort}
               onSort={updateSort}
+              loading={loading}
             />
           ))}
         </div>
       </CardContent>
     </Card>
   );
-}
+});
 
 export function PerformanceClientPage({
   locale,
   messages,
   siteId,
 }: PerformanceClientPageProps) {
-  const { filters, window } = useDashboardQuery() as {
-    filters: DashboardFilters;
+  const { filters, window: timeWindow } = useDashboardQuery() as {
+    filters: FilterDocument;
     window: TimeWindow;
   };
   const [activePanel, setActivePanel] = useState<PerformancePanelKey>("score");
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-  const [performanceData, setPerformanceData] = useState<PerformanceData>(() =>
-    emptyPerformance(window.interval),
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isPending, isPlaceholderData } = useQuery({
+    queryKey: [
+      "dashboard",
+      "performance",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => ({
+      performanceData: await fetchPerformance(siteId, timeWindow, filters, {
+        signal,
+      }),
+      dataWindow: {
+        from: timeWindow.from,
+        to: timeWindow.to,
+        interval: timeWindow.interval,
+        timeZone: timeWindow.timeZone,
+      },
+    }),
+    placeholderData: keepPreviousData,
+    enabled: typeof window !== "undefined",
+  });
+  const loading = isPending || isPlaceholderData;
+  const performanceData =
+    data?.performanceData ?? emptyPerformance(timeWindow.interval);
+  const dataWindow = data?.dataWindow ?? {
+    from: timeWindow.from,
+    to: timeWindow.to,
+    interval: timeWindow.interval,
+    timeZone: timeWindow.timeZone,
+  };
+
+  const summaryByPanel = useMemo(
+    () =>
+      new Map<PerformancePanelKey, PerformanceSummary>(
+        PERFORMANCE_PANELS.map((key) => [
+          key,
+          key === "score"
+            ? scoreSummary(performanceData)
+            : (performanceData.summaries[key] ?? EMPTY_SUMMARY),
+        ]),
+      ),
+    [performanceData],
   );
-  const [dataWindow, setDataWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
-  >(() => ({
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    timeZone: window.timeZone,
-  }));
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchPerformance(siteId, window, filters)
-      .catch(() => emptyPerformance(window.interval))
-      .then((payload) => {
-        if (!active) return;
-        startTransition(() => {
-          setPerformanceData(payload);
-          setDataWindow({
-            from: window.from,
-            to: window.to,
-            interval: window.interval,
-            timeZone: window.timeZone,
-          });
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    siteId,
-    window.from,
-    window.interval,
-    window.timeZone,
-    window.to,
-  ]);
-
-  const activeSummary = useMemo(() => {
-    if (activePanel === "score") return scoreSummary(performanceData);
-    return performanceData.summaries[activePanel] ?? EMPTY_SUMMARY;
-  }, [activePanel, performanceData]);
+  const activeSummary = summaryByPanel.get(activePanel) ?? EMPTY_SUMMARY;
   const activeValue = activeSummary.p75 ?? activeSummary.avg;
 
   const chartPoints = useMemo(
@@ -2568,16 +2297,25 @@ export function PerformanceClientPage({
         : buildMetricTrend(performanceData, activePanel, dataWindow),
     [activePanel, dataWindow, performanceData],
   );
+  const performanceTrendLabels = useMemo<PerformanceTrendChartLabels>(
+    () => ({
+      p50: messages.performance.p50Label,
+      p75: messages.performance.p75Label,
+      p95: messages.performance.p95Label,
+    }),
+    [
+      messages.performance.p50Label,
+      messages.performance.p75Label,
+      messages.performance.p95Label,
+    ],
+  );
+  const formatPerformanceTrendValue = useCallback(
+    (value: number | null | undefined) =>
+      formatPanelValue(locale, messages, activePanel, value),
+    [activePanel, locale, messages],
+  );
 
   const metricCards = useMemo<MetricCardModel[]>(() => {
-    const summaryByPanel = new Map<PerformancePanelKey, PerformanceSummary>(
-      PERFORMANCE_PANELS.map((key) => [
-        key,
-        key === "score"
-          ? scoreSummary(performanceData)
-          : (performanceData.summaries[key] ?? EMPTY_SUMMARY),
-      ]),
-    );
     return PERFORMANCE_PANELS.map((key) => {
       const summary = summaryByPanel.get(key) ?? EMPTY_SUMMARY;
       const value = summary.p75 ?? summary.avg;
@@ -2594,7 +2332,7 @@ export function PerformanceClientPage({
         score,
       };
     });
-  }, [locale, messages, performanceData]);
+  }, [locale, messages, summaryByPanel]);
 
   const pathRows = useMemo<PathPerformanceRow[]>(
     () =>
@@ -2651,6 +2389,7 @@ export function PerformanceClientPage({
     metricCards.some((card) => card.valueLabel !== "--") ||
     pathRows.length > 0 ||
     countryRows.length > 0;
+  const showContent = loading || hasContent;
 
   return (
     <div className="space-y-6">
@@ -2659,64 +2398,95 @@ export function PerformanceClientPage({
         subtitle={messages.performance.subtitle}
       />
 
-      <AutoTransition initial duration={0.22}>
-        {loading && !hydrated ? (
-          <div key="loading">
-            <PerformanceSkeleton />
-          </div>
-        ) : hasContent ? (
-          <div
-            key="content"
-            className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"
-          >
-            <PerformanceRail
-              activePanel={activePanel}
-              cards={metricCards}
-              onSelect={setActivePanel}
-            />
-            <div className="min-w-0">
-              <AutoTransition initial={false} duration={0.22}>
-                <div key={activePanel} className="space-y-4">
-                  <MetricSummaryCard
-                    locale={locale}
-                    messages={messages}
-                    activePanel={activePanel}
-                    activeSummary={activeSummary}
-                    activeValue={activeValue}
-                    pathCount={pathRows.length}
-                  />
-                  <PerformanceTrendCard
-                    locale={locale}
-                    messages={messages}
-                    activePanel={activePanel}
-                    dataWindow={dataWindow}
-                    points={chartPoints}
-                  />
-                  <PerformanceHealthMapCard
-                    locale={locale}
-                    messages={messages}
-                    activePanel={activePanel}
-                    countries={countryRows}
-                  />
-                  <PathPerformanceTable
-                    locale={locale}
-                    messages={messages}
-                    activePanel={activePanel}
-                    rows={pathRows}
-                  />
-                </div>
-              </AutoTransition>
+      {showContent ? (
+        <div className="grid items-start gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <PerformanceRail
+            activePanel={activePanel}
+            cards={metricCards}
+            onSelect={setActivePanel}
+            loading={loading}
+          />
+          <div className="min-w-0">
+            <div className="space-y-4">
+              <MetricSummaryCard
+                locale={locale}
+                messages={messages}
+                activePanel={activePanel}
+                activeSummary={activeSummary}
+                activeValue={activeValue}
+                pathCount={pathRows.length}
+                loading={loading}
+              />
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="space-y-1">
+                      <CardTitle className="inline-flex items-center gap-2">
+                        <RiSpeedUpLine className="size-4" />
+                        {messages.performance.chartTitle}
+                      </CardTitle>
+                      <PerformancePanelText
+                        transitionKey={activePanel}
+                        className="text-sm text-muted-foreground"
+                      >
+                        {panelLabel(messages, activePanel)}
+                      </PerformancePanelText>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <AutoResizer className="w-full" duration={0.24}>
+                    <AutoTransition
+                      initial={false}
+                      transitionKey={loading ? "loading" : activePanel}
+                      duration={0.22}
+                      type="fade"
+                      presenceMode="wait"
+                      className="w-full"
+                    >
+                      {loading ? (
+                        <div key="loading" className="w-full">
+                          <PerformanceTrendLoadingState messages={messages} />
+                        </div>
+                      ) : (
+                        <div key={`chart-${activePanel}`} className="w-full">
+                          <PerformanceTrendChart
+                            locale={locale}
+                            activePanel={activePanel}
+                            dataWindow={dataWindow}
+                            points={chartPoints}
+                            labels={performanceTrendLabels}
+                            metricThresholds={METRIC_THRESHOLDS}
+                            formatValue={formatPerformanceTrendValue}
+                          />
+                        </div>
+                      )}
+                    </AutoTransition>
+                  </AutoResizer>
+                </CardContent>
+              </Card>
+              <PerformanceHealthMapCard
+                locale={locale}
+                messages={messages}
+                activePanel={activePanel}
+                countries={countryRows}
+                loading={loading}
+              />
+              <PathPerformanceTable
+                locale={locale}
+                messages={messages}
+                activePanel={activePanel}
+                rows={pathRows}
+                loading={loading}
+              />
             </div>
           </div>
-        ) : (
-          <div
-            key="empty"
-            className="flex min-h-[520px] items-center justify-center text-sm text-muted-foreground"
-          >
-            {messages.common.noData}
-          </div>
-        )}
-      </AutoTransition>
+        </div>
+      ) : (
+        <div className="flex min-h-[520px] items-center justify-center text-sm text-muted-foreground">
+          {messages.common.noData}
+        </div>
+      )}
     </div>
   );
 }

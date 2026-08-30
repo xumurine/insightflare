@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type * as QueryCore from "@/lib/edge/query/core";
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import type * as QueryCore from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   addDimensionValue,
   finalizeDimensionBuckets,
@@ -18,24 +19,32 @@ import {
   SHARE_TREND_OTHER_TOKEN,
   siteQueryResponse,
   sqlIntegerLiteral,
-} from "@/lib/edge/query/core";
-import { queryEventTypeOverviewFromD1 } from "@/lib/edge/query/events-overview";
+} from "@/lib/edge/analytics/providers/d1/internal/core";
+import {
+  queryEventAnalyticsContextCardsFromD1,
+  queryEventDimensionRowsFromFilteredEvents,
+  queryEventGeoRowsFromFilteredEvents,
+  queryEventSessionBoundaryRowsFromFilteredEvents,
+} from "@/lib/edge/analytics/providers/d1/internal/events-context";
+import { queryEventTypeOverviewFromD1 } from "@/lib/edge/analytics/providers/d1/internal/events-overview";
 import {
   queryEventsSummaryFromD1,
   queryEventSummaryMetricsFromD1,
   queryEventTypeAggregate,
-} from "@/lib/edge/query/events-summary";
+} from "@/lib/edge/analytics/providers/d1/internal/events-summary";
 import {
   queryEventsTrendFromD1,
   queryEventTypeTrendFromD1,
-} from "@/lib/edge/query/events-trend";
+} from "@/lib/edge/analytics/providers/d1/internal/events-trend";
 import type { Env } from "@/lib/edge/types";
+
+import { filterFixture } from "./filter-fixtures";
 
 const queryD1AllMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/edge/query/core", async () => {
+vi.mock("@/lib/edge/analytics/providers/d1/internal/core", async () => {
   const actual = await vi.importActual<typeof QueryCore>(
-    "@/lib/edge/query/core",
+    "@/lib/edge/analytics/providers/d1/internal/core",
   );
   return {
     ...actual,
@@ -46,8 +55,8 @@ vi.mock("@/lib/edge/query/core", async () => {
 const env = {} as Env;
 const siteId = "site_123";
 const window: QueryWindow = {
-  fromMs: Date.UTC(2026, 0, 1),
-  toMs: Date.UTC(2026, 0, 1, 2),
+  startMs: Date.UTC(2026, 0, 1),
+  endExclusiveMs: Date.UTC(2026, 0, 1, 2),
   nowMs: Date.UTC(2026, 0, 2),
   timeZone: "UTC",
 };
@@ -61,7 +70,12 @@ describe("edge query events summary coverage", () => {
     queryD1AllMock.mockResolvedValueOnce([]);
 
     await expect(
-      queryEventSummaryMetricsFromD1(env, siteId, window, {}),
+      queryEventSummaryMetricsFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+      ),
     ).resolves.toEqual({
       events: 0,
       eventTypes: 0,
@@ -73,25 +87,46 @@ describe("edge query events summary coverage", () => {
   });
 
   it("reads event summary cards from each dimension query", async () => {
-    queryD1AllMock
-      .mockResolvedValueOnce([
-        { events: 8, eventTypes: 2, sessions: 4, visitors: 3 },
-      ])
-      .mockResolvedValueOnce([
-        { value: "signup", views: 5, sessions: 3, visitors: 2 },
-      ])
-      .mockResolvedValueOnce([
-        { value: "/pricing", views: 4, sessions: 2, visitors: 2 },
-      ])
-      .mockResolvedValueOnce([
-        { value: "Pricing", views: 4, sessions: 2, visitors: 2 },
-      ])
-      .mockResolvedValueOnce([
-        { value: "example.com", views: 8, sessions: 4, visitors: 3 },
-      ]);
+    queryD1AllMock.mockResolvedValueOnce([
+      {
+        cardType: "__summary__",
+        views: 8,
+        eventTypes: 2,
+        sessions: 4,
+        visitors: 3,
+      },
+      {
+        cardType: "event",
+        value: "signup",
+        views: 5,
+        sessions: 3,
+        visitors: 2,
+      },
+      {
+        cardType: "path",
+        value: "/pricing",
+        views: 4,
+        sessions: 2,
+        visitors: 2,
+      },
+      {
+        cardType: "title",
+        value: "Pricing",
+        views: 4,
+        sessions: 2,
+        visitors: 2,
+      },
+      {
+        cardType: "hostname",
+        value: "example.com",
+        views: 8,
+        sessions: 4,
+        visitors: 3,
+      },
+    ]);
 
     await expect(
-      queryEventsSummaryFromD1(env, siteId, window, {}),
+      queryEventsSummaryFromD1(env, siteId, window, EMPTY_FILTER_DOCUMENT),
     ).resolves.toEqual({
       summary: { events: 8, eventTypes: 2, sessions: 4, visitors: 3 },
       cards: {
@@ -108,8 +143,174 @@ describe("edge query events summary coverage", () => {
       },
     });
 
-    expect(queryD1AllMock).toHaveBeenCalledTimes(5);
-    expect(queryD1AllMock.mock.calls[1][2]).toContain(100);
+    expect(queryD1AllMock).toHaveBeenCalledOnce();
+    expect(queryD1AllMock.mock.calls[0][1]).toContain(
+      "filtered_events AS MATERIALIZED",
+    );
+    expect(queryD1AllMock.mock.calls[0][2]).toEqual(
+      expect.arrayContaining([siteId, window.startMs, window.endExclusiveMs]),
+    );
+  });
+
+  it("builds all event context cards within D1 compound SELECT limits", async () => {
+    queryD1AllMock.mockResolvedValueOnce([
+      {
+        cardType: "path",
+        value: "/pricing",
+        views: 8,
+        sessions: 4,
+        visitors: 3,
+      },
+      {
+        cardType: "sourceDomain",
+        value: "",
+        views: 2,
+        sessions: 1,
+        visitors: 1,
+      },
+      {
+        cardType: "query",
+        value: null,
+        label: null,
+        views: null,
+        sessions: null,
+        visitors: null,
+      },
+      {
+        cardType: "browser",
+        value: "Chrome",
+        views: 8,
+        sessions: 4,
+        visitors: 3,
+      },
+      {
+        cardType: "region",
+        value: "US::CA::California",
+        label: "California",
+        views: 8,
+        sessions: 4,
+        visitors: 3,
+      },
+      {
+        cardType: "entry",
+        value: "/",
+        views: 8,
+        sessions: 4,
+        visitors: 3,
+      },
+    ]);
+
+    const cards = await queryEventAnalyticsContextCardsFromD1(
+      env,
+      siteId,
+      window,
+      EMPTY_FILTER_DOCUMENT,
+      10,
+      "Signup",
+    );
+
+    expect(cards.page.path).toEqual([
+      { value: "/pricing", views: 8, sessions: 4, visitors: 3 },
+    ]);
+    expect(cards.page.entry).toEqual([
+      { value: "/", views: 8, sessions: 4, visitors: 3 },
+    ]);
+    expect(cards.source.domain[0]?.value).toBe("");
+    expect(cards.geo.region[0]).toMatchObject({
+      value: "US::CA::California",
+      label: "California",
+    });
+    expect(cards.client.browser[0]?.value).toBe("Chrome");
+    expect(queryD1AllMock).toHaveBeenCalledOnce();
+    const [, sql] = queryD1AllMock.mock.calls[0];
+    expect(sql).toContain("ranked_cards AS");
+    expect((sql.match(/card_group_\d+ AS \(/g) ?? []).length).toBe(4);
+    expect((sql.match(/SELECT \* FROM card_group_\d+/g) ?? []).length).toBe(4);
+  });
+
+  it("maps empty combined summary results without a synthetic row", async () => {
+    queryD1AllMock.mockResolvedValueOnce([]);
+
+    await expect(
+      queryEventsSummaryFromD1(env, siteId, window, EMPTY_FILTER_DOCUMENT),
+    ).resolves.toMatchObject({
+      summary: { events: 0, eventTypes: 0, sessions: 0, visitors: 0 },
+      cards: { event: { name: [] } },
+    });
+  });
+
+  it("keeps low-level context helpers compatible for targeted callers", async () => {
+    queryD1AllMock
+      .mockResolvedValueOnce([
+        { value: "", views: 1, sessions: 1, visitors: 1 },
+      ])
+      .mockResolvedValueOnce([
+        { value: "Chrome", views: 2, sessions: 1, visitors: 1 },
+      ])
+      .mockResolvedValueOnce([
+        {
+          value: "US::CA::California",
+          label: "California",
+          views: 2,
+          sessions: 1,
+          visitors: 1,
+        },
+      ])
+      .mockResolvedValueOnce([
+        { value: "/", views: 2, sessions: 1, visitors: 1 },
+      ])
+      .mockResolvedValueOnce([
+        { value: "/pricing", views: 2, sessions: 1, visitors: 1 },
+      ]);
+    const baseCte = "WITH filtered_events AS (SELECT * FROM source)";
+
+    await expect(
+      queryEventDimensionRowsFromFilteredEvents(
+        env,
+        baseCte,
+        [siteId],
+        "browser",
+        5,
+        { includeEmpty: true },
+      ),
+    ).resolves.toHaveLength(1);
+    await expect(
+      queryEventDimensionRowsFromFilteredEvents(
+        env,
+        baseCte,
+        [siteId],
+        "browser",
+        5,
+      ),
+    ).resolves.toMatchObject([{ value: "Chrome" }]);
+    await expect(
+      queryEventGeoRowsFromFilteredEvents(
+        env,
+        baseCte,
+        [siteId],
+        "country",
+        "region",
+        5,
+      ),
+    ).resolves.toMatchObject([{ label: "California" }]);
+    await expect(
+      queryEventSessionBoundaryRowsFromFilteredEvents(
+        env,
+        baseCte,
+        [siteId],
+        "entry",
+        5,
+      ),
+    ).resolves.toMatchObject([{ value: "/" }]);
+    await expect(
+      queryEventSessionBoundaryRowsFromFilteredEvents(
+        env,
+        baseCte,
+        [siteId],
+        "exit",
+        5,
+      ),
+    ).resolves.toMatchObject([{ value: "/pricing" }]);
   });
 
   it("queries custom event type aggregates with visit context filters", async () => {
@@ -127,10 +328,10 @@ describe("edge query events summary coverage", () => {
         env,
         siteId,
         window,
-        {
+        filterFixture({
           sourceDomain: "Ref.Example",
           clientDeviceType: "mobile",
-        },
+        }),
         3,
       ),
     ).resolves.toEqual([
@@ -139,19 +340,16 @@ describe("edge query events summary coverage", () => {
 
     expect(queryD1AllMock).toHaveBeenCalledOnce();
     const [, sql, bindings] = queryD1AllMock.mock.calls[0];
-    expect(sql).toContain("LEFT JOIN visit_source vs");
+    expect(sql).not.toContain("LEFT JOIN visit_source vs");
     expect(sql).toContain("FROM event_rollup");
-    expect(sql).toContain("LOWER(TRIM(COALESCE(vc.referrer_host, ''))) = ?");
-    expect(sql).toContain("TRIM(COALESCE(vc.device_type, '')) = ?");
+    expect(sql).toContain("LOWER(TRIM(COALESCE(es.referrer_host, ''))) = ?");
+    expect(sql).toContain("LOWER(TRIM(COALESCE(es.device_type, ''))) = ?");
     expect(bindings).toEqual([
       siteId,
-      window.fromMs,
-      window.toMs,
-      siteId,
-      window.fromMs,
-      window.toMs,
-      "ref.example",
+      window.startMs,
+      window.endExclusiveMs,
       "mobile",
+      "ref.example",
       3,
     ]);
   });
@@ -167,30 +365,59 @@ describe("edge query events summary coverage", () => {
     ]);
 
     await expect(
-      queryEventTypeAggregate(env, siteId, window, {}, 1),
+      queryEventTypeAggregate(env, siteId, window, EMPTY_FILTER_DOCUMENT, 1),
     ).resolves.toEqual([{ value: "", views: 0, sessions: 0, visitors: 0 }]);
   });
 
   it("computes event type overview fallbacks for sparse summary rows", async () => {
-    queryD1AllMock
-      .mockResolvedValueOnce([
-        { events: 10, eventTypes: 2, sessions: 5, visitors: 4 },
-      ])
-      .mockResolvedValueOnce([
-        {
-          events: null,
-          eventTypes: undefined,
-          sessions: 4,
-          visitors: null,
-        },
-      ])
-      .mockResolvedValueOnce([{ value: "/signup", views: 2 }])
-      .mockResolvedValueOnce([{ value: "US", views: 2 }])
-      .mockResolvedValueOnce([{ value: "desktop", views: 2 }])
-      .mockResolvedValueOnce([{ value: "Chrome", views: 2 }]);
+    queryD1AllMock.mockResolvedValueOnce([
+      {
+        events: null,
+        eventTypes: undefined,
+        sessions: 4,
+        visitors: null,
+        cardType: "summary",
+        value: null,
+        scopedEvents: 10,
+      },
+      {
+        events: 2,
+        sessions: 0,
+        visitors: 0,
+        cardType: "page",
+        value: "/signup",
+      },
+      {
+        events: 2,
+        sessions: 0,
+        visitors: 0,
+        cardType: "country",
+        value: "US",
+      },
+      {
+        events: 2,
+        sessions: 0,
+        visitors: 0,
+        cardType: "device",
+        value: "desktop",
+      },
+      {
+        events: 2,
+        sessions: 0,
+        visitors: 0,
+        cardType: "browser",
+        value: "Chrome",
+      },
+    ]);
 
     await expect(
-      queryEventTypeOverviewFromD1(env, siteId, window, {}, "signup"),
+      queryEventTypeOverviewFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        "signup",
+      ),
     ).resolves.toEqual({
       summary: {
         events: 0,
@@ -201,25 +428,25 @@ describe("edge query events summary coverage", () => {
         shareOfAllEvents: 0,
       },
       breakdowns: {
-        pages: [{ value: "/signup", views: 2 }],
-        countries: [{ value: "US", views: 2 }],
-        devices: [{ value: "desktop", views: 2 }],
-        browsers: [{ value: "Chrome", views: 2 }],
+        pages: [{ value: "/signup", views: 2, sessions: 0, visitors: 0 }],
+        countries: [{ value: "US", views: 2, sessions: 0, visitors: 0 }],
+        devices: [{ value: "desktop", views: 2, sessions: 0, visitors: 0 }],
+        browsers: [{ value: "Chrome", views: 2, sessions: 0, visitors: 0 }],
       },
     });
   });
 
   it("uses zero ratios when event type overview has no rows", async () => {
-    queryD1AllMock
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    queryD1AllMock.mockResolvedValueOnce([]);
 
     await expect(
-      queryEventTypeOverviewFromD1(env, siteId, window, {}, "signup"),
+      queryEventTypeOverviewFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        "signup",
+      ),
     ).resolves.toEqual({
       summary: {
         events: 0,
@@ -272,7 +499,7 @@ describe("edge query events trend coverage", () => {
       siteId,
       window,
       "hour",
-      { browser: "Chrome" },
+      filterFixture({ browser: "Chrome" }),
       2,
     );
 
@@ -338,7 +565,7 @@ describe("edge query events trend coverage", () => {
       siteId,
       window,
       "hour",
-      {},
+      EMPTY_FILTER_DOCUMENT,
       0,
     );
 
@@ -370,7 +597,7 @@ describe("edge query events trend coverage", () => {
       siteId,
       window,
       "hour",
-      {},
+      EMPTY_FILTER_DOCUMENT,
       "signup",
     );
 

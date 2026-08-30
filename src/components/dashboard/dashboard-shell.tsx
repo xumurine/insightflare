@@ -1,8 +1,4 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
   RiApps2Line,
   RiArrowLeftLine,
@@ -35,6 +31,7 @@ import { SidebarMenuStage } from "@/components/dashboard/sidebar-menu-stage";
 import { SidebarSiteDetails } from "@/components/dashboard/sidebar-site-details";
 import { TeamSelect } from "@/components/dashboard/team-select";
 import { PageTransition } from "@/components/page-transition";
+import { useAccountTimeZonePreference } from "@/components/time-zone-provider";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
@@ -65,16 +62,21 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { VerticalScrollMask } from "@/components/ui/vertical-scroll-mask";
+import { requestAdminService } from "@/lib/admin-service-client";
 import { canManageTeam } from "@/lib/dashboard/permissions";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import { buildTeamSections } from "@/lib/dashboard/team-sections";
 import {
-  fetchAdminSites,
   type SessionTeamGroups,
   type SiteData,
   type TeamData,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import Image from "@/lib/image";
+import Link from "@/lib/router";
+import { usePathname } from "@/lib/router";
 
 interface TeamSectionNavItem {
   key: string;
@@ -109,6 +111,23 @@ type AnalyticsNavKey =
   | "request-overview"
   | "request-abnormal"
   | "request-normal";
+
+const VALID_ANALYTICS_SECTIONS = new Set([
+  "realtime",
+  "pages",
+  "referrers",
+  "sessions",
+  "events",
+  "visitors",
+  "geo",
+  "devices",
+  "browsers",
+  "performance",
+  "settings",
+  "campaigns",
+  "funnels",
+  "retention",
+]);
 
 const DASHBOARD_SCROLLBAR_OPTIONS = {
   overflow: {
@@ -185,7 +204,7 @@ function getTeamRoleLabel(messages: AppMessages, role: string | undefined) {
 function normalizeLocalePath(pathname: string): string {
   const cleaned = pathname || "";
   if (cleaned.length === 0) return "/app";
-  const withoutLocale = cleaned.replace(/^\/(en|zh)(?=\/|$)/, "") || "/app";
+  const withoutLocale = cleaned.replace(/^\/(en|zh|ja)(?=\/|$)/, "") || "/app";
   if (withoutLocale === "/") return "/app";
   return withoutLocale.endsWith("/")
     ? withoutLocale.slice(0, -1)
@@ -425,6 +444,7 @@ interface DashboardShellProps {
   unreadAttentionCount?: number;
   teamSections?: TeamSectionNavItem[];
   managementSections?: TeamSectionNavItem[];
+  initialQueryWindow?: TimeWindow;
   children: ReactNode;
 }
 
@@ -440,8 +460,10 @@ export function DashboardShell({
   unreadAttentionCount = 0,
   teamSections,
   managementSections,
+  initialQueryWindow,
   children,
 }: DashboardShellProps) {
+  useAccountTimeZonePreference(user.timeZone);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
     null,
@@ -463,6 +485,11 @@ export function DashboardShell({
       : activeTeamId
         ? (clientSitesByTeam[activeTeamId] ?? [])
         : [];
+  const isSidebarSitesLoading = Boolean(
+    activeTeamId &&
+    sites.length === 0 &&
+    !Object.prototype.hasOwnProperty.call(clientSitesByTeam, activeTeamId),
+  );
   const resolvedTeamSections = useMemo(() => {
     if (teamSections) return teamSections;
     if (!liveActiveTeamSlug || !activeTeam) return undefined;
@@ -480,8 +507,11 @@ export function DashboardShell({
     teamSections,
     user.systemRole,
   ]);
-  const routeState = parseSidebarRouteState(livePathname, liveActiveTeamSlug);
-  const activeTeamLocalPath = (() => {
+  const routeState = useMemo(
+    () => parseSidebarRouteState(livePathname, liveActiveTeamSlug),
+    [liveActiveTeamSlug, livePathname],
+  );
+  const activeTeamLocalPath = useMemo(() => {
     if (!liveActiveTeamSlug) return [];
     const segments = livePathname.split("/").filter((s) => s.length > 0);
     const teamIndex = segments.findIndex(
@@ -491,27 +521,10 @@ export function DashboardShell({
         segments[index - 1] === "app",
     );
     return teamIndex >= 0 ? segments.slice(teamIndex + 1) : [];
-  })();
+  }, [liveActiveTeamSlug, livePathname]);
   const mainSiteSection = activeTeamLocalPath[1] || "";
   const mainSiteSubSection = activeTeamLocalPath[2] || "";
 
-  // Derive current analytics section from the live pathname directly.
-  const VALID_ANALYTICS_SECTIONS = new Set([
-    "realtime",
-    "pages",
-    "referrers",
-    "sessions",
-    "events",
-    "visitors",
-    "geo",
-    "devices",
-    "browsers",
-    "performance",
-    "settings",
-    "campaigns",
-    "funnels",
-    "retention",
-  ]);
   const currentAnalyticsSection = (() => {
     if (routeState.mode !== "site" || !routeState.activeSiteSlug)
       return undefined;
@@ -530,37 +543,53 @@ export function DashboardShell({
     hasActiveSite && liveActiveTeamSlug
       ? buildSitePath(locale, liveActiveTeamSlug, resolvedActiveSiteSlug)
       : null;
+  const canManageActiveTeam = Boolean(
+    activeTeam && canManageTeam(activeTeam.membershipRole, user.systemRole),
+  );
 
-  const analyticsSections: Array<{
-    key: AnalyticsNavKey;
-    href: string;
-    label?: string;
-    queryKey?: string;
-    queryValue?: string;
-    queryDefault?: boolean;
-  }> =
-    hasActiveSite && activeSiteBase
-      ? [
-          { key: "overview", href: activeSiteBase },
-          { key: "realtime", href: `${activeSiteBase}/realtime` },
-          { key: "pages", href: `${activeSiteBase}/pages` },
-          { key: "referrers", href: `${activeSiteBase}/referrers` },
-          { key: "campaigns", href: `${activeSiteBase}/campaigns` },
-          { key: "sessions", href: `${activeSiteBase}/sessions` },
-          { key: "visitors", href: `${activeSiteBase}/visitors` },
-          { key: "events", href: `${activeSiteBase}/events` },
-          { key: "funnels", href: `${activeSiteBase}/funnels` },
-          { key: "retention", href: `${activeSiteBase}/retention` },
-          { key: "geo", href: `${activeSiteBase}/geo` },
-          { key: "devices", href: `${activeSiteBase}/devices` },
-          { key: "browsers", href: `${activeSiteBase}/browsers` },
-          { key: "performance", href: `${activeSiteBase}/performance` },
-          { key: "settings", href: `${activeSiteBase}/settings` },
-        ]
-      : [];
+  const analyticsSections = useMemo<
+    Array<{
+      key: AnalyticsNavKey;
+      href: string;
+      label?: string;
+      queryKey?: string;
+      queryValue?: string;
+      queryDefault?: boolean;
+    }>
+  >(
+    () =>
+      hasActiveSite && activeSiteBase
+        ? [
+            { key: "overview", href: activeSiteBase },
+            { key: "realtime", href: `${activeSiteBase}/realtime` },
+            { key: "pages", href: `${activeSiteBase}/pages` },
+            { key: "referrers", href: `${activeSiteBase}/referrers` },
+            { key: "campaigns", href: `${activeSiteBase}/campaigns` },
+            { key: "sessions", href: `${activeSiteBase}/sessions` },
+            { key: "visitors", href: `${activeSiteBase}/visitors` },
+            { key: "events", href: `${activeSiteBase}/events` },
+            { key: "funnels", href: `${activeSiteBase}/funnels` },
+            { key: "retention", href: `${activeSiteBase}/retention` },
+            { key: "geo", href: `${activeSiteBase}/geo` },
+            { key: "devices", href: `${activeSiteBase}/devices` },
+            { key: "browsers", href: `${activeSiteBase}/browsers` },
+            { key: "performance", href: `${activeSiteBase}/performance` },
+            ...(canManageActiveTeam
+              ? [
+                  {
+                    key: "settings" as const,
+                    href: `${activeSiteBase}/settings`,
+                  },
+                ]
+              : []),
+          ]
+        : [],
+    [activeSiteBase, canManageActiveTeam, hasActiveSite],
+  );
   const localeSuffix = normalizeLocalePath(livePathname);
   const switchToEn = `/en${localeSuffix}`;
   const switchToZh = `/zh${localeSuffix}`;
+  const switchToJa = `/ja${localeSuffix}`;
   const accountHref = `/${locale}/app/account`;
   const notificationsHref = `/${locale}/app/inbox`;
   const appRootHref = `/${locale}/app`;
@@ -587,39 +616,51 @@ export function DashboardShell({
     normalizeLocalePath(livePathname) === "/app/manage/request-observation",
   );
   const requestObservationBase = `/${locale}/app/manage/request-observation`;
-  const requestObservationSections: Array<{
-    key: AnalyticsNavKey;
-    href: string;
-    label: string;
-    queryKey: string;
-    queryValue: string;
-    queryDefault?: boolean;
-  }> = isRequestObservationRoute
-    ? [
-        {
-          key: "request-overview",
-          href: requestObservationBase,
-          label: locale === "zh" ? "总览" : "Overview",
-          queryKey: "requestTab",
-          queryValue: "overview",
-          queryDefault: true,
-        },
-        {
-          key: "request-abnormal",
-          href: `${requestObservationBase}?requestTab=abnormal`,
-          label: locale === "zh" ? "异常请求" : "Abnormal Requests",
-          queryKey: "requestTab",
-          queryValue: "abnormal",
-        },
-        {
-          key: "request-normal",
-          href: `${requestObservationBase}?requestTab=normal`,
-          label: locale === "zh" ? "正常请求" : "Normal Requests",
-          queryKey: "requestTab",
-          queryValue: "normal",
-        },
-      ]
-    : [];
+  const requestObservationSections = useMemo<
+    Array<{
+      key: AnalyticsNavKey;
+      href: string;
+      label: string;
+      queryKey: string;
+      queryValue: string;
+      queryDefault?: boolean;
+    }>
+  >(
+    () =>
+      isRequestObservationRoute
+        ? [
+            {
+              key: "request-overview",
+              href: requestObservationBase,
+              label: messages.requestObservation.tabs.overview,
+              queryKey: "requestTab",
+              queryValue: "overview",
+              queryDefault: true,
+            },
+            {
+              key: "request-abnormal",
+              href: `${requestObservationBase}?requestTab=abnormal`,
+              label: messages.requestObservation.tabs.abnormal,
+              queryKey: "requestTab",
+              queryValue: "abnormal",
+            },
+            {
+              key: "request-normal",
+              href: `${requestObservationBase}?requestTab=normal`,
+              label: messages.requestObservation.tabs.normal,
+              queryKey: "requestTab",
+              queryValue: "normal",
+            },
+          ]
+        : [],
+    [
+      isRequestObservationRoute,
+      messages.requestObservation.tabs.abnormal,
+      messages.requestObservation.tabs.normal,
+      messages.requestObservation.tabs.overview,
+      requestObservationBase,
+    ],
+  );
   const topbarSections =
     analyticsSections.length > 0
       ? analyticsSections
@@ -653,35 +694,61 @@ export function DashboardShell({
   const mobileCurrentLevelName = hasActiveSite
     ? activeSiteName
     : activeTeamName || messages.appName;
-  const teamOptions = teams.map((team) => ({
-    slug: team.slug,
-    name: team.name,
-    href: `/${locale}/app/${team.slug}`,
-  }));
-  const teamOptionGroups = teamGroups
-    ? {
-        created: teamGroups.created.map((team) => ({
-          slug: team.slug,
-          name: team.name,
-          href: `/${locale}/app/${team.slug}`,
-        })),
-        managed: teamGroups.managed.map((team) => ({
-          slug: team.slug,
-          name: team.name,
-          href: `/${locale}/app/${team.slug}`,
-        })),
-        member: teamGroups.member.map((team) => ({
-          slug: team.slug,
-          name: team.name,
-          href: `/${locale}/app/${team.slug}`,
-        })),
-        system: teamGroups.system.map((team) => ({
-          slug: team.slug,
-          name: team.name,
-          href: `/${locale}/app/${team.slug}`,
-        })),
-      }
-    : undefined;
+  const teamOptions = useMemo(
+    () =>
+      teams.map((team) => ({
+        slug: team.slug,
+        name: team.name,
+        href: `/${locale}/app/${team.slug}`,
+      })),
+    [locale, teams],
+  );
+  const teamOptionGroups = useMemo(
+    () =>
+      teamGroups
+        ? {
+            created: teamGroups.created.map((team) => ({
+              slug: team.slug,
+              name: team.name,
+              href: `/${locale}/app/${team.slug}`,
+            })),
+            managed: teamGroups.managed.map((team) => ({
+              slug: team.slug,
+              name: team.name,
+              href: `/${locale}/app/${team.slug}`,
+            })),
+            member: teamGroups.member.map((team) => ({
+              slug: team.slug,
+              name: team.name,
+              href: `/${locale}/app/${team.slug}`,
+            })),
+            system: teamGroups.system.map((team) => ({
+              slug: team.slug,
+              name: team.name,
+              href: `/${locale}/app/${team.slug}`,
+            })),
+          }
+        : undefined,
+    [locale, teamGroups],
+  );
+  const sidebarSites = useMemo(
+    () =>
+      resolvedSites.map((site) => ({
+        id: site.id,
+        slug: site.slug,
+        name: site.name,
+        domain: site.domain,
+        iconPath: site.iconPath,
+      })),
+    [resolvedSites],
+  );
+  const sidebarLabels = useMemo(
+    () => ({
+      views: messages.common.views,
+      visitors: messages.common.visitors,
+    }),
+    [messages.common.visitors, messages.common.views],
+  );
   const sidebarContextMode = routeState.mode === "root" ? "root" : "team";
   const teamSelector = liveActiveTeamSlug ? (
     <SidebarGroup className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
@@ -703,7 +770,9 @@ export function DashboardShell({
     }
 
     let active = true;
-    fetchAdminSites(activeTeamId)
+    requestAdminService<SiteData[]>("sites", {
+      params: { teamId: activeTeamId },
+    })
       .then((nextSites) => {
         if (!active) return;
         setClientSitesByTeam((current) => ({
@@ -757,124 +826,131 @@ export function DashboardShell({
     <SidebarProvider>
       <DashboardQueryProvider
         scopeKey={activeSiteId}
-        initialTimeZonePreference={user.timeZone || ""}
         maxRangeDays={isRequestObservationRoute ? 90 : undefined}
+        initialWindow={initialQueryWindow}
       >
         <Sidebar variant="inset" collapsible="icon">
-          <SidebarHeader className={SIDEBAR_COLLAPSE_SECTION_CLASS}>
+          <SidebarHeader>
             <Link
               href="https://github.com/RavelloH/InsightFlare"
               target="_black"
+              className="block"
             >
-              <div className="py-2">
-                <p className="text-xl text-primary flex gap-2 items-center justify-center md:justify-start">
+              <div className="py-2 group-data-[collapsible=icon]:hidden">
+                <p className="flex items-center justify-center gap-2 text-xl text-primary md:justify-start">
                   <span>{messages.appName}</span>
                   <span className="text-muted-foreground">
-                    {process.env.NEXT_PUBLIC_DEMO_MODE ? "Demo" : "v1"}
+                    {import.meta.env.VITE_DEMO_MODE === "1" ? "Demo" : "v1"}
                   </span>
                 </p>
+              </div>
+              <div className="hidden size-8 items-center justify-center group-data-[collapsible=icon]:flex">
+                <Image
+                  src="/android-chrome-192x192.png"
+                  alt={messages.appName}
+                  width={192}
+                  height={192}
+                  className="size-6"
+                  priority
+                />
               </div>
             </Link>
           </SidebarHeader>
 
-          <SidebarContent className="min-h-0 overflow-y-auto">
-            <SidebarMenuStage mode={sidebarContextMode}>
-              {routeState.mode === "root" ? (
-                <>
-                  <SidebarGroup>
-                    <SidebarGroupLabel>
-                      {messages.common.team}
-                    </SidebarGroupLabel>
-                    <SidebarGroupContent>
-                      <SidebarMenu>
-                        {teams.map((team) => {
-                          const RoleIcon = getTeamRoleIcon(team.membershipRole);
-                          const roleLabel = getTeamRoleLabel(
-                            messages,
-                            team.membershipRole,
-                          );
-                          return (
-                            <SidebarMenuItem key={team.id}>
-                              <SidebarMenuButton asChild>
-                                <Link href={`/${locale}/app/${team.slug}`}>
-                                  <span
-                                    aria-label={roleLabel}
-                                    title={roleLabel}
-                                    className={
-                                      team.membershipRole === "owner"
-                                        ? "text-primary"
-                                        : undefined
-                                    }
-                                  >
-                                    <RoleIcon aria-hidden="true" />
-                                  </span>
-                                  <span>{team.name}</span>
-                                </Link>
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
-                          );
-                        })}
-                      </SidebarMenu>
-                    </SidebarGroupContent>
-                  </SidebarGroup>
+          <div className="shrink-0">
+            {teamSelector}
 
-                  {hasManagementSections ? (
-                    <>
-                      <SidebarSeparator
-                        className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
-                      />
-                      <SidebarGroup>
-                        <SidebarGroupLabel>
-                          {messages.common.management}
-                        </SidebarGroupLabel>
-                        <SidebarGroupContent>
-                          <SidebarMenu>
-                            {managementSections?.map((item) => {
-                              const isActive =
-                                routeState.activeManagementSectionKey ===
-                                item.key;
-                              const SectionIcon = getManagementSectionIcon(
-                                item.key,
-                              );
-                              return (
-                                <SidebarMenuItem key={item.key}>
-                                  <SidebarMenuButton
-                                    asChild
-                                    isActive={isActive}
-                                  >
-                                    <Link href={item.href}>
-                                      <SectionIcon />
-                                      <span>{item.label}</span>
-                                    </Link>
-                                  </SidebarMenuButton>
-                                </SidebarMenuItem>
-                              );
-                            })}
-                          </SidebarMenu>
-                        </SidebarGroupContent>
-                      </SidebarGroup>
-                    </>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  {teamSelector}
-                  <SidebarMenuStage
-                    mode={routeState.mode}
-                    storageKey="insightflare-sidebar-team-mode"
-                  >
-                    {routeState.mode === "team" ? (
+            {routeState.mode === "site" ? (
+              <>
+                <SidebarGroup>
+                  <SidebarGroupContent>
+                    <SidebarMenu
+                      className={`mb-2 ${SIDEBAR_COLLAPSE_MARGIN_CLASS}`}
+                    >
+                      <SidebarMenuItem>
+                        <SidebarMenuButton asChild>
+                          <Link href={teamRootHref}>
+                            <RiArrowLeftLine />
+                            <span>{backToTeamLabel}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+
+                <SidebarSeparator
+                  className={`!mx-2 !w-auto ${SIDEBAR_COLLAPSE_SEPARATOR_CLASS}`}
+                />
+              </>
+            ) : null}
+          </div>
+
+          <VerticalScrollMask
+            className="min-h-0 flex-1"
+            contentClassName="flex min-h-0 flex-col"
+            maskClassName="from-sidebar via-sidebar/80 to-transparent"
+            syncKey={`${routeState.mode}:${liveActiveTeamSlug ?? "root"}:${resolvedSites.length}`}
+          >
+            <SidebarContent className="flex-none overflow-hidden">
+              <SidebarMenuStage mode={sidebarContextMode}>
+                {routeState.mode === "root" ? (
+                  <>
+                    <SidebarGroup>
+                      <SidebarGroupLabel>
+                        {messages.common.team}
+                      </SidebarGroupLabel>
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {teams.map((team) => {
+                            const RoleIcon = getTeamRoleIcon(
+                              team.membershipRole,
+                            );
+                            const roleLabel = getTeamRoleLabel(
+                              messages,
+                              team.membershipRole,
+                            );
+                            return (
+                              <SidebarMenuItem key={team.id}>
+                                <SidebarMenuButton asChild>
+                                  <Link href={`/${locale}/app/${team.slug}`}>
+                                    <span
+                                      aria-label={roleLabel}
+                                      title={roleLabel}
+                                      className={
+                                        team.membershipRole === "owner"
+                                          ? "text-primary"
+                                          : undefined
+                                      }
+                                    >
+                                      <RoleIcon aria-hidden="true" />
+                                    </span>
+                                    <span>{team.name}</span>
+                                  </Link>
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            );
+                          })}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+
+                    {hasManagementSections ? (
                       <>
+                        <SidebarSeparator
+                          className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
+                        />
                         <SidebarGroup>
                           <SidebarGroupLabel>
-                            {messages.common.team}
+                            {messages.common.management}
                           </SidebarGroupLabel>
                           <SidebarGroupContent>
                             <SidebarMenu>
-                              {resolvedTeamSections?.map((item) => {
+                              {managementSections?.map((item) => {
                                 const isActive =
-                                  routeState.activeTeamSectionKey === item.key;
-                                const SectionIcon = getTeamSectionIcon(
+                                  routeState.activeManagementSectionKey ===
+                                  item.key;
+                                const SectionIcon = getManagementSectionIcon(
                                   item.key,
                                 );
                                 return (
@@ -894,100 +970,113 @@ export function DashboardShell({
                             </SidebarMenu>
                           </SidebarGroupContent>
                         </SidebarGroup>
-
-                        {hasManagementSections ? (
-                          <>
-                            <SidebarSeparator
-                              className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
-                            />
-                            <SidebarGroup>
-                              <SidebarGroupLabel>
-                                {messages.common.management}
-                              </SidebarGroupLabel>
-                              <SidebarGroupContent>
-                                <SidebarMenu>
-                                  {managementSections?.map((item) => {
-                                    const isActive =
-                                      routeState.activeManagementSectionKey ===
-                                      item.key;
-                                    const SectionIcon =
-                                      getManagementSectionIcon(item.key);
-                                    return (
-                                      <SidebarMenuItem key={item.key}>
-                                        <SidebarMenuButton
-                                          asChild
-                                          isActive={isActive}
-                                        >
-                                          <Link href={item.href}>
-                                            <SectionIcon />
-                                            <span>{item.label}</span>
-                                          </Link>
-                                        </SidebarMenuButton>
-                                      </SidebarMenuItem>
-                                    );
-                                  })}
-                                </SidebarMenu>
-                              </SidebarGroupContent>
-                            </SidebarGroup>
-                          </>
-                        ) : null}
                       </>
-                    ) : (
-                      <>
-                        <SidebarGroup>
-                          <SidebarGroupContent>
-                            <SidebarMenu
-                              className={`mb-2 ${SIDEBAR_COLLAPSE_MARGIN_CLASS}`}
-                            >
-                              <SidebarMenuItem>
-                                <SidebarMenuButton asChild>
-                                  <Link href={teamRootHref}>
-                                    <RiArrowLeftLine />
-                                    <span>{backToTeamLabel}</span>
-                                  </Link>
-                                </SidebarMenuButton>
-                              </SidebarMenuItem>
-                            </SidebarMenu>
-                          </SidebarGroupContent>
-                        </SidebarGroup>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <SidebarMenuStage
+                      mode={routeState.mode}
+                      storageKey="insightflare-sidebar-team-mode"
+                    >
+                      {routeState.mode === "team" ? (
+                        <>
+                          <SidebarGroup>
+                            <SidebarGroupLabel>
+                              {messages.common.team}
+                            </SidebarGroupLabel>
+                            <SidebarGroupContent>
+                              <SidebarMenu>
+                                {resolvedTeamSections?.map((item) => {
+                                  const isActive =
+                                    routeState.activeTeamSectionKey ===
+                                    item.key;
+                                  const SectionIcon = getTeamSectionIcon(
+                                    item.key,
+                                  );
+                                  return (
+                                    <SidebarMenuItem key={item.key}>
+                                      <SidebarMenuButton
+                                        asChild
+                                        isActive={isActive}
+                                      >
+                                        <Link href={item.href}>
+                                          <SectionIcon />
+                                          <span>{item.label}</span>
+                                        </Link>
+                                      </SidebarMenuButton>
+                                    </SidebarMenuItem>
+                                  );
+                                })}
+                              </SidebarMenu>
+                            </SidebarGroupContent>
+                          </SidebarGroup>
 
-                        <SidebarSeparator
-                          className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
-                        />
-
-                        <SidebarGroup>
-                          <SidebarGroupLabel>
-                            {messages.common.site}
-                          </SidebarGroupLabel>
-                          <SidebarGroupContent>
-                            <SidebarSiteDetails
-                              locale={locale}
-                              teamId={activeTeamId}
-                              teamSlug={liveActiveTeamSlug || ""}
-                              activeSiteSlug={resolvedActiveSiteSlug}
-                              currentSection={currentAnalyticsSection}
-                              sites={resolvedSites.map((site) => ({
-                                id: site.id,
-                                slug: site.slug,
-                                name: site.name,
-                                domain: site.domain,
-                                iconPath: site.iconPath,
-                              }))}
-                              labels={{
-                                views: messages.common.views,
-                                visitors: messages.common.visitors,
-                              }}
-                              messages={messages}
-                            />
-                          </SidebarGroupContent>
-                        </SidebarGroup>
-                      </>
-                    )}
-                  </SidebarMenuStage>
-                </>
-              )}
-            </SidebarMenuStage>
-          </SidebarContent>
+                          {hasManagementSections ? (
+                            <>
+                              <SidebarSeparator
+                                className={SIDEBAR_COLLAPSE_SEPARATOR_CLASS}
+                              />
+                              <SidebarGroup>
+                                <SidebarGroupLabel>
+                                  {messages.common.management}
+                                </SidebarGroupLabel>
+                                <SidebarGroupContent>
+                                  <SidebarMenu>
+                                    {managementSections?.map((item) => {
+                                      const isActive =
+                                        routeState.activeManagementSectionKey ===
+                                        item.key;
+                                      const SectionIcon =
+                                        getManagementSectionIcon(item.key);
+                                      return (
+                                        <SidebarMenuItem key={item.key}>
+                                          <SidebarMenuButton
+                                            asChild
+                                            isActive={isActive}
+                                          >
+                                            <Link href={item.href}>
+                                              <SectionIcon />
+                                              <span>{item.label}</span>
+                                            </Link>
+                                          </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                      );
+                                    })}
+                                  </SidebarMenu>
+                                </SidebarGroupContent>
+                              </SidebarGroup>
+                            </>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <SidebarGroup>
+                            <SidebarGroupLabel>
+                              {messages.common.site}
+                            </SidebarGroupLabel>
+                            <SidebarGroupContent>
+                              <SidebarSiteDetails
+                                locale={locale}
+                                teamId={activeTeamId}
+                                teamSlug={liveActiveTeamSlug || ""}
+                                activeSiteSlug={resolvedActiveSiteSlug}
+                                currentSection={currentAnalyticsSection}
+                                sites={sidebarSites}
+                                loading={isSidebarSitesLoading}
+                                loadingLabel={messages.common.loading}
+                                labels={sidebarLabels}
+                              />
+                            </SidebarGroupContent>
+                          </SidebarGroup>
+                        </>
+                      )}
+                    </SidebarMenuStage>
+                  </>
+                )}
+              </SidebarMenuStage>
+            </SidebarContent>
+          </VerticalScrollMask>
 
           <SidebarFooter className="!m-0 !gap-0 !p-0">
             <SidebarFooterMenus
@@ -995,6 +1084,7 @@ export function DashboardShell({
               user={user}
               switchToEn={switchToEn}
               switchToZh={switchToZh}
+              switchToJa={switchToJa}
               accountHref={accountHref}
               notificationsHref={notificationsHref}
               unreadAttentionCount={unreadAttentionCount}
@@ -1069,6 +1159,7 @@ export function DashboardShell({
                       Boolean(liveActiveTeamSlug) || isRequestObservationRoute
                     }
                     showFilterSheet={hasActiveSite}
+                    filterDisabled={isRealtimeRoute}
                     showRealtimeBadge={!isRequestObservationRoute}
                   />
                 </div>

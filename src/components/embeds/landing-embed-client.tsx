@@ -1,7 +1,5 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { BrowserCrossBreakdownGrid } from "@/components/dashboard/browser-cross-breakdown-grid";
 import { BrowserEngineShareTrendCard } from "@/components/dashboard/browser-engine-share-trend-card";
@@ -10,6 +8,7 @@ import { BrowserShareOverview } from "@/components/dashboard/browser-share-overv
 import { BrowserShareTrendCard } from "@/components/dashboard/browser-share-trend-card";
 import { BrowserVersionBreakdownGrid } from "@/components/dashboard/browser-version-breakdown-grid";
 import { CanIUseCompatCard } from "@/components/dashboard/caniuse-compat-card";
+import { EVENT_TREND_MAX_SERIES } from "@/components/dashboard/charts/event-trend-bar-chart";
 import {
   DashboardQueryProvider,
   useDashboardQuery,
@@ -38,13 +37,14 @@ import {
   RealtimeSummaryCardsSection,
 } from "@/components/dashboard/site-pages/realtime-summary-cards-section";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
+import { useRealtimeChannelSelector } from "@/hooks/use-realtime-channel";
 import { useLiveSearchParams } from "@/lib/client-history";
 import {
   fetchEventsSummary,
   fetchEventsTrend,
 } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type { EventsSummaryData, EventsTrendData } from "@/lib/edge-client";
 import {
   buildLandingEmbedDemoSitePath,
@@ -52,6 +52,7 @@ import {
   type LandingEmbedView,
   normalizeLandingEmbedView,
 } from "@/lib/embeds/landing";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -135,7 +136,7 @@ function LandingEmbedLoading() {
   );
 }
 
-function useOverviewEmbedFilters(): DashboardFilters {
+function useOverviewEmbedFilters(): FilterDocument {
   const searchParams = useLiveSearchParams();
   const searchParamsKey = searchParams.toString();
   return useMemo(
@@ -144,7 +145,7 @@ function useOverviewEmbedFilters(): DashboardFilters {
   );
 }
 
-function useRealtimeEmbedFilters(): DashboardFilters {
+function useRealtimeEmbedFilters(): FilterDocument {
   const searchParams = useLiveSearchParams();
   const searchParamsKey = searchParams.toString();
   return useMemo(
@@ -372,17 +373,33 @@ function RealtimeEmbedBlock({
   view: LandingEmbedView;
 }) {
   const filters = useRealtimeEmbedFilters();
-  const realtime = useRealtimeChannel(siteId, {
-    enabled: Boolean(siteId),
-  });
+  const realtimeEnabled = Boolean(siteId);
+  const hasConnected = useRealtimeChannelSelector(
+    siteId,
+    (state) => state.hasConnected,
+    Object.is,
+    { enabled: realtimeEnabled },
+  );
+  const events = useRealtimeChannelSelector(
+    siteId,
+    (state) => state.events,
+    Object.is,
+    { enabled: realtimeEnabled },
+  );
+  const visits = useRealtimeChannelSelector(
+    siteId,
+    (state) => state.visits,
+    Object.is,
+    { enabled: realtimeEnabled },
+  );
 
   if (view === "realtime-trend") {
     return (
       <RealtimeTrafficTrendCard
         locale={locale}
         messages={messages}
-        hasConnected={realtime.hasConnected}
-        events={realtime.events}
+        hasConnected={hasConnected}
+        events={events}
       />
     );
   }
@@ -394,7 +411,7 @@ function RealtimeEmbedBlock({
         messages={messages}
         siteId={siteId}
         siteDomain={siteDomain}
-        visits={realtime.visits}
+        visits={visits}
         filters={filters}
       />
     );
@@ -404,9 +421,9 @@ function RealtimeEmbedBlock({
     <RealtimeLogStreamCard
       locale={locale}
       messages={messages}
-      hasConnected={realtime.hasConnected}
-      events={realtime.events}
-      visits={realtime.visits}
+      hasConnected={hasConnected}
+      events={events}
+      visits={visits}
     />
   );
 }
@@ -429,14 +446,34 @@ function EventsEmbedBlock({
   const labels = messages.events;
   const { window: timeWindow } = useDashboardQuery();
   const filters = useOverviewEmbedFilters();
-  const [summary, setSummary] = useState<EventsSummaryData>(() =>
-    emptyEventsSummary(),
-  );
-  const [trend, setTrend] = useState<EventsTrendData>(() =>
-    emptyEventsTrend(timeWindow.interval),
-  );
-  const [loading, setLoading] = useState(true);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const eventsQuery = useQuery({
+    queryKey: [
+      "embed",
+      "landing-events",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [summary, trend] = await Promise.all([
+        fetchEventsSummary(siteId, timeWindow, filters, { signal }),
+        fetchEventsTrend(siteId, timeWindow, filters, {
+          limit: EVENT_TREND_MAX_SERIES,
+          signal,
+        }),
+      ]);
+      return { summary, trend };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const summary = eventsQuery.data?.summary ?? emptyEventsSummary();
+  const trend =
+    eventsQuery.data?.trend ?? emptyEventsTrend(timeWindow.interval);
+  const loading = eventsQuery.isPending;
   const eventCardDataOverride = useMemo(
     () => buildEventCardDataOverride(summary.cards.event.name),
     [summary.cards.event.name],
@@ -450,40 +487,6 @@ function EventsEmbedBlock({
     [pathname],
   );
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    void Promise.all([
-      fetchEventsSummary(siteId, timeWindow, filters),
-      fetchEventsTrend(siteId, timeWindow, filters, { limit: 8 }),
-    ])
-      .then(([nextSummary, nextTrend]) => {
-        if (!active) return;
-        setSummary(nextSummary);
-        setTrend(nextTrend);
-      })
-      .catch(() => {
-        if (!active) return;
-        setSummary(emptyEventsSummary());
-        setTrend(emptyEventsTrend(timeWindow.interval));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    filtersKey,
-    siteId,
-    timeWindow.from,
-    timeWindow.interval,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
-
   if (view === "events-trend") {
     return (
       <EventTrendStackedBarCard
@@ -493,6 +496,7 @@ function EventsEmbedBlock({
         window={timeWindow}
         title={labels.trendTitle}
         loading={loading}
+        cumulativeLabel={messages.common.cumulativeEvents}
       />
     );
   }
@@ -518,7 +522,7 @@ function EventsEmbedBlock({
             showIcon: false,
           },
         }}
-        pageCardQueryParamOverride={{ path: null }}
+        pageCardFilterEnabledOverride={{ path: false }}
         pageCardNavigableTabs={[]}
         pageCardDetailTabs={[]}
         pageCardShowVisitors

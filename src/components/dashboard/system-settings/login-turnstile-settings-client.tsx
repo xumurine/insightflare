@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCloseLine,
@@ -8,6 +6,7 @@ import {
   RiShieldCheckLine,
   RiTestTubeLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -41,10 +40,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { requestAdminService } from "@/lib/admin-service-client";
+import type { SystemSettingsInitialData } from "@/lib/dashboard/management-data";
 import type { AppMessages } from "@/lib/i18n/messages";
+
+import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
 
 interface LoginTurnstileSettingsClientProps {
   messages: AppMessages;
+  initialData?: SystemSettingsInitialData | null;
 }
 
 interface PublicLoginTurnstileAdminConfig {
@@ -54,13 +58,6 @@ interface PublicLoginTurnstileAdminConfig {
   secretKeyConfigured: boolean;
   secretKeyHint: string;
   updatedAt: number;
-}
-
-interface ApiResponse<T> {
-  ok?: boolean;
-  data?: T;
-  error?: string | { message?: string };
-  message?: string;
 }
 
 type FormState = Pick<PublicLoginTurnstileAdminConfig, "enabled" | "siteKey">;
@@ -87,7 +84,6 @@ declare global {
   }
 }
 
-const API_PATH = "/api/private/admin/login-turnstile";
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
 let turnstileScriptPromise: Promise<void> | null = null;
 
@@ -109,103 +105,29 @@ function toFormState(config: PublicLoginTurnstileAdminConfig): FormState {
   };
 }
 
-function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
-  if (typeof payload.message === "string" && payload.message) {
-    return payload.message;
-  }
-  if (typeof payload.error === "string" && payload.error) {
-    return payload.error;
-  }
-  if (
-    payload.error &&
-    typeof payload.error === "object" &&
-    typeof payload.error.message === "string"
-  ) {
-    return payload.error.message;
-  }
-  return fallback;
-}
-
-function makeHint(secret: string): string {
-  const value = secret.trim();
-  return value ? `••••${value.slice(-4)}` : "";
-}
-
-async function fetchConfig(): Promise<PublicLoginTurnstileAdminConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: API_PATH,
-    }) as ApiResponse<PublicLoginTurnstileAdminConfig>;
-    return result.data ?? defaultConfig();
-  }
-
-  const response = await fetch(API_PATH, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
-  const payload =
-    (await response.json()) as ApiResponse<PublicLoginTurnstileAdminConfig>;
-  if (!response.ok || payload.ok !== true || !payload.data) {
-    throw new Error(apiMessage(payload, "load_login_turnstile_failed"));
-  }
-  return payload.data;
+async function fetchConfig(
+  signal?: AbortSignal,
+): Promise<PublicLoginTurnstileAdminConfig> {
+  return requestAdminService<PublicLoginTurnstileAdminConfig>(
+    "login-turnstile",
+    { signal },
+  );
 }
 
 async function saveConfig(
   body: Record<string, unknown>,
 ): Promise<PublicLoginTurnstileAdminConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: API_PATH,
-      method: "PATCH",
-      body,
-    }) as ApiResponse<PublicLoginTurnstileAdminConfig>;
-    if (!result.ok || !result.data) {
-      throw new Error(apiMessage(result, "save_login_turnstile_failed"));
-    }
-    return result.data;
-  }
-
-  const response = await fetch(API_PATH, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const payload =
-    (await response.json()) as ApiResponse<PublicLoginTurnstileAdminConfig>;
-  if (!response.ok || payload.ok !== true || !payload.data) {
-    throw new Error(apiMessage(payload, "save_login_turnstile_failed"));
-  }
-  return payload.data;
+  return requestAdminService<PublicLoginTurnstileAdminConfig>(
+    "login-turnstile",
+    { method: "PATCH", body },
+  );
 }
 
 async function deleteConfig(): Promise<PublicLoginTurnstileAdminConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: API_PATH,
-      method: "DELETE",
-    }) as ApiResponse<PublicLoginTurnstileAdminConfig>;
-    if (!result.ok || !result.data) {
-      throw new Error(apiMessage(result, "delete_login_turnstile_failed"));
-    }
-    return result.data;
-  }
-
-  const response = await fetch(API_PATH, {
-    method: "DELETE",
-    credentials: "include",
-  });
-  const payload =
-    (await response.json()) as ApiResponse<PublicLoginTurnstileAdminConfig>;
-  if (!response.ok || payload.ok !== true || !payload.data) {
-    throw new Error(apiMessage(payload, "delete_login_turnstile_failed"));
-  }
-  return payload.data;
+  return requestAdminService<PublicLoginTurnstileAdminConfig>(
+    "login-turnstile",
+    { method: "DELETE" },
+  );
 }
 
 async function testConfig(body: {
@@ -213,31 +135,10 @@ async function testConfig(body: {
   secretKey: string;
   turnstileToken: string;
 }): Promise<void> {
-  const path = `${API_PATH}/test`;
-
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path,
-      method: "POST",
-      body,
-    }) as ApiResponse<{ verified: boolean }>;
-    if (!result.ok) {
-      throw new Error(apiMessage(result, "test_login_turnstile_failed"));
-    }
-    return;
-  }
-
-  const response = await fetch(path, {
+  await requestAdminService<{ verified: boolean }>("login-turnstile/test", {
     method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body,
   });
-  const payload = (await response.json()) as ApiResponse<{ verified: boolean }>;
-  if (!response.ok || payload.ok !== true) {
-    throw new Error(apiMessage(payload, "test_login_turnstile_failed"));
-  }
 }
 
 function loadTurnstileScript(): Promise<void> {
@@ -274,22 +175,33 @@ function loadTurnstileScript(): Promise<void> {
 
 export function LoginTurnstileSettingsClient({
   messages,
+  initialData = null,
 }: LoginTurnstileSettingsClientProps) {
   const copy = messages.systemSettings;
   const turnstileRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
-  const [config, setConfig] =
-    useState<PublicLoginTurnstileAdminConfig>(defaultConfig);
+  const [config, setConfig] = useState<PublicLoginTurnstileAdminConfig>(
+    initialData?.loginTurnstile ?? defaultConfig(),
+  );
   const [form, setForm] = useState<FormState>(() =>
-    toFormState(defaultConfig()),
+    toFormState(initialData?.loginTurnstile ?? defaultConfig()),
   );
   const [secretKey, setSecretKey] = useState("");
+  const [secretKeyDirty, setSecretKeyDirty] = useState(false);
   const [testedFingerprint, setTestedFingerprint] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingConfig, setDeletingConfig] = useState(false);
+  const configAppliedRef = useRef(false);
+  const configQuery = useQuery({
+    queryKey: ["dashboard", "login-turnstile-config"],
+    queryFn: ({ signal }) => fetchConfig(signal),
+    initialData: initialData?.loginTurnstile,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const loading = configQuery.isPending;
 
   const currentFingerprint = `${form.siteKey.trim()}::${secretKey.trim()}`;
   const newSecretTested =
@@ -307,36 +219,36 @@ export function LoginTurnstileSettingsClient({
       secretKey.trim().length > 0
     );
   }, [config, form, secretKey]);
-  const secretPlaceholder =
-    config.secretKeyConfigured && config.secretKeyHint
-      ? `${copy.loginTurnstileSecretKeySaved}: ${config.secretKeyHint}`
-      : copy.loginTurnstileSecretKeyPlaceholder;
+  const showSavedSecretKey =
+    !secretKeyDirty &&
+    config.secretKeyConfigured &&
+    Boolean(config.secretKeyHint);
+  const secretKeyDisplayValue = showSavedSecretKey
+    ? config.secretKeyHint
+    : secretKey;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchConfig()
-      .then((nextConfig) => {
-        if (!active) return;
-        setConfig(nextConfig);
-        setForm(toFormState(nextConfig));
-      })
-      .catch(() => {
-        if (!active) return;
-        toast.error(copy.loginTurnstileLoadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
+    if (configQuery.isPending || configAppliedRef.current) return;
+    if (configQuery.isError) toast.error(copy.loginTurnstileLoadFailed);
+    const nextConfig = configQuery.data ?? defaultConfig();
+    setConfig(nextConfig);
+    setForm(toFormState(nextConfig));
+    configAppliedRef.current = true;
+  }, [
+    configQuery.data,
+    configQuery.isError,
+    configQuery.isPending,
+    copy.loginTurnstileLoadFailed,
+  ]);
+
+  useEffect(() => {
     return () => {
-      active = false;
       const widgetId = widgetIdRef.current;
       if (widgetId && window.turnstile?.remove) {
         window.turnstile.remove(widgetId);
       }
     };
-  }, [copy.loginTurnstileLoadFailed]);
+  }, []);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -402,6 +314,7 @@ export function LoginTurnstileSettingsClient({
       setConfig(saved);
       setForm(toFormState(saved));
       setSecretKey("");
+      setSecretKeyDirty(false);
       setTestedFingerprint("");
       toast.success(copy.loginTurnstileSaved);
     } catch (error) {
@@ -420,6 +333,7 @@ export function LoginTurnstileSettingsClient({
       setConfig(reset);
       setForm(toFormState(reset));
       setSecretKey("");
+      setSecretKeyDirty(false);
       setTestedFingerprint("");
       setDeleteDialogOpen(false);
       toast.success(copy.loginTurnstileDeleted);
@@ -507,11 +421,20 @@ export function LoginTurnstileSettingsClient({
               </Label>
               <Input
                 id="system-login-turnstile-secret-key"
-                type="password"
-                value={secretKey}
-                placeholder={secretPlaceholder}
+                type={showSavedSecretKey ? "text" : "password"}
+                value={secretKeyDisplayValue}
+                placeholder={copy.loginTurnstileSecretKeyPlaceholder}
                 disabled={loading || saving || deletingConfig}
+                onFocus={() => {
+                  if (!showSavedSecretKey) return;
+                  setSecretKeyDirty(true);
+                  setSecretKey("");
+                }}
+                onBlur={() => {
+                  if (!secretKey.trim()) setSecretKeyDirty(false);
+                }}
                 onChange={(event) => {
+                  setSecretKeyDirty(true);
                   setSecretKey(event.target.value);
                   setTestedFingerprint("");
                 }}
@@ -522,15 +445,6 @@ export function LoginTurnstileSettingsClient({
           <div className="grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge
-                  variant={config.secretKeyConfigured ? "outline" : "secondary"}
-                >
-                  {config.secretKeyConfigured
-                    ? `${copy.loginTurnstileSecretKeySaved}: ${
-                        config.secretKeyHint || makeHint(secretKey)
-                      }`
-                    : copy.loginTurnstileSecretKeyNotSaved}
-                </Badge>
                 {secretKey.trim() ? (
                   <Badge variant={newSecretTested ? "default" : "secondary"}>
                     {newSecretTested
@@ -676,6 +590,12 @@ export function LoginTurnstileSettingsClient({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <SystemSettingsGuideDialog
+              triggerLabel={copy.guide}
+              title={copy.loginTurnstileGuideTitle}
+              description={copy.loginTurnstileGuideDescription}
+              steps={copy.loginTurnstileGuideSteps}
+            />
           </div>
         </form>
       </CardContent>

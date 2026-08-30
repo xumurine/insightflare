@@ -1,26 +1,37 @@
-"use client";
-
 import {
+  Fragment,
+  memo,
+  type ReactNode,
   useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
 import {
   RiArrowDownSLine,
   RiArrowUpSLine,
   RiSearchLine,
 } from "@remixicon/react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
+import { AnalyticsDataTable } from "@/components/dashboard/analytics-data-table";
+import {
+  type AnalyticsTableColumnDefinition,
+  AnalyticsTableColumnSettings,
+  useAnalyticsTableColumns,
+} from "@/components/dashboard/analytics-table-column-settings";
+import {
+  AnalyticsDetailsTooltipTarget,
+  AnalyticsTimeTooltipTarget,
+} from "@/components/dashboard/analytics-time-tooltip";
 import { ClickableTableCell } from "@/components/dashboard/clickable-table-cell";
 import {
   BrowserMeta,
   CountryRegionMeta,
   DeviceMeta,
   formatRelativeTime,
+  formatScreen,
   OsMeta,
   ReferrerMeta,
   VisitorAvatar,
@@ -30,27 +41,23 @@ import {
   DETAIL_QUERY_PARAM,
   DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
+import { SessionDetailClientPage } from "@/components/dashboard/site-pages/session-detail-client-page";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Card, CardContent } from "@/components/ui/card";
+import { VisitorDetailClientPage } from "@/components/dashboard/site-pages/visitor-detail-client-page";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
   pushUrlWithoutNavigation,
   replaceUrlWithoutNavigation,
   useLiveSearchParams,
 } from "@/lib/client-history";
 import { fetchVisitors } from "@/lib/dashboard/client-data";
+import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
 import { numberFormat } from "@/lib/dashboard/format";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
-import type { VisitorsData, VisitorsMeta } from "@/lib/edge-client";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
+import type { VisitorsData } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -64,34 +71,8 @@ interface VisitorsClientPageProps {
 
 type VisitorRow = VisitorsData["data"][number];
 
-const VISITOR_PAGE_SIZE = 80;
-const VISITOR_SKELETON_ROWS = 8;
-
-const VisitorDetailClientPage = dynamic(
-  () =>
-    import("@/components/dashboard/site-pages/visitor-detail-client-page").then(
-      (module) => module.VisitorDetailClientPage,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
-    ),
-  },
-);
-
-const SessionDetailClientPage = dynamic(
-  () =>
-    import("@/components/dashboard/site-pages/session-detail-client-page").then(
-      (module) => module.SessionDetailClientPage,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
-    ),
-  },
-);
+const VISITOR_PAGE_SIZE = 50;
+const VISITOR_SKELETON_ROWS = 25;
 
 type SortDirection = "asc" | "desc";
 type VisitorSortKey = "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
@@ -101,53 +82,63 @@ interface VisitorSortState {
   direction: SortDirection;
 }
 
+type VisitorTableColumnId =
+  | "visitor"
+  | "sessionId"
+  | "firstSeen"
+  | "lastSeen"
+  | "sessions"
+  | "pageViews"
+  | "customEvents"
+  | "referrer"
+  | "location"
+  | "os"
+  | "browser"
+  | "device"
+  | "screenSize";
+
 const DEFAULT_VISITOR_SORT: VisitorSortState = {
   key: "lastSeenAt",
   direction: "desc",
 };
 
-const INITIAL_VISITOR_META: VisitorsMeta = {
-  page: 1,
-  pageSize: VISITOR_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
+type NestedJourneyDetail = {
+  kind: "session" | "visitor";
+  id: string;
+  stackKey: string;
 };
 
-function shortId(value: string): string {
-  if (value.length <= 12) return value;
-  return `${value.slice(0, 9)}...`;
-}
-
-function VisitorRowSkeleton({
+function VisitorRowSkeletonContent({
   index,
-  sentinelRef,
+  columns,
 }: {
   index: number;
-  sentinelRef?: (node: HTMLTableRowElement | null) => void;
+  columns: readonly VisitorTableColumnId[];
 }) {
-  const widths = [
-    "w-24",
-    "w-24",
-    "w-20",
-    "w-20",
-    "w-12",
-    "w-10",
-    "w-24",
-    "w-28",
-    "w-24",
-    "w-24",
-    "w-20",
-  ];
+  const widths: Record<VisitorTableColumnId, string> = {
+    visitor: "w-24",
+    sessionId: "w-24",
+    firstSeen: "w-20",
+    lastSeen: "w-20",
+    sessions: "w-12",
+    pageViews: "w-10",
+    customEvents: "w-10",
+    referrer: "w-24",
+    location: "w-28",
+    os: "w-24",
+    browser: "w-24",
+    device: "w-20",
+    screenSize: "w-20",
+  };
 
   return (
-    <TableRow ref={sentinelRef} aria-hidden="true">
-      {widths.map((width, cellIndex) => (
+    <>
+      {columns.map((columnId) => (
         <TableCell
-          key={`${index}-${cellIndex}`}
-          className={cellIndex === 0 ? "pl-4" : undefined}
+          key={`${index}-${columnId}`}
+          className={columnId === "visitor" ? "pl-4" : undefined}
         >
-          {cellIndex === 0 ? (
+          {columnId === "visitor" ? (
             <div className="flex items-center gap-2">
               <Skeleton className="size-6 shrink-0 rounded-full" />
               <Skeleton className="h-4 w-20" />
@@ -156,15 +147,17 @@ function VisitorRowSkeleton({
             <Skeleton
               className={cn(
                 "h-4",
-                width,
-                cellIndex === 4 && "ml-auto",
-                cellIndex === 5 && "mx-auto",
+                widths[columnId],
+                columnId === "sessions" && "ml-auto",
+                ["pageViews", "customEvents"].includes(columnId) && "ml-auto",
+                ["firstSeen", "lastSeen", "screenSize"].includes(columnId) &&
+                  "mx-auto",
               )}
             />
           )}
         </TableCell>
       ))}
-    </TableRow>
+    </>
   );
 }
 
@@ -246,13 +239,281 @@ function appendUniqueVisitors(
   return nextRows.length > 0 ? [...current, ...nextRows] : current;
 }
 
-function SessionIdValue({ value }: { value?: string }) {
+function VisitorIdValue({ value }: { value?: string }) {
   const normalized = String(value || "").trim();
   if (!normalized) {
     return <span className="font-mono text-muted-foreground">/</span>;
   }
-  return <span className="font-mono font-medium">{shortId(normalized)}</span>;
+  return (
+    <span className="block truncate font-mono font-medium">{normalized}</span>
+  );
 }
+
+const VisitorTableRowContent = memo(function VisitorTableRowContent({
+  locale,
+  messages,
+  labels,
+  row,
+  now,
+  onOpenDetail,
+  columns,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: AppMessages["visitors"];
+  row: VisitorRow;
+  now: number;
+  onOpenDetail: (visitorId: string) => void;
+  columns: readonly VisitorTableColumnId[];
+}) {
+  const openDetail = () => onOpenDetail(row.visitorId);
+  const visitorId = row.visitorId.trim();
+  const referrerHost = String(row.referrerHost || "").trim();
+  const referrerUrl = String(row.referrerUrl || "").trim();
+  const referrerDetails = {
+    key: `visitor-referrer:${visitorId}:${referrerHost}:${referrerUrl}`,
+    items:
+      referrerHost || referrerUrl
+        ? [
+            ...(referrerHost
+              ? [
+                  {
+                    label: messages.common.referrerHost,
+                    value: referrerHost,
+                    copyValue: referrerHost,
+                  },
+                ]
+              : []),
+            ...(referrerUrl
+              ? [
+                  {
+                    label: messages.sessionDetail.referrerUrl,
+                    value: referrerUrl,
+                    copyValue: referrerUrl,
+                  },
+                ]
+              : []),
+          ]
+        : [
+            {
+              label: messages.common.referrer,
+              value: messages.overview.direct,
+            },
+          ],
+  };
+
+  const cells: Record<VisitorTableColumnId, ReactNode> = {
+    visitor: (
+      <ClickableTableCell
+        onClick={openDetail}
+        className="w-32"
+        buttonClassName="pl-4"
+        focusable
+        ariaLabel={`${labels.visitor}: ${row.visitorId}`}
+      >
+        <div className="flex w-28 items-center gap-2">
+          <VisitorAvatar seed={row.visitorId} className="size-6" />
+          <AnalyticsDetailsTooltipTarget
+            locale={locale}
+            request={{
+              key: `visitor-id:${visitorId}`,
+              items: [
+                {
+                  label: messages.visitorDetail.visitorId,
+                  value: visitorId || messages.common.unknown,
+                  copyValue: visitorId || undefined,
+                  action: visitorId
+                    ? {
+                        label: messages.common.search,
+                        onClick: openDetail,
+                      }
+                    : undefined,
+                },
+              ],
+            }}
+          >
+            <span className="truncate">{labels.anonymous}</span>
+          </AnalyticsDetailsTooltipTarget>
+        </div>
+      </ClickableTableCell>
+    ),
+    sessionId: (
+      <ClickableTableCell onClick={openDetail} className="max-w-32">
+        <div className="flex min-w-0 items-center gap-1">
+          <AnalyticsDetailsTooltipTarget
+            className="min-w-0 flex-1 truncate"
+            locale={locale}
+            request={{
+              key: `visitor-id-column:${visitorId}`,
+              items: [
+                {
+                  label: messages.visitorDetail.visitorId,
+                  value: visitorId || messages.common.unknown,
+                  copyValue: visitorId || undefined,
+                  action: visitorId
+                    ? {
+                        label: messages.common.search,
+                        onClick: openDetail,
+                      }
+                    : undefined,
+                },
+              ],
+            }}
+          >
+            <VisitorIdValue value={visitorId} />
+          </AnalyticsDetailsTooltipTarget>
+        </div>
+      </ClickableTableCell>
+    ),
+    firstSeen: (
+      <ClickableTableCell
+        onClick={openDetail}
+        className="text-center font-mono text-muted-foreground"
+      >
+        <AnalyticsTimeTooltipTarget
+          className="block"
+          locale={locale}
+          timestamp={row.firstSeenAt}
+        >
+          {formatRelativeTime(locale, row.firstSeenAt, now)}
+        </AnalyticsTimeTooltipTarget>
+      </ClickableTableCell>
+    ),
+    lastSeen: (
+      <ClickableTableCell
+        onClick={openDetail}
+        className="text-center font-mono text-muted-foreground"
+      >
+        <AnalyticsTimeTooltipTarget
+          className="block"
+          locale={locale}
+          timestamp={row.lastSeenAt}
+        >
+          {formatRelativeTime(locale, row.lastSeenAt, now)}
+        </AnalyticsTimeTooltipTarget>
+      </ClickableTableCell>
+    ),
+    sessions: (
+      <ClickableTableCell
+        onClick={openDetail}
+        className="text-right font-mono tabular-nums"
+      >
+        {numberFormat(locale, row.sessions)}
+      </ClickableTableCell>
+    ),
+    pageViews: (
+      <ClickableTableCell onClick={openDetail} className="text-right">
+        <span className="font-mono tabular-nums">
+          {numberFormat(locale, row.views)}
+        </span>
+      </ClickableTableCell>
+    ),
+    customEvents: (
+      <ClickableTableCell onClick={openDetail} className="text-right">
+        <span className="font-mono tabular-nums">
+          {numberFormat(locale, row.events ?? 0)}
+        </span>
+      </ClickableTableCell>
+    ),
+    referrer: (
+      <ClickableTableCell onClick={openDetail} className="max-w-48">
+        <AnalyticsDetailsTooltipTarget
+          className="block"
+          locale={locale}
+          request={referrerDetails}
+        >
+          <ReferrerMeta
+            referrerHost={row.referrerHost || ""}
+            referrerUrl={row.referrerUrl}
+            directLabel={messages.overview.direct}
+          />
+        </AnalyticsDetailsTooltipTarget>
+      </ClickableTableCell>
+    ),
+    location: (
+      <ClickableTableCell onClick={openDetail} className="max-w-52">
+        <AnalyticsDetailsTooltipTarget
+          className="block"
+          locale={locale}
+          request={{
+            key: `visitor-location:${visitorId}:${row.country}:${row.region}:${row.regionCode}:${row.city}`,
+            items: [
+              {
+                label: messages.common.location,
+                value: (
+                  <CountryRegionMeta
+                    locale={locale}
+                    messages={messages}
+                    country={row.country || ""}
+                    region={row.region}
+                    regionCode={row.regionCode}
+                    city={row.city}
+                    className="max-w-none text-background [&_.text-foreground]:text-background"
+                  />
+                ),
+              },
+            ],
+          }}
+        >
+          <CountryRegionMeta
+            locale={locale}
+            messages={messages}
+            country={row.country || ""}
+            region={row.region}
+            regionCode={row.regionCode}
+          />
+        </AnalyticsDetailsTooltipTarget>
+      </ClickableTableCell>
+    ),
+    os: (
+      <ClickableTableCell onClick={openDetail} className="max-w-40">
+        <OsMeta
+          os={row.os || ""}
+          version={row.osVersion}
+          unknownLabel={messages.common.unknown}
+        />
+      </ClickableTableCell>
+    ),
+    browser: (
+      <ClickableTableCell onClick={openDetail} className="max-w-40">
+        <BrowserMeta
+          browser={row.browser || ""}
+          version={row.browserVersion}
+          unknownLabel={messages.common.unknown}
+        />
+      </ClickableTableCell>
+    ),
+    device: (
+      <ClickableTableCell
+        onClick={openDetail}
+        className="max-w-36"
+        buttonClassName="pr-4"
+      >
+        <DeviceMeta
+          deviceType={row.deviceType || ""}
+          deviceLabels={messages.common.deviceLabels}
+          unknownLabel={messages.common.unknown}
+        />
+      </ClickableTableCell>
+    ),
+    screenSize: (
+      <ClickableTableCell
+        onClick={openDetail}
+        className="pr-4 text-center font-mono"
+      >
+        {formatScreen(row.screenWidth, row.screenHeight)}
+      </ClickableTableCell>
+    ),
+  };
+
+  return (
+    <>
+      {columns.map((columnId) => (
+        <Fragment key={columnId}>{cells[columnId]}</Fragment>
+      ))}
+    </>
+  );
+});
 
 function detailQueryTarget(
   pathname: string,
@@ -263,9 +524,165 @@ function detailQueryTarget(
   params.set(DETAIL_QUERY_PARAM, detailId);
   params.delete("visitorId");
   params.delete("sessionId");
-  const query = params.toString();
+  const query = serializeDashboardSearchParams(params);
   return query ? `${pathname}?${query}` : pathname;
 }
+
+const VisitorAnalyticsTable = memo(function VisitorAnalyticsTable({
+  locale,
+  messages,
+  labels,
+  rows,
+  now,
+  columns,
+  sort,
+  onToggleSort,
+  onOpenDetail,
+  loading,
+  loadingMore,
+  error,
+  errorContent,
+  emptyContent,
+  appendError,
+  appendErrorContent,
+  hasMore,
+  onLoadMore,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: AppMessages["visitors"];
+  rows: readonly VisitorRow[];
+  now: number;
+  columns: readonly VisitorTableColumnId[];
+  sort: VisitorSortState;
+  onToggleSort: (key: VisitorSortKey) => void;
+  onOpenDetail: (visitorId: string) => void;
+  loading: boolean;
+  loadingMore: boolean;
+  error: boolean;
+  errorContent: string;
+  emptyContent: string;
+  appendError: boolean;
+  appendErrorContent: string;
+  hasMore: boolean;
+  onLoadMore: () => void;
+}) {
+  const headers = useMemo<Record<VisitorTableColumnId, ReactNode>>(
+    () => ({
+      visitor: <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>,
+      sessionId: <TableHead>{messages.visitorDetail.visitorId}</TableHead>,
+      firstSeen: (
+        <SortHeader
+          label={labels.firstSeen}
+          active={sort.key === "firstSeenAt"}
+          direction={sort.direction}
+          onClick={() => onToggleSort("firstSeenAt")}
+          align="center"
+          className="text-center"
+        />
+      ),
+      lastSeen: (
+        <SortHeader
+          label={labels.lastSeen}
+          active={sort.key === "lastSeenAt"}
+          direction={sort.direction}
+          onClick={() => onToggleSort("lastSeenAt")}
+          align="center"
+          className="text-center"
+        />
+      ),
+      sessions: (
+        <SortHeader
+          label={labels.sessions}
+          active={sort.key === "sessions"}
+          direction={sort.direction}
+          onClick={() => onToggleSort("sessions")}
+          align="right"
+          className="text-right"
+        />
+      ),
+      pageViews: (
+        <SortHeader
+          label={labels.pageViews}
+          active={sort.key === "views"}
+          direction={sort.direction}
+          onClick={() => onToggleSort("views")}
+          align="right"
+          className="text-right"
+        />
+      ),
+      customEvents: (
+        <TableHead className="text-right">{labels.customEvents}</TableHead>
+      ),
+      referrer: <TableHead>{labels.referrer}</TableHead>,
+      location: <TableHead>{labels.location}</TableHead>,
+      os: <TableHead>{labels.os}</TableHead>,
+      browser: <TableHead>{labels.browser}</TableHead>,
+      device: <TableHead className="pr-4">{labels.device}</TableHead>,
+      screenSize: (
+        <TableHead className="pr-4 text-center">{labels.screenSize}</TableHead>
+      ),
+    }),
+    [labels, messages.visitorDetail.visitorId, onToggleSort, sort],
+  );
+  const header = useMemo(
+    () => (
+      <TableRow>
+        {columns.map((columnId) => (
+          <Fragment key={columnId}>{headers[columnId]}</Fragment>
+        ))}
+      </TableRow>
+    ),
+    [columns, headers],
+  );
+  const renderRow = useCallback(
+    (row: VisitorRow) => ({
+      children: (
+        <VisitorTableRowContent
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          row={row}
+          now={now}
+          onOpenDetail={onOpenDetail}
+          columns={columns}
+        />
+      ),
+      props: { className: "cursor-pointer" },
+    }),
+    [columns, labels, locale, messages, now, onOpenDetail],
+  );
+  const renderSkeletonRow = useCallback(
+    (index: number) => (
+      <VisitorRowSkeletonContent index={index} columns={columns} />
+    ),
+    [columns],
+  );
+  const getRowKey = useCallback((row: VisitorRow) => row.visitorId, []);
+
+  return (
+    <AnalyticsDataTable
+      header={header}
+      rows={rows}
+      renderRow={renderRow}
+      renderSkeletonRow={renderSkeletonRow}
+      getRowKey={getRowKey}
+      skeletonRows={VISITOR_SKELETON_ROWS}
+      columnCount={columns.length}
+      loading={loading}
+      loadingMore={loadingMore}
+      error={error}
+      errorContent={errorContent}
+      emptyContent={emptyContent}
+      appendError={appendError}
+      appendErrorContent={appendErrorContent}
+      enableTimeTooltips
+      messages={messages}
+      hasMore={hasMore}
+      onLoadMore={onLoadMore}
+    />
+  );
+});
 
 export function VisitorsClientPage({
   locale,
@@ -274,52 +691,44 @@ export function VisitorsClientPage({
   pathname,
 }: VisitorsClientPageProps) {
   const labels = messages.visitors;
+  const visitorColumnDefinitions = useMemo<
+    readonly AnalyticsTableColumnDefinition<VisitorTableColumnId>[]
+  >(
+    () => [
+      { id: "visitor", label: labels.visitor, required: true },
+      { id: "sessionId", label: messages.visitorDetail.visitorId },
+      { id: "firstSeen", label: labels.firstSeen },
+      { id: "lastSeen", label: labels.lastSeen },
+      { id: "sessions", label: labels.sessions },
+      { id: "pageViews", label: labels.pageViews },
+      { id: "customEvents", label: labels.customEvents },
+      { id: "referrer", label: labels.referrer },
+      { id: "location", label: labels.location },
+      { id: "os", label: labels.os },
+      { id: "browser", label: labels.browser },
+      { id: "device", label: labels.device },
+      { id: "screenSize", label: labels.screenSize },
+    ],
+    [labels, messages.visitorDetail.visitorId],
+  );
+  const visitorColumns = useAnalyticsTableColumns({
+    storageKey: "insightflare:analytics-table-columns:visitors",
+    columns: visitorColumnDefinitions,
+  });
   const { filters, window: timeWindow } = useDashboardQuery() as {
-    filters: DashboardFilters;
+    filters: FilterDocument;
     window: TimeWindow;
   };
-  const [rows, setRows] = useState<VisitorRow[]>([]);
-  const [meta, setMeta] = useState<VisitorsMeta>(INITIAL_VISITOR_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<VisitorSortState>(DEFAULT_VISITOR_SORT);
   const [now, setNow] = useState(() => Date.now());
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const searchParams = useLiveSearchParams();
   const detailVisitorId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
-  const [detailSessionId, setDetailSessionId] = useState("");
+  const [nestedDetails, setNestedDetails] = useState<NestedJourneyDetail[]>([]);
+  const nestedDetailKeyRef = useRef(0);
   const openedDetailFromListRef = useRef(false);
-  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [
-        siteId,
-        timeWindow.from,
-        timeWindow.to,
-        filtersKey,
-        debouncedQuery,
-        sort.key,
-        sort.direction,
-      ].join(":"),
-    [
-      debouncedQuery,
-      filtersKey,
-      siteId,
-      sort.direction,
-      sort.key,
-      timeWindow.from,
-      timeWindow.to,
-    ],
-  );
-  const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -329,7 +738,7 @@ export function VisitorsClientPage({
   useEffect(() => {
     if (!detailVisitorId) {
       openedDetailFromListRef.current = false;
-      setDetailSessionId("");
+      setNestedDetails([]);
     }
   }, [detailVisitorId]);
 
@@ -340,132 +749,62 @@ export function VisitorsClientPage({
     return () => window.clearTimeout(timeoutId);
   }, [query]);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchVisitors(siteId, timeWindow, filters, {
-          page,
-          pageSize: VISITOR_PAGE_SIZE,
-          sortBy: sort.key,
-          sortDir: sort.direction,
-          search: debouncedQuery,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-
-        setRows((current) =>
-          mode === "append"
-            ? appendUniqueVisitors(current, payload.data)
-            : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(false);
-        setAppendError(false);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setRows([]);
-          setMeta(INITIAL_VISITOR_META);
-          setError(true);
-          setAppendError(false);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
-
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetching,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "visitors",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+      debouncedQuery,
+      sort.key,
+      sort.direction,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchVisitors(siteId, timeWindow, filters, {
+        cursor: pageParam,
+        pageSize: VISITOR_PAGE_SIZE,
+        sortBy: sort.key,
+        sortDir: sort.direction,
+        search: debouncedQuery,
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextCursor : undefined,
+    enabled: typeof window !== "undefined",
   });
+  const rows = useMemo(
+    () =>
+      data?.pages.reduce<VisitorRow[]>(
+        (current, page) => appendUniqueVisitors(current, page.data),
+        [],
+      ) ?? [],
+    [data?.pages],
+  );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error = Boolean(queryError) && rows.length === 0;
+  const appendError = isFetchNextPageError;
+  const replacingRows = isPending || (isFetching && !isFetchingNextPage);
+  const hasMore = hasNextPage ?? false;
+  const loadNextPage = useCallback(() => {
+    if (loadingInitial || loadingMore || appendError || !hasMore) return;
+    void fetchNextPage();
+  }, [appendError, fetchNextPage, hasMore, loadingInitial, loadingMore]);
 
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRows([]);
-    setMeta(INITIAL_VISITOR_META);
-    setError(false);
-    setAppendError(false);
-    void loadPage(1, "replace");
-  }, [requestKey]);
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !meta.hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    loadingInitial,
-    loadingMore,
-    meta.hasMore,
-    meta.nextPage,
-    sentinelNode,
-  ]);
-
-  const toggleSort = (key: VisitorSortKey) => {
+  const toggleSort = useCallback((key: VisitorSortKey) => {
     setSort((current) =>
       current.key === key
         ? {
@@ -474,7 +813,7 @@ export function VisitorsClientPage({
           }
         : { key, direction: "desc" },
     );
-  };
+  }, []);
 
   const openVisitorDetail = useCallback(
     (visitorId: string) => {
@@ -485,6 +824,11 @@ export function VisitorsClientPage({
     },
     [pathname, searchParams],
   );
+  const openVisitorDetailRef = useRef(openVisitorDetail);
+  openVisitorDetailRef.current = openVisitorDetail;
+  const stableOpenVisitorDetail = useCallback((visitorId: string) => {
+    openVisitorDetailRef.current(visitorId);
+  }, []);
 
   const closeVisitorDetail = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
@@ -497,255 +841,100 @@ export function VisitorsClientPage({
     }
 
     params.delete(DETAIL_QUERY_PARAM);
-    const query = params.toString();
+    const query = serializeDashboardSearchParams(params);
     replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
   }, [pathname]);
   const sessionsPathname = useMemo(
     () => pathname.replace(/\/visitors(?:\/detail)?$/, "/sessions"),
     [pathname],
   );
+  const openNestedDetail = useCallback(
+    (kind: NestedJourneyDetail["kind"], id: string) => {
+      const normalizedId = id.trim();
+      if (!normalizedId) return;
 
-  const bodyState = replacingRows
-    ? "loading"
-    : error
-      ? "error"
-      : rows.length === 0 && !meta.hasMore
-        ? "empty"
-        : "rows";
+      setNestedDetails((current) => {
+        const topDetail = current.at(-1);
+        if (topDetail?.kind === kind && topDetail.id === normalizedId) {
+          return current;
+        }
+        nestedDetailKeyRef.current += 1;
+        return [
+          ...current,
+          {
+            kind,
+            id: normalizedId,
+            stackKey: `${kind}:${normalizedId}:${nestedDetailKeyRef.current}`,
+          },
+        ];
+      });
+    },
+    [],
+  );
+  const openNestedSession = useCallback(
+    (sessionId: string) => openNestedDetail("session", sessionId),
+    [openNestedDetail],
+  );
+  const openNestedVisitor = useCallback(
+    (visitorId: string) => openNestedDetail("visitor", visitorId),
+    [openNestedDetail],
+  );
+  const closeNestedDetail = useCallback((stackKey: string) => {
+    setNestedDetails((current) => {
+      const index = current.findIndex((item) => item.stackKey === stackKey);
+      return index < 0 ? current : current.slice(0, index);
+    });
+  }, []);
 
   return (
     <div className="space-y-6">
       <PageHeading
         title={messages.visitors.title}
         subtitle={messages.visitors.subtitle}
+        actions={
+          <div className="flex w-full items-center justify-end gap-2">
+            <div className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
+              <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={labels.search}
+                className="pl-8"
+              />
+            </div>
+            <AnalyticsTableColumnSettings
+              columns={visitorColumnDefinitions}
+              orderedIds={visitorColumns.orderedIds}
+              visibleIds={visitorColumns.visibleIds}
+              onOrderChange={visitorColumns.setOrder}
+              onVisibilityChange={visitorColumns.setVisible}
+              onReset={visitorColumns.reset}
+              labels={messages.common.tableColumns}
+            />
+          </div>
+        }
       />
 
-      <div className="relative w-full sm:max-w-xs">
-        <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={labels.search}
-          className="pl-8"
-        />
-      </div>
-
-      <Card className="py-0">
-        <CardContent className="px-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-32 pl-4">{labels.visitor}</TableHead>
-                <TableHead>{labels.sessionId}</TableHead>
-                <SortHeader
-                  label={labels.firstSeen}
-                  active={sort.key === "firstSeenAt"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("firstSeenAt")}
-                />
-                <SortHeader
-                  label={labels.lastSeen}
-                  active={sort.key === "lastSeenAt"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("lastSeenAt")}
-                />
-                <SortHeader
-                  label={labels.sessions}
-                  active={sort.key === "sessions"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("sessions")}
-                  align="right"
-                  className="text-right"
-                />
-                <SortHeader
-                  label={labels.pageViews}
-                  active={sort.key === "views"}
-                  direction={sort.direction}
-                  onClick={() => toggleSort("views")}
-                  align="center"
-                  className="text-center"
-                />
-                <TableHead>{labels.referrer}</TableHead>
-                <TableHead>{labels.location}</TableHead>
-                <TableHead>{labels.os}</TableHead>
-                <TableHead>{labels.browser}</TableHead>
-                <TableHead className="pr-4">{labels.device}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <AutoTransition
-              as="tbody"
-              transitionKey={bodyState}
-              initial={false}
-              duration={0.18}
-              type="fade"
-              presenceMode="wait"
-              aria-busy={replacingRows || loadingMore}
-              data-slot="table-body"
-              className="[&_tr:last-child]:border-0"
-            >
-              {replacingRows ? (
-                Array.from({ length: VISITOR_SKELETON_ROWS }, (_, index) => (
-                  <VisitorRowSkeleton
-                    key={`initial-skeleton-${index}`}
-                    index={index}
-                  />
-                ))
-              ) : error ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={11}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.loadError}
-                  </TableCell>
-                </TableRow>
-              ) : rows.length === 0 && !meta.hasMore ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={11}
-                    className="h-28 text-center text-muted-foreground"
-                  >
-                    {labels.empty}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                <>
-                  {rows.map((row) => {
-                    const openDetail = () => openVisitorDetail(row.visitorId);
-                    return (
-                      <TableRow
-                        key={row.visitorId}
-                        className="group cursor-pointer"
-                      >
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="w-32"
-                          buttonClassName="pl-4"
-                          focusable
-                          ariaLabel={`${labels.visitor}: ${row.visitorId}`}
-                        >
-                          <div className="flex w-28 items-center gap-2">
-                            <VisitorAvatar
-                              seed={row.visitorId}
-                              className="size-6"
-                            />
-                            <span className="truncate">{labels.anonymous}</span>
-                          </div>
-                        </ClickableTableCell>
-                        <ClickableTableCell onClick={openDetail}>
-                          <SessionIdValue value={row.sessionId} />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="font-mono text-muted-foreground"
-                        >
-                          {formatRelativeTime(locale, row.firstSeenAt, now)}
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="font-mono text-muted-foreground"
-                        >
-                          {formatRelativeTime(locale, row.lastSeenAt, now)}
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="text-right font-mono tabular-nums"
-                        >
-                          {numberFormat(locale, row.sessions)}
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="text-center"
-                        >
-                          <span className="font-mono tabular-nums">
-                            {numberFormat(locale, row.views)}
-                          </span>
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-48"
-                        >
-                          <ReferrerMeta
-                            referrerHost={row.referrerHost || ""}
-                            referrerUrl={row.referrerUrl}
-                            directLabel={messages.overview.direct}
-                          />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-52"
-                        >
-                          <CountryRegionMeta
-                            locale={locale}
-                            messages={messages}
-                            country={row.country || ""}
-                            region={row.region}
-                            regionCode={row.regionCode}
-                          />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-40"
-                        >
-                          <OsMeta
-                            os={row.os || ""}
-                            version={row.osVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-40"
-                        >
-                          <BrowserMeta
-                            browser={row.browser || ""}
-                            version={row.browserVersion}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </ClickableTableCell>
-                        <ClickableTableCell
-                          onClick={openDetail}
-                          className="max-w-36"
-                          buttonClassName="pr-4"
-                        >
-                          <DeviceMeta
-                            deviceType={row.deviceType || ""}
-                            deviceLabels={messages.common.deviceLabels}
-                            unknownLabel={messages.common.unknown}
-                          />
-                        </ClickableTableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {appendError ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={11}
-                        className="h-16 text-center text-muted-foreground"
-                      >
-                        {labels.loadError}
-                      </TableCell>
-                    </TableRow>
-                  ) : meta.hasMore ? (
-                    Array.from(
-                      { length: VISITOR_SKELETON_ROWS },
-                      (_, index) => (
-                        <VisitorRowSkeleton
-                          key={`append-skeleton-${rows.length}-${index}`}
-                          index={index}
-                          sentinelRef={
-                            index === 0 ? setSentinelNode : undefined
-                          }
-                        />
-                      ),
-                    )
-                  ) : null}
-                </>
-              )}
-            </AutoTransition>
-          </Table>
-        </CardContent>
-      </Card>
+      <VisitorAnalyticsTable
+        locale={locale}
+        messages={messages}
+        labels={labels}
+        rows={rows}
+        now={now}
+        columns={visitorColumns.visibleIds}
+        sort={sort}
+        onToggleSort={toggleSort}
+        onOpenDetail={stableOpenVisitorDetail}
+        loading={replacingRows}
+        loadingMore={loadingMore}
+        error={error}
+        errorContent={labels.loadError}
+        emptyContent={labels.empty}
+        appendError={appendError}
+        appendErrorContent={labels.loadError}
+        hasMore={hasMore}
+        onLoadMore={loadNextPage}
+      />
 
       {detailVisitorId ? (
         <DetailDrawer
@@ -762,30 +951,46 @@ export function VisitorsClientPage({
             siteId={siteId}
             pathname={pathname}
             visitorId={detailVisitorId}
-            onOpenSession={setDetailSessionId}
+            onOpenSession={openNestedSession}
           />
         </DetailDrawer>
       ) : null}
 
-      {detailSessionId ? (
+      {nestedDetails.map((nestedDetail) => (
         <DetailDrawer
-          ariaLabel={messages.sessionDetail.visitDetailsTitle}
-          drawerKey={`visitor-session:${detailSessionId}`}
-          open={Boolean(detailSessionId)}
+          key={nestedDetail.stackKey}
+          ariaLabel={
+            nestedDetail.kind === "visitor"
+              ? messages.visitors.title
+              : messages.sessionDetail.visitDetailsTitle
+          }
+          drawerKey={nestedDetail.stackKey}
+          open
           onOpenChange={(nextOpen) => {
-            if (!nextOpen) setDetailSessionId("");
+            if (!nextOpen) closeNestedDetail(nestedDetail.stackKey);
           }}
         >
-          <SessionDetailClientPage
-            locale={locale}
-            messages={messages}
-            siteId={siteId}
-            pathname={sessionsPathname}
-            sessionId={detailSessionId}
-            onOpenVisitor={openVisitorDetail}
-          />
+          {nestedDetail.kind === "visitor" ? (
+            <VisitorDetailClientPage
+              locale={locale}
+              messages={messages}
+              siteId={siteId}
+              pathname={pathname}
+              visitorId={nestedDetail.id}
+              onOpenSession={openNestedSession}
+            />
+          ) : (
+            <SessionDetailClientPage
+              locale={locale}
+              messages={messages}
+              siteId={siteId}
+              pathname={sessionsPathname}
+              sessionId={nestedDetail.id}
+              onOpenVisitor={openNestedVisitor}
+            />
+          )}
         </DetailDrawer>
-      ) : null}
+      ))}
     </div>
   );
 }

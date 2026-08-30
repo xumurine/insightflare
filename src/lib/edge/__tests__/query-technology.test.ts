@@ -1,18 +1,37 @@
+import { DatabaseSync } from "node:sqlite";
+
 import { describe, expect, it, vi } from "vitest";
 
-import type { DashboardFilters, QueryWindow } from "@/lib/edge/query/core";
+import type { FilterDocument } from "@/lib/edge/analytics/contract";
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import type { QueryWindow } from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   BROWSER_VERSION_UNKNOWN_TOKEN,
+  clientDimensionDefinition,
   SHARE_TREND_OTHER_LABEL,
   SHARE_TREND_OTHER_TOKEN,
-} from "@/lib/edge/query/core";
+} from "@/lib/edge/analytics/providers/d1/internal/core";
+import {
+  queryBrowserCrossDimensionFromD1,
+  queryBrowserVersionBreakdownFromD1,
+} from "@/lib/edge/analytics/providers/d1/internal/technology/browser";
+import { queryCrossDimensionFromD1 } from "@/lib/edge/analytics/providers/d1/internal/technology/client-cross";
 import {
   parseClientDimensionKey,
   parseUtmDimensionKey,
-  queryBrowserVersionBreakdownFromD1,
+} from "@/lib/edge/analytics/providers/d1/internal/technology/parsers";
+import {
+  queryBrowserRadarFromD1,
+  queryReferrerRadarFromD1,
+} from "@/lib/edge/analytics/providers/d1/internal/technology/radar";
+import {
+  queryReferrerAndChannelTrendFromD1,
   queryShareTrendFromD1,
-} from "@/lib/edge/query/technology";
+} from "@/lib/edge/analytics/providers/d1/internal/technology/share-trend";
 import type { Env } from "@/lib/edge/types";
+
+import { filterFixture } from "./filter-fixtures";
+import { installVisitSiteIdentityFixture } from "./site-identity-fixture";
 
 type D1Row = Record<string, unknown>;
 
@@ -23,8 +42,8 @@ interface QueryCall {
 
 function queryWindow(): QueryWindow {
   return {
-    fromMs: Date.UTC(2026, 0, 1, 0, 10),
-    toMs: Date.UTC(2026, 0, 1, 1, 10),
+    startMs: Date.UTC(2026, 0, 1, 0, 10),
+    endExclusiveMs: Date.UTC(2026, 0, 1, 1, 10),
     nowMs: Date.UTC(2026, 0, 1, 2),
     timeZone: "UTC",
   };
@@ -36,10 +55,23 @@ function createD1Env(resultSets: D1Row[][]): {
 } {
   const calls: QueryCall[] = [];
   const pendingResults = [...resultSets];
+  const taggedShareResults =
+    resultSets.length >= 3
+      ? [
+          ...resultSets[0].map((row) => ({ ...row, rowType: "top" })),
+          ...resultSets[1].map((row) => ({ ...row, rowType: "series" })),
+          ...resultSets[2].map((row) => ({ ...row, rowType: "bucket" })),
+        ]
+      : [];
+  let taggedShareResultsConsumed = false;
   const prepare = vi.fn((sql: string) => ({
     bind: vi.fn((...bindings: Array<string | number | null>) => ({
       all: vi.fn(async () => {
         calls.push({ sql, bindings });
+        if (sql.includes("tagged_rows") && !taggedShareResultsConsumed) {
+          taggedShareResultsConsumed = true;
+          return { results: taggedShareResults };
+        }
         return { results: pendingResults.shift() ?? [] };
       }),
     })),
@@ -56,7 +88,114 @@ function createD1Env(resultSets: D1Row[][]): {
 }
 
 function visitBindings(siteId: string, window: QueryWindow) {
-  return [siteId, window.fromMs, window.toMs];
+  return [siteId, window.startMs, window.endExclusiveMs];
+}
+
+type Binding = string | number | null;
+
+class SqliteStatement {
+  constructor(
+    private readonly database: DatabaseSync,
+    private readonly sql: string,
+    private readonly bindings: Binding[],
+  ) {}
+
+  async all<T extends D1Row>(): Promise<{ results: T[] }> {
+    return {
+      results: this.database
+        .prepare(this.sql)
+        .all(...this.bindings)
+        .map((row) => ({ ...row }) as T),
+    };
+  }
+}
+
+class SqliteD1Database {
+  readonly database = new DatabaseSync(":memory:");
+  readonly calls: QueryCall[] = [];
+
+  prepare(sql: string) {
+    return {
+      bind: (...bindings: Binding[]) => {
+        this.calls.push({ sql, bindings });
+        return new SqliteStatement(this.database, sql, bindings);
+      },
+    };
+  }
+
+  close(): void {
+    this.database.close();
+  }
+}
+
+function createSqliteTrendEnv(): { env: Env; d1: SqliteD1Database } {
+  const d1 = new SqliteD1Database();
+  d1.database.exec(`
+    CREATE TABLE visits (
+      visit_id TEXT PRIMARY KEY,
+      site_id TEXT NOT NULL,
+      visitor_id TEXT NOT NULL DEFAULT '',
+      session_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'closed',
+      started_at INTEGER NOT NULL,
+      last_activity_at INTEGER NOT NULL DEFAULT 0,
+      ended_at INTEGER,
+      finalized_at INTEGER,
+      duration_ms INTEGER,
+      duration_source TEXT,
+      exit_reason TEXT,
+      pathname TEXT NOT NULL DEFAULT '',
+      query_string TEXT NOT NULL DEFAULT '',
+      hash_fragment TEXT NOT NULL DEFAULT '',
+      hostname TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      referrer_url TEXT NOT NULL DEFAULT '',
+      referrer_host TEXT NOT NULL DEFAULT '',
+      utm_source TEXT NOT NULL DEFAULT '',
+      utm_medium TEXT NOT NULL DEFAULT '',
+      utm_campaign TEXT NOT NULL DEFAULT '',
+      utm_term TEXT NOT NULL DEFAULT '',
+      utm_content TEXT NOT NULL DEFAULT '',
+      is_eu INTEGER NOT NULL DEFAULT 0,
+      country TEXT NOT NULL DEFAULT '',
+      region TEXT NOT NULL DEFAULT '',
+      region_code TEXT NOT NULL DEFAULT '',
+      city TEXT NOT NULL DEFAULT '',
+      continent TEXT NOT NULL DEFAULT '',
+      latitude REAL,
+      longitude REAL,
+      postal_code TEXT NOT NULL DEFAULT '',
+      metro_code TEXT NOT NULL DEFAULT '',
+      timezone TEXT NOT NULL DEFAULT '',
+      as_organization TEXT NOT NULL DEFAULT '',
+      ua_raw TEXT NOT NULL DEFAULT '',
+      browser TEXT NOT NULL DEFAULT '',
+      browser_version TEXT NOT NULL DEFAULT '',
+      os TEXT NOT NULL DEFAULT '',
+      os_version TEXT NOT NULL DEFAULT '',
+      device_type TEXT NOT NULL DEFAULT '',
+      screen_width INTEGER,
+      screen_height INTEGER,
+      language TEXT NOT NULL DEFAULT '',
+      perf_ttfb_ms REAL,
+      perf_fcp_ms REAL,
+      perf_lcp_ms REAL,
+      perf_cls REAL,
+      perf_inp_ms REAL,
+      ae_synced_at INTEGER
+    );
+    CREATE INDEX idx_visits_site_started_at
+      ON visits(site_id, started_at);
+  `);
+  installVisitSiteIdentityFixture(d1.database);
+  return {
+    env: {
+      DB: d1 as unknown as D1Database,
+      DAILY_SALT_SECRET: "test-secret",
+      INGEST_DO: {},
+    } as unknown as Env,
+    d1,
+  };
 }
 
 describe("edge query technology dimension parsers", () => {
@@ -89,52 +228,758 @@ describe("edge query technology dimension parsers", () => {
 });
 
 describe("edge query technology D1 mapping", () => {
+  it("executes the consolidated share trend SQL against a SQLite fixture", async () => {
+    const { env, d1 } = createSqliteTrendEnv();
+    const window = queryWindow();
+    const insert = d1.database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, started_at, country,
+        device_type, browser
+      ) VALUES (?, 'site-1', ?, ?, ?, ?, ?, ?)
+    `);
+    const at = (minute: number) => Date.UTC(2026, 0, 1, 0, minute);
+
+    insert.run(
+      "alpha-first",
+      "alpha",
+      "alpha-session",
+      at(15),
+      "US",
+      "desktop",
+      "Chrome",
+    );
+    insert.run(
+      "alpha-last",
+      "alpha",
+      "alpha-session",
+      at(65),
+      "US",
+      "desktop",
+      "Firefox",
+    );
+    insert.run(
+      "bravo",
+      "bravo",
+      "bravo-session",
+      at(55),
+      "US",
+      "desktop",
+      "Chrome",
+    );
+    insert.run(
+      "charlie",
+      "charlie",
+      "charlie-session",
+      at(20),
+      "US",
+      "desktop",
+      "Safari",
+    );
+    insert.run(
+      "excluded-country",
+      "delta",
+      "delta-session",
+      at(30),
+      "CA",
+      "desktop",
+      "Edge",
+    );
+    insert.run(
+      "empty-visitor",
+      "",
+      "anonymous-session",
+      at(45),
+      "US",
+      "desktop",
+      "Opera",
+    );
+
+    try {
+      await expect(
+        queryShareTrendFromD1(
+          env,
+          "site-1",
+          window,
+          "hour",
+          filterFixture({ country: "US", clientDeviceType: "desktop" }),
+          2,
+          "TRIM(COALESCE(browser, ''))",
+          "browser",
+        ),
+      ).resolves.toEqual({
+        series: [
+          {
+            key: "firefox",
+            label: "Firefox",
+            views: 2,
+            visitors: 1,
+            sessions: 1,
+          },
+          {
+            key: "chrome",
+            label: "Chrome",
+            views: 1,
+            visitors: 1,
+            sessions: 1,
+          },
+          {
+            key: "other",
+            label: SHARE_TREND_OTHER_LABEL,
+            views: 1,
+            visitors: 1,
+            sessions: 1,
+            isOther: true,
+          },
+        ],
+        data: [
+          {
+            bucket: 0,
+            timestampMs: Date.UTC(2026, 0, 1, 0),
+            totalVisitors: 3,
+            visitorsBySeries: { firefox: 0, chrome: 2, other: 1 },
+          },
+          {
+            bucket: 1,
+            timestampMs: Date.UTC(2026, 0, 1, 1),
+            totalVisitors: 1,
+            visitorsBySeries: { firefox: 1, chrome: 0, other: 0 },
+          },
+        ],
+      });
+
+      expect(d1.calls).toHaveLength(1);
+      const plan = d1.database
+        .prepare(`EXPLAIN QUERY PLAN ${d1.calls[0].sql}`)
+        .all(...d1.calls[0].bindings) as Array<{ detail: string }>;
+      expect(
+        plan.some((row) =>
+          row.detail.includes("idx_visits_site_pk_started_at"),
+        ),
+      ).toBe(true);
+      expect(
+        plan.filter((row) => row.detail.includes("SEARCH visits USING INDEX")),
+      ).toHaveLength(1);
+      expect(d1.calls[0].sql).toContain("ranked_visits AS MATERIALIZED");
+      expect(d1.calls[0].sql).toContain("FIRST_VALUE(labelValue)");
+      expect(d1.calls[0].sql).not.toContain("visitor_latest AS");
+      expect(d1.calls[0].sql).not.toContain("assigned_visits AS");
+      expect(d1.calls[0].sql).not.toContain("bucket_visitor_latest AS");
+    } finally {
+      d1.close();
+    }
+  });
+
+  it("executes source and channel trends from one SQLite visit scan", async () => {
+    const { env, d1 } = createSqliteTrendEnv();
+    const window = queryWindow();
+    const insert = d1.database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, started_at,
+        referrer_host
+      ) VALUES (?, 'site-1', ?, ?, ?, ?)
+    `);
+    const at = (minute: number) => Date.UTC(2026, 0, 1, 0, minute);
+
+    insert.run(
+      "google-first",
+      "google-visitor",
+      "google-session",
+      at(15),
+      "www.google.com",
+    );
+    insert.run(
+      "google-last",
+      "google-visitor",
+      "google-session",
+      at(65),
+      "www.google.com",
+    );
+    insert.run(
+      "referral",
+      "referral-visitor",
+      "referral-session",
+      at(20),
+      "news.example.com",
+    );
+
+    try {
+      await expect(
+        queryReferrerAndChannelTrendFromD1(
+          env,
+          "site-1",
+          window,
+          "hour",
+          EMPTY_FILTER_DOCUMENT,
+          1,
+        ),
+      ).resolves.toEqual({
+        source: {
+          series: [
+            {
+              key: "www-google-com",
+              label: "www.google.com",
+              views: 2,
+              visitors: 1,
+              sessions: 1,
+            },
+            {
+              key: "other",
+              label: SHARE_TREND_OTHER_LABEL,
+              views: 1,
+              visitors: 1,
+              sessions: 1,
+              isOther: true,
+            },
+          ],
+          data: [
+            {
+              bucket: 0,
+              timestampMs: Date.UTC(2026, 0, 1, 0),
+              totalVisitors: 2,
+              visitorsBySeries: { "www-google-com": 1, other: 1 },
+            },
+            {
+              bucket: 1,
+              timestampMs: Date.UTC(2026, 0, 1, 1),
+              totalVisitors: 1,
+              visitorsBySeries: { "www-google-com": 1, other: 0 },
+            },
+          ],
+        },
+        channel: {
+          series: [
+            {
+              key: "organic-search",
+              label: "organic_search",
+              views: 2,
+              visitors: 1,
+              sessions: 1,
+            },
+            {
+              key: "other",
+              label: SHARE_TREND_OTHER_LABEL,
+              views: 1,
+              visitors: 1,
+              sessions: 1,
+              isOther: true,
+            },
+          ],
+          data: [
+            {
+              bucket: 0,
+              timestampMs: Date.UTC(2026, 0, 1, 0),
+              totalVisitors: 2,
+              visitorsBySeries: { "organic-search": 1, other: 1 },
+            },
+            {
+              bucket: 1,
+              timestampMs: Date.UTC(2026, 0, 1, 1),
+              totalVisitors: 1,
+              visitorsBySeries: { "organic-search": 1, other: 0 },
+            },
+          ],
+        },
+      });
+
+      expect(d1.calls).toHaveLength(1);
+      expect(d1.calls[0].bindings).toEqual([
+        "site-1",
+        window.startMs,
+        window.endExclusiveMs,
+        1,
+        1,
+      ]);
+      const plan = d1.database
+        .prepare(`EXPLAIN QUERY PLAN ${d1.calls[0].sql}`)
+        .all(...d1.calls[0].bindings) as Array<{ detail: string }>;
+      expect(
+        plan.filter((row) => row.detail.includes("SEARCH visits USING INDEX")),
+      ).toHaveLength(1);
+    } finally {
+      d1.close();
+    }
+  });
+
+  it("executes the consolidated client cross SQL against a SQLite fixture", async () => {
+    const { env, d1 } = createSqliteTrendEnv();
+    const window = queryWindow();
+    const insert = d1.database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, started_at, browser, device_type
+      ) VALUES (?, 'site-1', ?, ?, ?, ?, ?)
+    `);
+    const at = (minute: number) => Date.UTC(2026, 0, 1, 0, minute);
+
+    insert.run(
+      "chrome-desktop-1",
+      "chrome-1",
+      "session-1",
+      at(15),
+      "Chrome",
+      "desktop",
+    );
+    insert.run(
+      "chrome-desktop-2",
+      "chrome-2",
+      "session-2",
+      at(20),
+      "Chrome",
+      "desktop",
+    );
+    insert.run(
+      "chrome-mobile",
+      "chrome-3",
+      "session-3",
+      at(25),
+      "Chrome",
+      "mobile",
+    );
+    insert.run("edge-desktop", "edge", "session-4", at(30), "Edge", "desktop");
+    insert.run(
+      "safari-mobile",
+      "safari",
+      "session-5",
+      at(35),
+      "Safari",
+      "mobile",
+    );
+    insert.run(
+      "outside-window",
+      "outside",
+      "session-6",
+      at(5),
+      "Chrome",
+      "desktop",
+    );
+
+    try {
+      await expect(
+        queryCrossDimensionFromD1(
+          env,
+          "site-1",
+          window,
+          EMPTY_FILTER_DOCUMENT,
+          2,
+          1,
+          clientDimensionDefinition("browser"),
+          clientDimensionDefinition("deviceType"),
+        ),
+      ).resolves.toEqual({
+        columns: [
+          {
+            key: "desktop",
+            label: "desktop",
+            views: 3,
+            visitors: 3,
+            sessions: 3,
+          },
+          {
+            key: "other",
+            label: SHARE_TREND_OTHER_LABEL,
+            views: 2,
+            visitors: 2,
+            sessions: 2,
+            isOther: true,
+          },
+        ],
+        rows: [
+          {
+            key: "chrome",
+            label: "Chrome",
+            views: 3,
+            visitors: 3,
+            sessions: 3,
+            cells: [
+              {
+                key: "desktop",
+                label: "desktop",
+                views: 2,
+                visitors: 2,
+                sessions: 2,
+              },
+              {
+                key: "other",
+                label: SHARE_TREND_OTHER_LABEL,
+                views: 1,
+                visitors: 1,
+                sessions: 1,
+                isOther: true,
+              },
+            ],
+          },
+          {
+            key: "edge",
+            label: "Edge",
+            views: 1,
+            visitors: 1,
+            sessions: 1,
+            cells: [
+              {
+                key: "desktop",
+                label: "desktop",
+                views: 1,
+                visitors: 1,
+                sessions: 1,
+              },
+              {
+                key: "other",
+                label: SHARE_TREND_OTHER_LABEL,
+                views: 0,
+                visitors: 0,
+                sessions: 0,
+                isOther: true,
+              },
+            ],
+          },
+          {
+            key: "other",
+            label: SHARE_TREND_OTHER_LABEL,
+            views: 1,
+            visitors: 1,
+            sessions: 1,
+            isOther: true,
+            cells: [
+              {
+                key: "desktop",
+                label: "desktop",
+                views: 0,
+                visitors: 0,
+                sessions: 0,
+              },
+              {
+                key: "other",
+                label: SHARE_TREND_OTHER_LABEL,
+                views: 1,
+                visitors: 1,
+                sessions: 1,
+                isOther: true,
+              },
+            ],
+          },
+        ],
+        totalVisitors: 5,
+      });
+
+      expect(d1.calls).toHaveLength(1);
+      const plan = d1.database
+        .prepare(`EXPLAIN QUERY PLAN ${d1.calls[0].sql}`)
+        .all(...d1.calls[0].bindings) as Array<{ detail: string }>;
+      expect(
+        plan.filter((row) => row.detail.includes("SEARCH visits USING INDEX")),
+      ).toHaveLength(1);
+    } finally {
+      d1.close();
+    }
+  });
+
+  it("executes the consolidated browser cross SQL against a SQLite fixture", async () => {
+    const { env, d1 } = createSqliteTrendEnv();
+    const window = queryWindow();
+    const insert = d1.database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, started_at, browser, os
+      ) VALUES (?, 'site-1', ?, ?, ?, ?, ?)
+    `);
+    const at = (minute: number) => Date.UTC(2026, 0, 1, 0, minute);
+
+    insert.run(
+      "chrome-windows-1",
+      "chrome-1",
+      "session-1",
+      at(15),
+      "Chrome",
+      "Windows",
+    );
+    insert.run(
+      "chrome-windows-2",
+      "chrome-2",
+      "session-2",
+      at(20),
+      "Chrome",
+      "Windows",
+    );
+    insert.run(
+      "chrome-mac",
+      "chrome-3",
+      "session-3",
+      at(25),
+      "Chrome",
+      "macOS",
+    );
+    insert.run("edge-windows", "edge", "session-4", at(30), "Edge", "Windows");
+    insert.run("safari-mac", "safari", "session-5", at(35), "Safari", "macOS");
+    insert.run(
+      "outside-window",
+      "outside",
+      "session-6",
+      at(5),
+      "Chrome",
+      "Windows",
+    );
+
+    try {
+      const result = await queryBrowserCrossDimensionFromD1(
+        env,
+        "site-1",
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        2,
+        1,
+        "TRIM(COALESCE(os, ''))",
+        "os",
+      );
+
+      expect(result.columns).toEqual([
+        {
+          key: "windows",
+          label: "Windows",
+          views: 3,
+          visitors: 3,
+          sessions: 3,
+        },
+        {
+          key: "other",
+          label: SHARE_TREND_OTHER_LABEL,
+          views: 2,
+          visitors: 2,
+          sessions: 2,
+          isOther: true,
+        },
+      ]);
+      expect(result.rows).toMatchObject([
+        {
+          key: "chrome",
+          views: 3,
+          visitors: 3,
+          cells: [
+            { key: "windows", views: 2, visitors: 2 },
+            { key: "other", views: 1, visitors: 1, isOther: true },
+          ],
+        },
+        {
+          key: "edge",
+          views: 1,
+          visitors: 1,
+          cells: [
+            { key: "windows", views: 1, visitors: 1 },
+            { key: "other", views: 0, visitors: 0, isOther: true },
+          ],
+        },
+        {
+          key: "other",
+          views: 1,
+          visitors: 1,
+          isOther: true,
+          cells: [
+            { key: "windows", views: 0, visitors: 0 },
+            { key: "other", views: 1, visitors: 1, isOther: true },
+          ],
+        },
+      ]);
+      expect(result.totalVisitors).toBe(5);
+      expect(d1.calls).toHaveLength(1);
+      const plan = d1.database
+        .prepare(`EXPLAIN QUERY PLAN ${d1.calls[0].sql}`)
+        .all(...d1.calls[0].bindings) as Array<{ detail: string }>;
+      expect(
+        plan.filter((row) => row.detail.includes("SEARCH visits USING INDEX")),
+      ).toHaveLength(1);
+    } finally {
+      d1.close();
+    }
+  });
+
+  it("materializes shared radar sources against a SQLite fixture", async () => {
+    const { env, d1 } = createSqliteTrendEnv();
+    const window = queryWindow();
+    const insert = d1.database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, started_at, browser,
+        referrer_host, duration_ms
+      ) VALUES (?, 'site-1', ?, ?, ?, ?, ?, ?)
+    `);
+    const at = (minute: number) => Date.UTC(2026, 0, 1, 0, minute);
+
+    insert.run(
+      "chrome-first",
+      "chrome-a",
+      "session-1",
+      at(15),
+      "Chrome",
+      "news.example",
+      100,
+    );
+    insert.run(
+      "chrome-last",
+      "chrome-a",
+      "session-1",
+      at(20),
+      "Chrome",
+      "news.example",
+      200,
+    );
+    insert.run(
+      "chrome-bounce",
+      "chrome-b",
+      "session-2",
+      at(25),
+      "Chrome",
+      "news.example",
+      400,
+    );
+    insert.run("firefox", "firefox", "session-3", at(30), "Firefox", "", 50);
+    insert.run(
+      "outside-window",
+      "outside",
+      "session-4",
+      at(5),
+      "Chrome",
+      "news.example",
+      1,
+    );
+
+    try {
+      await expect(
+        queryBrowserRadarFromD1(env, "site-1", window, EMPTY_FILTER_DOCUMENT),
+      ).resolves.toEqual([
+        {
+          browser: "Chrome",
+          sessions: 2,
+          bounces: 1,
+          avgDurationMs: 350,
+          avgDepth: 1.5,
+          visitors: 2,
+          returningVisitors: 0,
+          avgFrequency: 1,
+          trafficShare: 2 / 3,
+        },
+        {
+          browser: "Firefox",
+          sessions: 1,
+          bounces: 1,
+          avgDurationMs: 50,
+          avgDepth: 1,
+          visitors: 1,
+          returningVisitors: 0,
+          avgFrequency: 1,
+          trafficShare: 1 / 3,
+        },
+      ]);
+      await expect(
+        queryReferrerRadarFromD1(
+          env,
+          "site-1",
+          window,
+          EMPTY_FILTER_DOCUMENT,
+          2,
+        ),
+      ).resolves.toEqual([
+        {
+          referrer: "news.example",
+          sessions: 2,
+          bounces: 1,
+          avgDurationMs: 350,
+          avgDepth: 1.5,
+          visitors: 2,
+          returningVisitors: 0,
+          avgFrequency: 1,
+          trafficShare: 2 / 3,
+        },
+        {
+          referrer: "",
+          sessions: 1,
+          bounces: 1,
+          avgDurationMs: 50,
+          avgDepth: 1,
+          visitors: 1,
+          returningVisitors: 0,
+          avgFrequency: 1,
+          trafficShare: 1 / 3,
+        },
+      ]);
+
+      expect(d1.calls).toHaveLength(2);
+      for (const call of d1.calls) {
+        expect(call.sql).toContain("filtered_visits AS MATERIALIZED");
+        const plan = d1.database
+          .prepare(`EXPLAIN QUERY PLAN ${call.sql}`)
+          .all(...call.bindings) as Array<{ detail: string }>;
+        expect(
+          plan.filter((row) =>
+            row.detail.includes("SEARCH visits USING INDEX"),
+          ),
+        ).toHaveLength(1);
+      }
+    } finally {
+      d1.close();
+    }
+  });
+
   it("maps browser version breakdown rows and captures SQL bindings", async () => {
     const siteId = "site-1";
     const window = queryWindow();
     const { env, calls } = createD1Env([
       [
-        { browser: " Chrome ", views: "50", visitors: "25", sessions: "20" },
-        { browser: "Safari", views: 10, visitors: 5, sessions: 4 },
-        { browser: "NoVisitors", views: 99, visitors: 0, sessions: 0 },
-      ],
-      [
         {
           browser: "Chrome",
+          views: 50,
+          visitors: 25,
+          sessions: 20,
           version: "124",
-          views: 30,
-          visitors: 20,
-          sessions: 18,
+          versionViews: 30,
+          versionVisitors: 20,
+          versionSessions: 18,
         },
         {
           browser: "Chrome",
+          views: 50,
+          visitors: 25,
+          sessions: 20,
           version: BROWSER_VERSION_UNKNOWN_TOKEN,
-          views: 8,
-          visitors: 3,
-          sessions: 2,
+          versionViews: 8,
+          versionVisitors: 3,
+          versionSessions: 2,
         },
         {
           browser: "Chrome",
+          views: 50,
+          visitors: 25,
+          sessions: 20,
           version: "123",
-          views: 4,
-          visitors: 2,
-          sessions: 2,
+          versionViews: 4,
+          versionVisitors: 2,
+          versionSessions: 2,
         },
         {
           browser: "Chrome",
+          views: 50,
+          visitors: 25,
+          sessions: 20,
           version: "122",
-          views: 1,
-          visitors: 1,
-          sessions: 1,
+          versionViews: 1,
+          versionVisitors: 1,
+          versionSessions: 1,
         },
         {
           browser: "Safari",
-          version: "17",
-          views: 9,
+          views: 10,
           visitors: 5,
           sessions: 4,
+          version: "17",
+          versionViews: 9,
+          versionVisitors: 5,
+          versionSessions: 4,
         },
-        { browser: "", version: "1", views: 1, visitors: 1, sessions: 1 },
+        {
+          browser: "NoVisitors",
+          views: 99,
+          visitors: 0,
+          sessions: 0,
+          version: "",
+          versionViews: 0,
+          versionVisitors: 0,
+          versionSessions: 0,
+        },
       ],
     ]);
 
@@ -142,7 +987,7 @@ describe("edge query technology D1 mapping", () => {
       env,
       siteId,
       window,
-      {},
+      EMPTY_FILTER_DOCUMENT,
       2,
       2,
     );
@@ -184,26 +1029,20 @@ describe("edge query technology D1 mapping", () => {
       },
     ]);
 
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(1);
     expect(calls[0].sql).toContain("WHERE browser != ''");
-    expect(calls[0].sql).toContain("LIMIT ?");
+    expect(calls[0].sql).toContain("browserRank <= ?");
     expect(calls[0].bindings).toEqual([...visitBindings(siteId, window), 2]);
-    expect(calls[1].sql).toContain("browser IN (?, ?)");
-    expect(calls[1].sql).toContain(BROWSER_VERSION_UNKNOWN_TOKEN);
-    expect(calls[1].bindings).toEqual([
-      ...visitBindings(siteId, window),
-      "Chrome",
-      "Safari",
-    ]);
+    expect(calls[0].sql).toContain(BROWSER_VERSION_UNKNOWN_TOKEN);
   });
 
   it("maps shared trend rows with top labels, other bucket, filters, and time buckets", async () => {
     const siteId = "site-1";
     const window = queryWindow();
-    const filters: DashboardFilters = {
+    const filters: FilterDocument = filterFixture({
       country: "US",
       clientDeviceType: "desktop",
-    };
+    });
     const { env, calls } = createD1Env([
       [
         { label: "Chrome", views: "12", visitors: "7", sessions: "5" },
@@ -273,32 +1112,19 @@ describe("edge query technology D1 mapping", () => {
       },
     ]);
 
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(1);
     expect(calls[0].sql).toContain("TRIM(COALESCE(browser, '')) AS labelValue");
-    expect(calls[0].sql).toContain("LOWER(TRIM(COALESCE(country, ''))) = ?");
+    expect(calls[0].sql).toContain(
+      "LOWER(TRIM(COALESCE(visit_source.country, ''))) = ?",
+    );
     expect(calls[0].bindings).toEqual([
       ...visitBindings(siteId, window),
-      "us",
       "desktop",
+      "us",
       12,
     ]);
-    expect(calls[1].sql).toContain(
-      "assignedLabel IN (?, ?) THEN assignedLabel",
-    );
-    expect(calls[1].bindings).toEqual([
-      ...visitBindings(siteId, window),
-      "us",
-      "desktop",
-      "Chrome",
-      "Firefox",
-    ]);
-    expect(calls[2].sql).toContain("CASE WHEN started_at >=");
-    expect(calls[2].bindings).toEqual([
-      ...visitBindings(siteId, window),
-      "us",
-      "desktop",
-      "Chrome",
-      "Firefox",
-    ]);
+    expect(calls[0].sql).toContain("top_rows");
+    expect(calls[0].sql).toContain("bucket_rows");
+    expect(calls[0].sql).toContain("tagged_rows");
   });
 });

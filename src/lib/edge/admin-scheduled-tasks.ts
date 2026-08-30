@@ -9,7 +9,8 @@ import {
   type ScheduledTaskSummary,
 } from "@/lib/scheduled-tasks";
 
-import { forb, jsonResponseFor, na } from "./admin-response";
+import { paginationOffset } from "./analytics/providers/d1/internal/core-parsers";
+import { bad as badRequest, forb, jsonResponseFor, na } from "./admin-response";
 import { SCHEDULED_TASKS } from "./scheduled-task-registry";
 import type { Env } from "./types";
 
@@ -63,6 +64,7 @@ interface LogRow {
   message: string;
   dataJson: string;
   createdAt: number;
+  runStartedAt?: number;
 }
 
 interface RunGroupRow {
@@ -314,14 +316,143 @@ function runGroupSelectSql(whereClause: string): string {
     )
     SELECT
       normalized.*,
-      (
-        SELECT COUNT(*)
-        FROM scheduled_task_run_logs logs
-        INNER JOIN scheduled_task_runs runs
-          ON runs.id = logs.run_id
-        WHERE ${RUNS_GROUP_KEY_SQL} = normalized.id
-      ) AS logsCount
+      0 AS logsCount
     FROM normalized
+  `;
+}
+
+const MAX_LOG_RUN_IDS_PER_QUERY = 100;
+
+async function countRunLogs(env: Env, runIds: string[]): Promise<number> {
+  let total = 0;
+  for (
+    let offset = 0;
+    offset < runIds.length;
+    offset += MAX_LOG_RUN_IDS_PER_QUERY
+  ) {
+    const chunk = runIds.slice(offset, offset + MAX_LOG_RUN_IDS_PER_QUERY);
+    const row = await env.DB.prepare(
+      `
+        SELECT COUNT(*) AS count
+        FROM scheduled_task_run_logs
+        WHERE run_id IN (${chunk.map(() => "?").join(", ")})
+      `,
+    )
+      .bind(...chunk)
+      .first<{ count: number }>();
+    total += Number(row?.count ?? 0);
+  }
+  return total;
+}
+
+async function loadRunLogs(env: Env, runIds: string[]): Promise<LogRow[]> {
+  const rows: LogRow[] = [];
+  for (
+    let offset = 0;
+    offset < runIds.length;
+    offset += MAX_LOG_RUN_IDS_PER_QUERY
+  ) {
+    const chunk = runIds.slice(offset, offset + MAX_LOG_RUN_IDS_PER_QUERY);
+    const result = await env.DB.prepare(
+      `
+        SELECT
+          logs.id,
+          logs.run_id AS runId,
+          logs.task_key AS taskKey,
+          logs.sequence,
+          logs.level,
+          logs.event,
+          logs.message,
+          logs.data_json AS dataJson,
+          logs.created_at_ms AS createdAt,
+          runs.started_at_ms AS runStartedAt
+        FROM scheduled_task_run_logs logs
+        INNER JOIN scheduled_task_runs runs ON runs.id = logs.run_id
+        WHERE logs.run_id IN (${chunk.map(() => "?").join(", ")})
+        ORDER BY runs.started_at_ms ASC, logs.sequence ASC
+      `,
+    )
+      .bind(...chunk)
+      .all<LogRow>();
+    rows.push(...result.results);
+  }
+  return rows
+    .sort(
+      (left, right) =>
+        Number(left.runStartedAt ?? 0) - Number(right.runStartedAt ?? 0) ||
+        Number(left.sequence ?? 0) - Number(right.sequence ?? 0),
+    )
+    .slice(0, 1000);
+}
+
+function runGroupPageSelectSql(whereClause: string): string {
+  return `
+    WITH grouped AS (
+      SELECT
+        ${RUN_GROUP_KEY_SQL} AS id,
+        MAX(trigger_type) AS triggerType,
+        MIN(scheduled_at_ms) AS scheduledAt,
+        MIN(started_at_ms) AS startedAt,
+        CASE
+          WHEN SUM(CASE WHEN finished_at_ms IS NULL THEN 1 ELSE 0 END) > 0
+            THEN NULL
+          ELSE MAX(finished_at_ms)
+        END AS finishedAt,
+        COUNT(*) AS taskCount,
+        SUM(CASE WHEN status IN ('success', 'skipped') THEN 1 ELSE 0 END) AS successCount,
+        SUM(CASE WHEN status = 'partial' THEN 1 ELSE 0 END) AS partialCount,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failedCount,
+        SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skippedCount,
+        SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS runningCount
+      FROM scheduled_task_runs
+      ${whereClause}
+      GROUP BY ${RUN_GROUP_KEY_SQL}
+    ),
+    normalized AS (
+      SELECT
+        *,
+        CASE
+          WHEN failedCount > 0 THEN 'failed'
+          WHEN runningCount > 0 THEN 'running'
+          WHEN partialCount > 0 THEN 'partial'
+          ELSE 'success'
+        END AS status
+      FROM grouped
+    ),
+    filtered_groups AS (
+      SELECT *
+      FROM normalized
+      WHERE (? = '' OR status = ?)
+    ),
+    page_groups AS (
+      SELECT *
+      FROM filtered_groups
+      ORDER BY startedAt DESC, id ASC
+      LIMIT ? OFFSET ?
+    ),
+    page_runs AS (
+      SELECT
+        runs.id,
+        ${RUNS_GROUP_KEY_SQL} AS groupId
+      FROM scheduled_task_runs runs
+      INNER JOIN page_groups pg
+        ON pg.id = ${RUNS_GROUP_KEY_SQL}
+    ),
+    page_log_counts AS (
+      SELECT
+        pr.groupId,
+        COUNT(*) AS logsCount
+      FROM page_runs pr
+      INNER JOIN scheduled_task_run_logs logs
+        ON logs.run_id = pr.id
+      GROUP BY pr.groupId
+    )
+    SELECT
+      pg.*,
+      COALESCE(plc.logsCount, 0) AS logsCount
+    FROM page_groups pg
+    LEFT JOIN page_log_counts plc ON plc.groupId = pg.id
+    ORDER BY pg.startedAt DESC, pg.id ASC
   `;
 }
 
@@ -376,7 +507,14 @@ export async function handleScheduledTasksAdmin(
   const staleBefore = generatedAt - STALE_RUNNING_MS;
   const page = parseIntegerParam(url, "page", 1, 1, 10_000);
   const pageSize = parseRunPageSize(url);
-  const offset = (page - 1) * pageSize;
+  const offset = paginationOffset(page, pageSize);
+  if (offset === null) {
+    return badRequest(
+      "Pagination depth exceeds 20,000 rows; narrow the time range or filters",
+      undefined,
+      req,
+    );
+  }
   const status = (url.searchParams.get("status") || "").trim();
   const runId = (
     url.searchParams.get("runId") ||
@@ -463,12 +601,7 @@ export async function handleScheduledTasksAdmin(
     )
       .bind(since30d)
       .all<RunRow>(),
-    env.DB.prepare(
-      `${runGroupSelectSql(`WHERE ${runFilters.join(" AND ")}`)}
-       WHERE (? = '' OR status = ?)
-       ORDER BY startedAt DESC
-       LIMIT ? OFFSET ?`,
-    )
+    env.DB.prepare(runGroupPageSelectSql(`WHERE ${runFilters.join(" AND ")}`))
       .bind(...runBindings, statusFilter, statusFilter, pageSize + 1, offset)
       .all<RunGroupRow>(),
   ]);
@@ -501,29 +634,30 @@ export async function handleScheduledTasksAdmin(
   );
   let selectedRun = runId ? null : runs.length > 0 ? (runs[0] ?? null) : null;
   let selectedTaskRuns: ScheduledTaskRun[] = [];
-  if (selectedRun || runId) {
-    const selectedGroupId = runId || selectedRun?.id || "";
+  if (selectedRun && !runId) {
+    selectedTaskRuns = selectedRun.runs;
+  } else if (runId) {
+    const selectedGroupId = runId;
     let selectedRow = await env.DB.prepare(
-      `${runGroupSelectSql("WHERE 1 = 1")}
-       WHERE id = ?
+      `${runGroupSelectSql(`WHERE ${RUN_GROUP_KEY_SQL} = ?`)}
        LIMIT 1`,
     )
       .bind(selectedGroupId)
       .first<RunGroupRow>();
-    if (!selectedRow && runId) {
-      selectedRow = await env.DB.prepare(
-        `${runGroupSelectSql(
-          `WHERE ${RUN_GROUP_KEY_SQL} = (
-            SELECT ${RUN_GROUP_KEY_SQL}
-            FROM scheduled_task_runs
-            WHERE id = ?
-            LIMIT 1
-          )`,
-        )}
-         LIMIT 1`,
+    if (!selectedRow) {
+      const directRun = await env.DB.prepare(
+        `SELECT ${RUN_GROUP_KEY_SQL} AS id FROM scheduled_task_runs WHERE id = ? LIMIT 1`,
       )
         .bind(runId)
-        .first<RunGroupRow>();
+        .first<{ id: string }>();
+      if (directRun?.id) {
+        selectedRow = await env.DB.prepare(
+          `${runGroupSelectSql(`WHERE ${RUN_GROUP_KEY_SQL} = ?`)}
+           LIMIT 1`,
+        )
+          .bind(String(directRun.id))
+          .first<RunGroupRow>();
+      }
     }
     const detailGroupId = String(selectedRow?.id ?? selectedGroupId);
     selectedTaskRuns = selectedRow
@@ -536,34 +670,24 @@ export async function handleScheduledTasksAdmin(
             .all<RunRow>()
         ).results.map(mapRun)
       : [];
-    selectedRun = selectedRow
-      ? mapRunGroup(selectedRow, selectedTaskRuns)
-      : null;
+    if (selectedRow) {
+      selectedRow.logsCount = await countRunLogs(
+        env,
+        selectedTaskRuns.map((run) => run.id),
+      );
+      selectedRun = mapRunGroup(selectedRow, selectedTaskRuns);
+    } else {
+      selectedRun = null;
+    }
   }
 
   const logRows = selectedRun
-    ? await env.DB.prepare(
-        `
-          SELECT
-            logs.id,
-            logs.run_id AS runId,
-            logs.task_key AS taskKey,
-            logs.sequence,
-            logs.level,
-            logs.event,
-            logs.message,
-            logs.data_json AS dataJson,
-            logs.created_at_ms AS createdAt
-          FROM scheduled_task_run_logs logs
-          INNER JOIN scheduled_task_runs runs
-            ON runs.id = logs.run_id
-          WHERE ${RUNS_GROUP_KEY_SQL} = ?
-          ORDER BY runs.started_at_ms ASC, logs.sequence ASC
-          LIMIT 1000
-        `,
-      )
-        .bind(selectedRun.id)
-        .all<LogRow>()
+    ? {
+        results: await loadRunLogs(
+          env,
+          selectedTaskRuns.map((run) => run.id),
+        ),
+      }
     : { results: [] as LogRow[] };
 
   const statsByTask = new Map(

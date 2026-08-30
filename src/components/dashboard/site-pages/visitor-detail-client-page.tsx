@@ -1,16 +1,12 @@
-"use client";
-
 import {
   type CSSProperties,
+  memo,
   type ReactNode,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useTheme } from "next-themes";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
@@ -21,16 +17,14 @@ import {
   RiPulseLine,
   RiTimeLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import {
   AsyncDimensionBreakdownCard,
   type AsyncDimensionBreakdownRow,
 } from "@/components/dashboard/async-dimension-breakdown-card";
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
-import {
-  JourneyDetailLoadingState,
-  JourneyDetailStateSwitch,
-} from "@/components/dashboard/journey-detail-state";
+import { JourneyDetailStateSwitch } from "@/components/dashboard/journey-detail-state";
 import {
   BrowserMeta,
   DeviceMeta,
@@ -57,6 +51,8 @@ import {
   useDetailDrawerClose,
   useDetailDrawerReady,
 } from "@/components/dashboard/site-pages/detail-drawer";
+import { EventDetailDrawer } from "@/components/dashboard/site-pages/event-detail-drawer";
+import { NESTED_DETAIL_DRAWER_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -65,6 +61,9 @@ import type {
   VisitorDetailMapTheme,
   VisitorLocationPoint,
 } from "@/components/dashboard/site-pages/visitor-detail-map-stage";
+import { useTheme } from "@/components/theme-provider";
+import { AutoResizer } from "@/components/ui/auto-resizer";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   Card,
   CardContent,
@@ -73,17 +72,23 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Clickable } from "@/components/ui/clickable";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
+  fetchEventRecordDetail,
+  fetchJourneyEventDetail,
   fetchVisitorDetail,
   type OverviewTabRows,
 } from "@/lib/dashboard/client-data";
+import { EMPTY_DASHBOARD_FILTER_DOCUMENT } from "@/lib/dashboard/filter-state";
 import {
   durationFormat,
   intlLocale,
   numberFormat,
   percentFormat,
 } from "@/lib/dashboard/format";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import { zonedParts } from "@/lib/dashboard/time-zone";
+import dynamic from "@/lib/dynamic";
 import type {
   JourneyEvent,
   JourneyPerformanceMetricSummary,
@@ -100,6 +105,7 @@ import {
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface VisitorDetailClientPageProps {
@@ -117,7 +123,53 @@ type Labels = AppMessages["visitorDetail"];
 type VisitorPerformancePanelKey = PerformanceMetricKey | "score";
 type VisitorPerformanceStatus = "great" | "needs-improvement" | "poor" | "none";
 
-const VISITOR_DETAIL_OVERVIEW_FILTERS = {};
+function createVisitorDetailPlaceholder(visitorId: string): VisitorDetail {
+  return {
+    visitor: {
+      visitorId,
+      firstSeenAt: 0,
+      lastSeenAt: 0,
+      views: 0,
+      sessions: 0,
+      events: 0,
+      country: "",
+      region: "",
+      regionCode: "",
+      city: "",
+      referrerHost: "",
+      referrerUrl: "",
+      browser: "",
+      browserVersion: "",
+      os: "",
+      osVersion: "",
+      deviceType: "",
+      screenWidth: null,
+      screenHeight: null,
+    },
+    metrics: {
+      totalEvents: 0,
+      sessions: 0,
+      views: 0,
+      avgEventsPerSession: 0,
+      bounceRate: 0,
+      avgDurationMs: 0,
+      p90DurationMs: 0,
+      firstSeenAt: 0,
+      lastSeenAt: 0,
+      daysActive: 0,
+      conversionEvents: 0,
+      avgTimeBetweenSessionsMs: 0,
+    },
+    sessions: [],
+    events: [],
+    visitedPages: [],
+    eventDistribution: [],
+    activity: [],
+    performance: EMPTY_VISITOR_PERFORMANCE,
+  };
+}
+
+const VISITOR_DETAIL_OVERVIEW_FILTERS = EMPTY_DASHBOARD_FILTER_DOCUMENT;
 const VISITOR_OVERVIEW_PAGE_CARD_TABS = ["path", "title"] as const;
 const VISITOR_ACTIVITY_DAYS = 365;
 const VISITOR_SESSION_SORT: SessionSortState = {
@@ -178,6 +230,13 @@ const EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY: JourneyPerformanceMetricSummary 
     max: null,
     samples: 0,
   };
+const EMPTY_VISITOR_PERFORMANCE: JourneyPerformanceSummary = {
+  ttfb: EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY,
+  fcp: EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY,
+  lcp: EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY,
+  cls: EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY,
+  inp: EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY,
+};
 const EMPTY_VISIT_PERFORMANCE: JourneyEvent["performance"] = {
   ttfb: null,
   fcp: null,
@@ -318,11 +377,13 @@ function VisitorPerformanceCell({
   value,
   status,
   details,
+  loading = false,
 }: {
   label: string;
   value: string;
   status: VisitorPerformanceStatus;
   details: string[];
+  loading?: boolean;
 }) {
   const statusStyle = VISITOR_PERFORMANCE_STATUS_STYLE[status];
   const StatusIcon = statusStyle.icon;
@@ -333,25 +394,78 @@ function VisitorPerformanceCell({
         <p className="min-w-0 truncate text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
           {label}
         </p>
-        <span
-          className={cn(
-            "inline-flex size-7 shrink-0 items-center justify-center rounded-full",
-            statusStyle.softClassName,
-          )}
+        <AutoTransition
+          initial={false}
+          transitionKey={loading ? "loading" : "ready"}
+          duration={0.18}
+          type="fade"
+          presenceMode="wait"
+          className="size-7 shrink-0"
         >
-          <StatusIcon className="size-3.5" />
-        </span>
+          {loading ? (
+            <Skeleton key="loading" className="size-7 rounded-full" />
+          ) : (
+            <span
+              key="ready"
+              className={cn(
+                "inline-flex size-7 items-center justify-center rounded-full",
+                statusStyle.softClassName,
+              )}
+            >
+              <StatusIcon className="size-3.5" />
+            </span>
+          )}
+        </AutoTransition>
       </div>
-      <p className="mt-3 min-w-0 truncate font-mono text-xl font-semibold leading-7 text-foreground">
-        {value}
-      </p>
-      <div className="mt-3 flex min-w-0 flex-col gap-1 text-[11px] leading-[14px] text-muted-foreground">
-        {details.map((detail) => (
-          <span key={detail} className="min-w-0 truncate">
-            {detail}
-          </span>
-        ))}
-      </div>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : "ready"}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+        className="mt-3 min-h-7"
+      >
+        {loading ? (
+          <Skeleton key="loading" className="h-7 w-20" />
+        ) : (
+          <p
+            key="ready"
+            className="min-w-0 truncate font-mono text-xl font-semibold leading-7 text-foreground"
+          >
+            {value}
+          </p>
+        )}
+      </AutoTransition>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : "ready"}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+        className="mt-3 min-h-8"
+      >
+        {loading ? (
+          <div key="loading" className="flex min-w-0 flex-col gap-1">
+            {details.map((detail, index) => (
+              <Skeleton
+                key={`${detail}-${index}`}
+                className={cn("h-[14px]", index === 0 ? "w-36" : "w-24")}
+              />
+            ))}
+          </div>
+        ) : (
+          <div
+            key="ready"
+            className="flex min-w-0 flex-col gap-1 text-[11px] leading-[14px] text-muted-foreground"
+          >
+            {details.map((detail) => (
+              <span key={detail} className="min-w-0 truncate">
+                {detail}
+              </span>
+            ))}
+          </div>
+        )}
+      </AutoTransition>
     </div>
   );
 }
@@ -362,12 +476,14 @@ function VisitorPerformanceMetricCell({
   labels,
   metric,
   summary,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   metric: PerformanceMetricKey;
   summary: JourneyPerformanceMetricSummary;
+  loading?: boolean;
 }) {
   const value = summary.p75;
   const status = visitorMetricStatus(metric, value);
@@ -384,23 +500,26 @@ function VisitorPerformanceMetricCell({
         metric,
         summary,
       )}
+      loading={loading}
     />
   );
 }
 
-function VisitorPerformancePanel({
+const VisitorPerformancePanel = memo(function VisitorPerformancePanel({
   locale,
   messages,
   labels,
   performance,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   performance: JourneyPerformanceSummary | null | undefined;
+  loading?: boolean;
 }) {
   const hasSamples = hasVisitorPerformanceSamples(performance);
-  if (!hasSamples) return null;
+  if (!hasSamples && !loading) return null;
 
   const score = visitorPerformanceScore(performance);
   const samples = visitorPerformanceSamples(performance);
@@ -424,8 +543,25 @@ function VisitorPerformancePanel({
               statusStyle.softClassName,
             )}
           >
-            <StatusIcon className="size-3.5" />
-            <span>{visitorPerformanceStatusLabel(messages, scoreStatus)}</span>
+            <AutoTransition
+              initial={false}
+              transitionKey={loading ? "loading" : "ready"}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              className="flex h-4 items-center"
+            >
+              {loading ? (
+                <Skeleton key="loading" className="h-4 w-24 rounded-full" />
+              ) : (
+                <span key="ready" className="inline-flex items-center gap-2">
+                  <StatusIcon className="size-3.5" />
+                  <span>
+                    {visitorPerformanceStatusLabel(messages, scoreStatus)}
+                  </span>
+                </span>
+              )}
+            </AutoTransition>
           </div>
         </div>
       </CardHeader>
@@ -441,6 +577,7 @@ function VisitorPerformancePanel({
             )}
             status={scoreStatus}
             details={visitorScoreDetailRows(locale, messages, labels, samples)}
+            loading={loading}
           />
           {VISITOR_PERFORMANCE_METRICS.map((metric) => (
             <VisitorPerformanceMetricCell
@@ -453,42 +590,69 @@ function VisitorPerformancePanel({
                 performance?.[metric] ??
                 EMPTY_VISITOR_PERFORMANCE_METRIC_SUMMARY
               }
+              loading={loading}
             />
           ))}
         </div>
       </CardContent>
     </Card>
   );
-}
+});
 
 function SummaryGridItem({
   label,
   value,
   mono = false,
   prominent = false,
+  loading = false,
   className,
 }: {
   label: string;
   value: ReactNode;
   mono?: boolean;
   prominent?: boolean;
+  loading?: boolean;
   className?: string;
 }) {
+  const valueClassName = prominent
+    ? "h-7 text-xl font-semibold leading-7"
+    : "h-5 text-xs leading-5";
+
   return (
     <div className={cn("min-w-0 bg-card p-4", className)}>
       <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </p>
-      <div
-        className={cn(
-          "mt-2 min-w-0 text-foreground [overflow-wrap:anywhere]",
-          mono && "font-mono",
-          prominent
-            ? "text-xl font-semibold leading-tight"
-            : "text-xs leading-relaxed",
-        )}
-      >
-        {value}
+      <div className="mt-2 min-w-0">
+        <AutoTransition
+          initial={false}
+          transitionKey={loading ? "loading" : "ready"}
+          duration={0.18}
+          type="fade"
+          presenceMode="wait"
+          className={cn("min-w-0 overflow-hidden", valueClassName)}
+        >
+          {loading ? (
+            <Skeleton
+              key="loading"
+              className={cn(
+                valueClassName,
+                prominent ? "w-20" : "w-[min(18rem,88%)]",
+              )}
+            />
+          ) : (
+            <div
+              key="ready"
+              className={cn(
+                "min-w-0 overflow-hidden text-foreground [overflow-wrap:anywhere]",
+                mono && "font-mono",
+                valueClassName,
+              )}
+            >
+              {value}
+            </div>
+          )}
+        </AutoTransition>
       </div>
     </div>
   );
@@ -922,7 +1086,7 @@ function DetailMapPlaceholder() {
   );
 }
 
-function VisitorMapHero({
+const VisitorMapHero = memo(function VisitorMapHero({
   locale,
   labels,
   visitor,
@@ -930,6 +1094,7 @@ function VisitorMapHero({
   sessions,
   backHref,
   onBack,
+  loading = false,
 }: {
   locale: Locale;
   labels: Labels;
@@ -938,6 +1103,7 @@ function VisitorMapHero({
   sessions: JourneySession[];
   backHref: string;
   onBack?: () => void;
+  loading?: boolean;
 }) {
   const modalReady = useDetailDrawerReady();
   const { resolvedTheme } = useTheme();
@@ -950,8 +1116,12 @@ function VisitorMapHero({
 
   return (
     <div className="relative h-[17rem] overflow-hidden sm:h-[19rem]">
-      {modalReady ? (
-        <VisitorDetailMapStage theme={effectiveTheme} points={points} />
+      {modalReady && !loading ? (
+        <VisitorDetailMapStage
+          locale={locale}
+          theme={effectiveTheme}
+          points={points}
+        />
       ) : (
         <DetailMapPlaceholder />
       )}
@@ -987,34 +1157,55 @@ function VisitorMapHero({
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-4 z-10 flex min-w-0 max-w-[calc(100%-2rem)] items-center gap-3 sm:bottom-5 sm:left-5">
-        <VisitorAvatar seed={visitor.visitorId} className="size-12" />
-        <div className="min-w-0">
-          <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
-            {labels.anonymous}
-          </h1>
-          <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
-            {labels.lastSeen}:{" "}
-            {formatRelativeTime(locale, metrics.lastSeenAt, Date.now())}
-          </p>
-        </div>
-      </div>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : "ready"}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+        className="absolute bottom-4 left-4 z-10 min-w-0 max-w-[calc(100%-2rem)] sm:bottom-5 sm:left-5"
+      >
+        {loading ? (
+          <div key="loading" className="flex min-w-0 items-center gap-3">
+            <Skeleton className="size-12 shrink-0 rounded-full bg-muted/80" />
+            <div className="min-w-0 space-y-2">
+              <Skeleton className="h-8 w-36 max-w-[64vw] bg-muted/80" />
+              <Skeleton className="h-3 w-56 max-w-[72vw] bg-muted/80" />
+            </div>
+          </div>
+        ) : (
+          <div key="ready" className="flex min-w-0 items-center gap-3">
+            <VisitorAvatar seed={visitor.visitorId} className="size-12" />
+            <div className="min-w-0">
+              <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight text-foreground">
+                {labels.anonymous}
+              </h1>
+              <p className="mt-1 truncate font-mono text-[11px] text-foreground/70">
+                {labels.lastSeen}:{" "}
+                {formatRelativeTime(locale, metrics.lastSeenAt, Date.now())}
+              </p>
+            </div>
+          </div>
+        )}
+      </AutoTransition>
     </div>
   );
-}
+});
 
-function VisitorMetaPanel({
+const VisitorMetaPanel = memo(function VisitorMetaPanel({
   locale,
   messages,
   labels,
   detail,
   timeZone,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
   labels: Labels;
   detail: VisitorDetail;
   timeZone: string;
+  loading?: boolean;
 }) {
   const { visitor, metrics } = detail;
   const totalDurationMs = detail.sessions.reduce(
@@ -1032,52 +1223,61 @@ function VisitorMetaPanel({
             label={labels.totalDuration}
             prominent
             mono
+            loading={loading}
             value={durationFormat(locale, totalDurationMs)}
           />
           <SummaryGridItem
             label={labels.views}
             prominent
             mono
+            loading={loading}
             value={numberFormat(locale, metrics.views)}
           />
           <SummaryGridItem
             label={labels.events}
             prominent
             mono
+            loading={loading}
             value={numberFormat(locale, metrics.totalEvents)}
           />
           <SummaryGridItem
             label={labels.uniquePages}
             prominent
             mono
+            loading={loading}
             value={numberFormat(locale, detail.visitedPages.length)}
           />
           <SummaryGridItem
             label={labels.avgPagesPerSession}
             prominent
             mono
+            loading={loading}
             value={avgPagesPerSession.toFixed(1)}
           />
           <SummaryGridItem
             label={labels.avgEventsPerSession}
             prominent
             mono
+            loading={loading}
             value={metrics.avgEventsPerSession.toFixed(1)}
           />
           <SummaryGridItem
             label={messages.common.bounceRate}
             prominent
             mono
+            loading={loading}
             value={percentFormat(locale, metrics.bounceRate)}
           />
           <SummaryGridItem
             label={labels.avgStay}
             prominent
             mono
+            loading={loading}
             value={durationFormat(locale, metrics.avgDurationMs)}
           />
           <SummaryGridItem
             label={labels.referrerName}
+            loading={loading}
             value={
               <ReferrerMeta
                 referrerHost={visitor.referrerHost || ""}
@@ -1089,11 +1289,13 @@ function VisitorMetaPanel({
           <SummaryGridItem
             label={labels.referrerUrl}
             mono
+            loading={loading}
             value={visitor.referrerUrl || messages.overview.direct}
           />
           <SummaryGridItem
             label={labels.location}
             className="col-span-2"
+            loading={loading}
             value={
               <VisitorGeoBreadcrumb
                 locale={locale}
@@ -1104,6 +1306,7 @@ function VisitorMetaPanel({
           />
           <SummaryGridItem
             label={labels.browser}
+            loading={loading}
             value={
               <BrowserMeta
                 browser={visitor.browser || ""}
@@ -1114,6 +1317,7 @@ function VisitorMetaPanel({
           />
           <SummaryGridItem
             label={labels.os}
+            loading={loading}
             value={
               <OsMeta
                 os={visitor.os || ""}
@@ -1124,6 +1328,7 @@ function VisitorMetaPanel({
           />
           <SummaryGridItem
             label={labels.device}
+            loading={loading}
             value={
               <DeviceMeta
                 deviceType={visitor.deviceType || ""}
@@ -1135,12 +1340,14 @@ function VisitorMetaPanel({
           <SummaryGridItem
             label={labels.screen}
             mono
+            loading={loading}
             value={formatScreen(visitor.screenWidth, visitor.screenHeight)}
           />
           <SummaryGridItem
             label={labels.firstSeen}
             prominent
             mono
+            loading={loading}
             value={formatSeenDateTime(
               locale,
               messages,
@@ -1152,6 +1359,7 @@ function VisitorMetaPanel({
             label={labels.lastSeen}
             prominent
             mono
+            loading={loading}
             value={formatSeenDateTime(
               locale,
               messages,
@@ -1163,19 +1371,21 @@ function VisitorMetaPanel({
             label={labels.daysActive}
             prominent
             mono
+            loading={loading}
             value={numberFormat(locale, metrics.daysActive)}
           />
           <SummaryGridItem
             label={labels.avgTimeBetweenSessions}
             prominent
             mono
+            loading={loading}
             value={durationFormat(locale, metrics.avgTimeBetweenSessionsMs)}
           />
         </div>
       </CardContent>
     </Card>
   );
-}
+});
 
 function activityDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -1184,14 +1394,16 @@ function activityDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function ActivityGrid({
+const ActivityGrid = memo(function ActivityGrid({
   activity,
   locale,
   timeZone,
+  loading = false,
 }: {
   activity: VisitorActivityDay[];
   locale: Locale;
   timeZone: string;
+  loading?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -1361,7 +1573,12 @@ function ActivityGrid({
         return <span key={cell.key} className={cellClassName} />;
       }
       const intensity = cell.count / max;
-      return (
+      return loading ? (
+        <Skeleton
+          key={cell.key}
+          className={cn(cellClassName, "rounded-[2px] ring-1 ring-border/70")}
+        />
+      ) : (
         <span
           key={cell.key}
           title={cell.title}
@@ -1467,9 +1684,9 @@ function ActivityGrid({
       </div>
     </div>
   );
-}
+});
 
-function VisitorEventCard({
+const VisitorEventCard = memo(function VisitorEventCard({
   locale,
   messages,
   labels,
@@ -1478,6 +1695,7 @@ function VisitorEventCard({
   siteBasePath,
   timeZone,
   onOpenSession,
+  onOpenEvent,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1487,6 +1705,7 @@ function VisitorEventCard({
   siteBasePath: string;
   timeZone: string;
   onOpenSession?: (sessionId: string) => void;
+  onOpenEvent: (event: JourneyEvent) => void;
 }) {
   const sessionId = event.sessionId.trim();
   const sessionHref = `${siteBasePath}/sessions?detail=${encodeURIComponent(
@@ -1494,57 +1713,99 @@ function VisitorEventCard({
   )}`;
 
   return (
-    <Card size="sm" className="py-0">
-      <CardContent className="p-0">
-        <div className="flex items-center gap-2 px-1.5 py-1">
-          <EventIcon event={event} />
-          <div className="flex min-w-0 flex-1 items-stretch justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
-                {eventDisplayTitle(labels, event)}
-              </p>
-              <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] leading-[14px] text-muted-foreground">
-                <span className="min-w-0 truncate leading-[14px]">
-                  {eventSubtitle(
-                    locale,
-                    event,
-                    messages.common.unknown,
-                    timeZone,
+    <Clickable
+      className="block w-full rounded-none text-left focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={() => onOpenEvent(event)}
+      enableHoverScale={false}
+      tapScale={0.985}
+      duration={0.14}
+      aria-label={eventDisplayTitle(labels, event)}
+      title={eventDisplayTitle(labels, event)}
+    >
+      <Card size="sm" className="border border-foreground/10 py-0 ring-0">
+        <CardContent className="p-0">
+          <div className="flex items-center gap-2 px-1.5 py-1">
+            <EventIcon event={event} />
+            <div className="flex min-w-0 flex-1 items-stretch justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="min-w-0 truncate text-sm font-medium leading-5 text-foreground">
+                  {eventDisplayTitle(labels, event)}
+                </p>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] leading-[14px] text-muted-foreground">
+                  <span className="min-w-0 truncate leading-[14px]">
+                    {eventSubtitle(
+                      locale,
+                      event,
+                      messages.common.unknown,
+                      timeZone,
+                    )}
+                  </span>
+                </div>
+              </div>
+              <div className="flex h-[34px] min-w-0 w-[42%] shrink-0 flex-col items-end justify-between text-right sm:w-auto sm:max-w-[24rem]">
+                <p className="font-mono text-[11px] leading-[14px] text-foreground">
+                  {formatShortDateTime(locale, event.occurredAt, timeZone)}
+                </p>
+                <div className="max-w-full truncate font-mono text-[10px] leading-[13px] text-muted-foreground">
+                  {deltaMs !== null && deltaMs > 0 ? (
+                    <span>
+                      {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
+                    </span>
+                  ) : sessionId ? (
+                    onOpenSession ? (
+                      <button
+                        type="button"
+                        className="bg-transparent p-0 text-left hover:text-foreground hover:underline"
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                          onOpenSession(sessionId);
+                        }}
+                        onKeyDown={(keyboardEvent) =>
+                          keyboardEvent.stopPropagation()
+                        }
+                      >
+                        {labels.sessionId}: {event.sessionId}
+                      </button>
+                    ) : (
+                      <Link
+                        href={sessionHref}
+                        data-skip-page-transition=""
+                        className="hover:text-foreground hover:underline"
+                        onClick={(clickEvent) => clickEvent.stopPropagation()}
+                        onKeyDown={(keyboardEvent) =>
+                          keyboardEvent.stopPropagation()
+                        }
+                      >
+                        {labels.sessionId}: {event.sessionId}
+                      </Link>
+                    )
+                  ) : (
+                    <span aria-hidden="true">--</span>
                   )}
-                </span>
+                </div>
               </div>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+    </Clickable>
+  );
+});
+
+function VisitorEventSkeletonCard() {
+  return (
+    <Card size="sm" className="border border-foreground/10 py-0 ring-0">
+      <CardContent className="p-0">
+        <div className="flex items-center gap-2 px-1.5 py-1">
+          <Skeleton className="size-[34px] shrink-0" />
+          <div className="flex min-w-0 flex-1 items-stretch justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-5 w-[min(26rem,80%)]" />
+              <Skeleton className="h-[14px] w-[min(18rem,68%)]" />
+            </div>
             <div className="flex h-[34px] min-w-0 w-[42%] shrink-0 flex-col items-end justify-between text-right sm:w-auto sm:max-w-[24rem]">
-              <p className="font-mono text-[11px] leading-[14px] text-foreground">
-                {formatShortDateTime(locale, event.occurredAt, timeZone)}
-              </p>
-              <div className="max-w-full truncate font-mono text-[10px] leading-[13px] text-muted-foreground">
-                {deltaMs !== null && deltaMs > 0 ? (
-                  <span>
-                    {labels.sincePrevious}: {formatDuration(locale, deltaMs)}
-                  </span>
-                ) : sessionId ? (
-                  onOpenSession ? (
-                    <button
-                      type="button"
-                      className="bg-transparent p-0 text-left hover:text-foreground hover:underline"
-                      onClick={() => onOpenSession(sessionId)}
-                    >
-                      {labels.sessionId}: {event.sessionId}
-                    </button>
-                  ) : (
-                    <Link
-                      href={sessionHref}
-                      data-skip-page-transition=""
-                      className="hover:text-foreground hover:underline"
-                    >
-                      {labels.sessionId}: {event.sessionId}
-                    </Link>
-                  )
-                ) : (
-                  <span aria-hidden="true">--</span>
-                )}
-              </div>
+              <Skeleton className="ml-auto h-[14px] w-24" />
+              <Skeleton className="ml-auto h-[13px] w-20" />
             </div>
           </div>
         </div>
@@ -1553,7 +1814,7 @@ function VisitorEventCard({
   );
 }
 
-function VisitDetailsCard({
+const VisitDetailsCard = memo(function VisitDetailsCard({
   locale,
   messages,
   labels,
@@ -1561,6 +1822,8 @@ function VisitDetailsCard({
   siteBasePath,
   timeZone,
   onOpenSession,
+  onOpenEvent,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1569,6 +1832,8 @@ function VisitDetailsCard({
   siteBasePath: string;
   timeZone: string;
   onOpenSession?: (sessionId: string) => void;
+  onOpenEvent: (event: JourneyEvent) => void;
+  loading?: boolean;
 }) {
   const chronologicalEvents = useMemo(
     () =>
@@ -1592,34 +1857,60 @@ function VisitDetailsCard({
         <CardDescription>{labels.visitDetailsSubtitle}</CardDescription>
       </CardHeader>
       <CardContent className="px-4">
-        {chronologicalEvents.length === 0 ? (
-          <EmptyState>{labels.emptyEvents}</EmptyState>
-        ) : (
-          <div className="space-y-1.5">
-            {chronologicalEvents.map((event, index) => (
-              <VisitorEventCard
-                key={event.id}
-                locale={locale}
-                messages={messages}
-                labels={labels}
-                event={event}
-                siteBasePath={siteBasePath}
-                timeZone={timeZone}
-                onOpenSession={onOpenSession}
-                deltaMs={
-                  index > 0
-                    ? event.occurredAt -
-                      chronologicalEvents[index - 1].occurredAt
-                    : null
-                }
-              />
-            ))}
-          </div>
-        )}
+        <AutoResizer duration={0.24}>
+          <AutoTransition
+            initial={false}
+            transitionKey={
+              loading
+                ? "loading"
+                : chronologicalEvents.length > 0
+                  ? chronologicalEvents.map((event) => event.id).join(":")
+                  : "empty"
+            }
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+          >
+            {loading ? (
+              <div key="loading" className="space-y-1.5" aria-busy="true">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <VisitorEventSkeletonCard key={`event-skeleton-${index}`} />
+                ))}
+              </div>
+            ) : chronologicalEvents.length === 0 ? (
+              <EmptyState key="empty">{labels.emptyEvents}</EmptyState>
+            ) : (
+              <div
+                key={chronologicalEvents.map((event) => event.id).join(":")}
+                className="space-y-1.5"
+              >
+                {chronologicalEvents.map((event, index) => (
+                  <VisitorEventCard
+                    key={event.id}
+                    locale={locale}
+                    messages={messages}
+                    labels={labels}
+                    event={event}
+                    siteBasePath={siteBasePath}
+                    timeZone={timeZone}
+                    onOpenSession={onOpenSession}
+                    onOpenEvent={onOpenEvent}
+                    deltaMs={
+                      index > 0
+                        ? event.occurredAt -
+                          chronologicalEvents[index - 1].occurredAt
+                        : null
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </AutoTransition>
+        </AutoResizer>
       </CardContent>
     </Card>
   );
-}
+});
 
 function sortVisitorSessions(
   rows: JourneySession[],
@@ -1643,7 +1934,7 @@ function sortVisitorSessions(
   });
 }
 
-function ActivityAndSessionsSection({
+const ActivityAndSessionsSection = memo(function ActivityAndSessionsSection({
   locale,
   labels,
   messages,
@@ -1651,6 +1942,7 @@ function ActivityAndSessionsSection({
   siteBasePath,
   timeZone,
   onOpenSession,
+  loading = false,
 }: {
   locale: Locale;
   labels: Labels;
@@ -1659,6 +1951,7 @@ function ActivityAndSessionsSection({
   siteBasePath: string;
   timeZone: string;
   onOpenSession?: (sessionId: string) => void;
+  loading?: boolean;
 }) {
   const [sessionSort, setSessionSort] =
     useState<SessionSortState>(VISITOR_SESSION_SORT);
@@ -1704,6 +1997,7 @@ function ActivityAndSessionsSection({
             activity={detail.activity}
             locale={locale}
             timeZone={timeZone}
+            loading={loading}
           />
         </CardContent>
       </Card>
@@ -1732,6 +2026,9 @@ function ActivityAndSessionsSection({
             browser: labels.browser,
             device: labels.device,
             pageViews: labels.pageViews,
+            customEvents: labels.customEvents,
+            screenSize: messages.sessions.screenSize,
+            exitTime: messages.sessions.exitTime,
             loadError: labels.loadError,
             empty: labels.emptySessions,
           }}
@@ -1740,11 +2037,13 @@ function ActivityAndSessionsSection({
           sort={sessionSort}
           onSort={toggleSessionSort}
           hasMore={false}
+          loadingRows={loading}
+          skeletonRows={5}
         />
       </section>
     </section>
   );
-}
+});
 
 interface VisitorOverviewRowInput {
   label: string;
@@ -1911,7 +2210,7 @@ function buildVisitorEventBreakdownRows(
   );
 }
 
-function VisitorDetailBottomCards({
+const VisitorDetailBottomCards = memo(function VisitorDetailBottomCards({
   locale,
   messages,
   labels,
@@ -1919,6 +2218,7 @@ function VisitorDetailBottomCards({
   siteId,
   siteBasePath,
   siteDomain,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1927,6 +2227,7 @@ function VisitorDetailBottomCards({
   siteId: string;
   siteBasePath: string;
   siteDomain: string;
+  loading?: boolean;
 }) {
   const pageCardData = useMemo(
     () => buildVisitorOverviewPageCardData(detail, messages.common.unknown),
@@ -1964,6 +2265,7 @@ function VisitorDetailBottomCards({
           visibleCards={["page"]}
           pageCardTabs={VISITOR_OVERVIEW_PAGE_CARD_TABS}
           pageCardShowVisitors={false}
+          loading={loading}
         />
       </div>
 
@@ -1977,11 +2279,12 @@ function VisitorDetailBottomCards({
           className="h-full"
           showVisitors={false}
           emptyLabel={labels.emptyCustomEvents}
+          loadingByTab={{ event: loading }}
         />
       </div>
     </section>
   );
-}
+});
 
 function DetailContent({
   locale,
@@ -1991,7 +2294,9 @@ function DetailContent({
   siteId,
   pathname,
   timeZone,
+  timeWindow,
   onOpenSession,
+  loading = false,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -2000,7 +2305,9 @@ function DetailContent({
   siteId: string;
   pathname: string;
   timeZone: string;
+  timeWindow: TimeWindow;
   onOpenSession?: (sessionId: string) => void;
+  loading?: boolean;
 }) {
   const modalClose = useDetailDrawerClose();
   const visitorListPath = pathname.replace(/\/detail$/, "");
@@ -2014,6 +2321,46 @@ function DetailContent({
     () => visitorGeoLocationInputs(detail),
     [detail],
   );
+  const [selectedEvent, setSelectedEvent] = useState<JourneyEvent | null>(null);
+  const eventDetailQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "journey-event-detail",
+      siteId,
+      selectedEvent?.id ?? "",
+      selectedEvent?.kind ?? "",
+      selectedEvent?.sessionId ?? "",
+      selectedEvent?.visitId ?? "",
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+    ],
+    queryFn: ({ signal }) => {
+      if (!selectedEvent) throw new Error("Event selection is required");
+      if (selectedEvent.kind === "custom") {
+        return fetchEventRecordDetail(siteId, selectedEvent.id, timeWindow, {
+          signal,
+          preserveErrors: true,
+        });
+      }
+      return fetchJourneyEventDetail(
+        siteId,
+        selectedEvent.id,
+        selectedEvent.kind,
+        timeWindow,
+        {
+          sessionId: selectedEvent.sessionId,
+          visitId: selectedEvent.visitId,
+          signal,
+          preserveErrors: true,
+        },
+      );
+    },
+    enabled: typeof window !== "undefined" && Boolean(selectedEvent),
+  });
+  const eventDetail = eventDetailQuery.data?.data ?? null;
+  const eventDetailLoading = eventDetailQuery.isPending && !eventDetail;
+  const eventDetailError = eventDetailQuery.isError && !eventDetail;
 
   return (
     <div className="pb-6">
@@ -2025,6 +2372,7 @@ function DetailContent({
         sessions={detail.sessions}
         backHref={visitorListPath}
         onBack={modalClose ?? undefined}
+        loading={loading}
       />
 
       <div className="mx-auto mt-6 w-full max-w-[1400px] space-y-6 px-4 md:px-6">
@@ -2034,6 +2382,7 @@ function DetailContent({
           labels={labels}
           detail={detail}
           timeZone={timeZone}
+          loading={loading}
         />
 
         <ActivityAndSessionsSection
@@ -2044,6 +2393,7 @@ function DetailContent({
           siteBasePath={siteBasePath}
           timeZone={timeZone}
           onOpenSession={onOpenSession}
+          loading={loading}
         />
 
         <VisitDetailsCard
@@ -2054,6 +2404,8 @@ function DetailContent({
           siteBasePath={siteBasePath}
           timeZone={timeZone}
           onOpenSession={onOpenSession}
+          onOpenEvent={setSelectedEvent}
+          loading={loading}
         />
 
         <VisitorDetailBottomCards
@@ -2064,6 +2416,7 @@ function DetailContent({
           siteId={siteId}
           siteBasePath={siteBasePath}
           siteDomain={visitorSiteDomain}
+          loading={loading}
         />
 
         <JourneyGeoLocationCard
@@ -2071,6 +2424,7 @@ function DetailContent({
           messages={messages}
           title={labels.geoLocationTitle}
           locations={geoLocations}
+          loading={loading}
         />
 
         <VisitorPerformancePanel
@@ -2078,13 +2432,32 @@ function DetailContent({
           messages={messages}
           labels={labels}
           performance={detail.performance}
+          loading={loading}
+        />
+
+        <EventDetailDrawer
+          locale={locale}
+          messages={messages}
+          labels={messages.events}
+          siteId={siteId}
+          pathname={pathname}
+          siteBasePath={siteBasePath}
+          open={Boolean(selectedEvent)}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setSelectedEvent(null);
+          }}
+          detail={eventDetail}
+          loading={eventDetailLoading}
+          error={eventDetailError}
+          eventKind={selectedEvent?.kind ?? "pageview"}
+          zIndex={NESTED_DETAIL_DRAWER_Z_INDEX + 100}
         />
       </div>
     </div>
   );
 }
 
-export function VisitorDetailClientPage({
+export const VisitorDetailClientPage = memo(function VisitorDetailClientPage({
   locale,
   messages,
   siteId,
@@ -2094,50 +2467,20 @@ export function VisitorDetailClientPage({
 }: VisitorDetailClientPageProps) {
   const labels = messages.visitorDetail;
   const { timeZone, window } = useDashboardQueryControls();
-  const [detail, setDetail] = useState<VisitorDetail | null>(null);
-  const [loading, setLoading] = useState(Boolean(visitorId));
-  const [error, setError] = useState(false);
   const requestKey = useMemo(
     () => [siteId, visitorId, timeZone, window.from, window.to].join(":"),
     [siteId, timeZone, visitorId, window.from, window.to],
   );
 
-  useEffect(() => {
-    if (!visitorId) {
-      setDetail(null);
-      setLoading(false);
-      return;
-    }
-    let active = true;
-    const controller = new AbortController();
-    setLoading(true);
-    setError(false);
-    fetchVisitorDetail(siteId, visitorId, timeZone, window, {
-      signal: controller.signal,
-    })
-      .then((payload) => {
-        if (!active) return;
-        setDetail(payload.data);
-      })
-      .catch((error: unknown) => {
-        if (
-          !active ||
-          controller.signal.aborted ||
-          (error instanceof Error && error.name === "AbortError")
-        ) {
-          return;
-        }
-        setDetail(null);
-        setError(true);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [requestKey, siteId, visitorId]);
+  const detailQuery = useQuery({
+    queryKey: ["dashboard", "visitor-detail", requestKey],
+    queryFn: ({ signal }) =>
+      fetchVisitorDetail(siteId, visitorId, timeZone, window, { signal }),
+    enabled: typeof window !== "undefined" && Boolean(visitorId),
+  });
+  const detail = detailQuery.data?.data ?? null;
+  const loading = detailQuery.isPending && !detail;
+  const error = detailQuery.isError;
 
   if (!visitorId) {
     return (
@@ -2151,18 +2494,7 @@ export function VisitorDetailClientPage({
     );
   }
 
-  if (loading) {
-    return (
-      <JourneyDetailStateSwitch stateKey="visitor-loading">
-        <JourneyDetailLoadingState
-          kind="visitor"
-          loadingLabel={messages.common.loading}
-        />
-      </JourneyDetailStateSwitch>
-    );
-  }
-
-  if (error) {
+  if (error && !detail) {
     return (
       <JourneyDetailStateSwitch stateKey="visitor-error">
         <Card>
@@ -2174,7 +2506,7 @@ export function VisitorDetailClientPage({
     );
   }
 
-  if (!detail) {
+  if (!detail && !loading) {
     return (
       <JourneyDetailStateSwitch stateKey="visitor-not-found">
         <Card>
@@ -2187,17 +2519,19 @@ export function VisitorDetailClientPage({
   }
 
   return (
-    <JourneyDetailStateSwitch stateKey={`visitor-content-${requestKey}`}>
-      <DetailContent
-        locale={locale}
-        messages={messages}
-        labels={labels}
-        detail={detail}
-        siteId={siteId}
-        pathname={pathname}
-        timeZone={timeZone}
-        onOpenSession={onOpenSession}
-      />
-    </JourneyDetailStateSwitch>
+    <DetailContent
+      locale={locale}
+      messages={messages}
+      labels={labels}
+      detail={detail ?? createVisitorDetailPlaceholder(visitorId)}
+      siteId={siteId}
+      pathname={pathname}
+      timeZone={timeZone}
+      timeWindow={window}
+      onOpenSession={onOpenSession}
+      loading={loading}
+    />
   );
-}
+});
+
+VisitorDetailClientPage.displayName = "VisitorDetailClientPage";

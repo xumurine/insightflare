@@ -1,6 +1,4 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiCloseLine,
   RiDeleteBinLine,
@@ -8,6 +6,7 @@ import {
   RiSave3Line,
   RiSendPlane2Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
@@ -40,6 +39,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { requestAdminService } from "@/lib/admin-service-client";
+import type { SystemSettingsInitialData } from "@/lib/dashboard/management-data";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type {
@@ -47,18 +48,14 @@ import type {
   PublicNotificationEmailConfig,
 } from "@/lib/notifications/email-config";
 
+import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
+
 interface NotificationEmailSettingsClientProps {
   locale: Locale;
   messages: AppMessages;
   currentUserEmail: string;
   showHeading?: boolean;
-}
-
-interface ApiResponse<T> {
-  ok?: boolean;
-  data?: T;
-  error?: string | { message?: string };
-  message?: string;
+  initialData?: SystemSettingsInitialData | null;
 }
 
 interface TestEmailResponse {
@@ -71,8 +68,6 @@ type FormState = Pick<
   PublicNotificationEmailConfig,
   "enabled" | "provider" | "fromName" | "fromEmail" | "replyTo"
 >;
-
-const API_PATH = "/api/private/admin/notification-email";
 
 function defaultConfig(): PublicNotificationEmailConfig {
   return {
@@ -99,148 +94,68 @@ function toFormState(config: PublicNotificationEmailConfig): FormState {
   };
 }
 
-function apiMessage(payload: ApiResponse<unknown>, fallback: string): string {
-  if (typeof payload.message === "string" && payload.message) {
-    return payload.message;
-  }
-  if (typeof payload.error === "string" && payload.error) {
-    return payload.error;
-  }
-  if (
-    payload.error &&
-    typeof payload.error === "object" &&
-    typeof payload.error.message === "string"
-  ) {
-    return payload.error.message;
-  }
-  return fallback;
-}
-
-async function fetchEmailConfig(): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: API_PATH,
-    }) as ApiResponse<PublicNotificationEmailConfig>;
-    return result.data ?? defaultConfig();
-  }
-
-  const response = await fetch(API_PATH, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
-  const payload =
-    (await response.json()) as ApiResponse<PublicNotificationEmailConfig>;
-  if (!response.ok || payload.ok !== true || !payload.data) {
-    throw new Error(apiMessage(payload, "load_notification_email_failed"));
-  }
-  return payload.data;
+async function fetchEmailConfig(
+  signal?: AbortSignal,
+): Promise<PublicNotificationEmailConfig> {
+  return requestAdminService<PublicNotificationEmailConfig>(
+    "notification-email",
+    { signal },
+  );
 }
 
 async function saveEmailConfig(
   body: Record<string, unknown>,
 ): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: API_PATH,
-      method: "PATCH",
-      body,
-    }) as ApiResponse<PublicNotificationEmailConfig>;
-    if (!result.ok || !result.data) {
-      throw new Error(apiMessage(result, "save_notification_email_failed"));
-    }
-    return result.data;
-  }
-
-  const response = await fetch(API_PATH, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const payload =
-    (await response.json()) as ApiResponse<PublicNotificationEmailConfig>;
-  if (!response.ok || payload.ok !== true || !payload.data) {
-    throw new Error(apiMessage(payload, "save_notification_email_failed"));
-  }
-  return payload.data;
+  return requestAdminService<PublicNotificationEmailConfig>(
+    "notification-email",
+    { method: "PATCH", body },
+  );
 }
 
 async function deleteEmailConfig(): Promise<PublicNotificationEmailConfig> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: API_PATH,
-      method: "DELETE",
-    }) as ApiResponse<PublicNotificationEmailConfig>;
-    if (!result.ok || !result.data) {
-      throw new Error(apiMessage(result, "delete_notification_email_failed"));
-    }
-    return result.data;
-  }
-
-  const response = await fetch(API_PATH, {
-    method: "DELETE",
-    credentials: "include",
-  });
-  const payload =
-    (await response.json()) as ApiResponse<PublicNotificationEmailConfig>;
-  if (!response.ok || payload.ok !== true || !payload.data) {
-    throw new Error(apiMessage(payload, "delete_notification_email_failed"));
-  }
-  return payload.data;
+  return requestAdminService<PublicNotificationEmailConfig>(
+    "notification-email",
+    { method: "DELETE" },
+  );
 }
 
 async function sendTestEmail(to: string): Promise<TestEmailResponse> {
-  const path = `${API_PATH}/test`;
   const body = { to };
-
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path,
-      method: "POST",
-      body,
-    }) as ApiResponse<TestEmailResponse>;
-    if (!result.ok || !result.data) {
-      throw new Error(apiMessage(result, "test_notification_email_failed"));
-    }
-    return result.data;
-  }
-
-  const response = await fetch(path, {
+  return requestAdminService<TestEmailResponse>("notification-email/test", {
     method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body,
   });
-  const payload = (await response.json()) as ApiResponse<TestEmailResponse>;
-  if (!response.ok || payload.ok !== true || !payload.data) {
-    throw new Error(apiMessage(payload, "test_notification_email_failed"));
-  }
-  return payload.data;
 }
 
 export function NotificationEmailSettingsClient({
   messages,
   currentUserEmail,
   showHeading = true,
+  initialData = null,
 }: NotificationEmailSettingsClientProps) {
   const copy = messages.systemSettings;
-  const [config, setConfig] =
-    useState<PublicNotificationEmailConfig>(defaultConfig);
+  const [config, setConfig] = useState<PublicNotificationEmailConfig>(
+    initialData?.notificationEmail ?? defaultConfig(),
+  );
   const [form, setForm] = useState<FormState>(() =>
-    toFormState(defaultConfig()),
+    toFormState(initialData?.notificationEmail ?? defaultConfig()),
   );
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [testRecipient, setTestRecipient] = useState(currentUserEmail);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingConfig, setDeletingConfig] = useState(false);
+  const configAppliedRef = useRef(false);
+  const configQuery = useQuery({
+    queryKey: ["dashboard", "notification-email-config"],
+    queryFn: ({ signal }) => fetchEmailConfig(signal),
+    initialData: initialData?.notificationEmail,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const loading = configQuery.isPending;
 
   const hasChanges = useMemo(() => {
     const persisted = toFormState(config);
@@ -254,32 +169,27 @@ export function NotificationEmailSettingsClient({
     );
   }, [apiKey, config, form]);
 
-  const apiKeyPlaceholder =
-    config.resend.configured && config.resend.apiKeyHint
-      ? `${copy.resendApiKeySaved}: ${config.resend.apiKeyHint}`
-      : copy.resendApiKeyPlaceholder;
+  const showSavedApiKey =
+    !apiKeyDirty &&
+    config.resend.configured &&
+    Boolean(config.resend.apiKeyHint);
+  const apiKeyDisplayValue = showSavedApiKey
+    ? config.resend.apiKeyHint
+    : apiKey;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchEmailConfig()
-      .then((nextConfig) => {
-        if (!active) return;
-        setConfig(nextConfig);
-        setForm(toFormState(nextConfig));
-      })
-      .catch(() => {
-        if (!active) return;
-        toast.error(copy.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [copy.loadFailed]);
+    if (configQuery.isPending || configAppliedRef.current) return;
+    if (configQuery.isError) toast.error(copy.loadFailed);
+    const nextConfig = configQuery.data ?? defaultConfig();
+    setConfig(nextConfig);
+    setForm(toFormState(nextConfig));
+    configAppliedRef.current = true;
+  }, [
+    copy.loadFailed,
+    configQuery.data,
+    configQuery.isError,
+    configQuery.isPending,
+  ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -302,6 +212,7 @@ export function NotificationEmailSettingsClient({
       setConfig(saved);
       setForm(toFormState(saved));
       setApiKey("");
+      setApiKeyDirty(false);
       toast.success(copy.saved);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : copy.saveFailed);
@@ -317,6 +228,7 @@ export function NotificationEmailSettingsClient({
       setConfig(reset);
       setForm(toFormState(reset));
       setApiKey("");
+      setApiKeyDirty(false);
       setDeleteDialogOpen(false);
       toast.success(copy.deleted);
     } catch (error) {
@@ -462,11 +374,22 @@ export function NotificationEmailSettingsClient({
                 </Label>
                 <Input
                   id="system-email-resend-api-key"
-                  type="password"
-                  value={apiKey}
-                  placeholder={apiKeyPlaceholder}
+                  type={showSavedApiKey ? "text" : "password"}
+                  value={apiKeyDisplayValue}
+                  placeholder={copy.resendApiKeyPlaceholder}
                   disabled={loading || saving || deletingConfig}
-                  onChange={(event) => setApiKey(event.target.value)}
+                  onFocus={() => {
+                    if (!showSavedApiKey) return;
+                    setApiKeyDirty(true);
+                    setApiKey("");
+                  }}
+                  onBlur={() => {
+                    if (!apiKey.trim()) setApiKeyDirty(false);
+                  }}
+                  onChange={(event) => {
+                    setApiKeyDirty(true);
+                    setApiKey(event.target.value);
+                  }}
                 />
               </div>
             </div>
@@ -615,6 +538,12 @@ export function NotificationEmailSettingsClient({
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
+              <SystemSettingsGuideDialog
+                triggerLabel={copy.guide}
+                title={copy.notificationEmailGuideTitle}
+                description={copy.notificationEmailGuideDescription}
+                steps={copy.notificationEmailGuideSteps}
+              />
             </div>
           </form>
         </CardContent>

@@ -1,21 +1,36 @@
 #!/usr/bin/env tsx
 
-import { execSync } from "child_process";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, renameSync, writeFileSync } from "fs";
 import { resolve } from "path";
+import { format, resolveConfig } from "prettier";
 import YAML from "yaml";
 
 import { createScriptLogger } from "./shared/logger";
+import { buildApiV1OpenApiPaths } from "./api-v1-openapi";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const rlog = createScriptLogger();
+const MAX_CURSOR_LENGTH = 12_288;
+
+function writeAtomically(path: string, content: string): void {
+  const temporaryPath = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, content, "utf8");
+  renameSync(temporaryPath, path);
+}
 
 function getAppVersion(): string {
   const pkg = JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8"));
   return pkg.version;
 }
 
-type HttpMethod = "get" | "post" | "patch" | "delete";
+type HttpMethod =
+  | "get"
+  | "post"
+  | "put"
+  | "patch"
+  | "delete"
+  | "options"
+  | "head";
 
 interface Operation {
   operationId: string;
@@ -27,13 +42,13 @@ interface Operation {
   requestBody?: unknown;
   responses: Record<string, unknown>;
   "x-required-scopes"?: string[];
+  "x-internal"?: boolean;
 }
 
 interface OpenAPISpec {
   openapi: string;
   info: Record<string, unknown>;
   externalDocs?: Record<string, unknown>;
-  "x-possible-upstream-responses"?: number[];
   servers: Array<{ url: string; description: string }>;
   security: Array<Record<string, unknown>>;
   tags: Array<{ name: string; description: string }>;
@@ -183,7 +198,9 @@ function errorResponses(...codes: string[]) {
                 ? "Conflict"
                 : code === "413"
                   ? "PayloadTooLarge"
-                  : "InternalError";
+                  : code === "405"
+                    ? "MethodNotAllowed"
+                    : "InternalError";
     map[code] = { $ref: `#/components/responses/${name}` };
   }
   return map;
@@ -207,7 +224,9 @@ function requiredScopesForOperation(input: Operation): string[] {
   if (tag === "Settings") {
     return isWrite ? ["site_config:write"] : ["site_config:read"];
   }
-  if (tag === "Funnels") return isWrite ? ["site:write"] : ["analytics:read"];
+  if (tag === "Funnels") {
+    return isWrite ? ["site_config:write"] : ["analytics:read"];
+  }
   if (tag === "Team") return ["site:read"];
 
   return [];
@@ -216,6 +235,7 @@ function requiredScopesForOperation(input: Operation): string[] {
 function op(input: Operation): Operation {
   return {
     ...input,
+    responses: { ...input.responses, ...errorResponses("405") },
     "x-required-scopes": requiredScopesForOperation(input),
   };
 }
@@ -369,7 +389,6 @@ const funnelExample = {
   id: sampleFunnelId,
   siteId: sampleSiteId,
   name: "Signup funnel",
-  description: "Pricing page to signup conversion.",
   steps: [
     { type: "pageview", value: "/pricing", label: "Pricing" },
     { type: "event", value: "signup", label: "Signup" },
@@ -476,7 +495,7 @@ function buildSchemas(): Record<string, unknown> {
       required: ["limit", "nextCursor", "hasMore"],
       properties: {
         limit: { type: "integer", minimum: 1, maximum: 1000 },
-        nextCursor: { type: ["string", "null"], maxLength: 512 },
+        nextCursor: { type: ["string", "null"], maxLength: MAX_CURSOR_LENGTH },
         hasMore: { type: "boolean" },
       },
     },
@@ -526,6 +545,7 @@ function buildSchemas(): Record<string, unknown> {
                 "site_not_found",
                 "resource_not_found",
                 "conflict",
+                "method_not_allowed",
                 "payload_too_large",
                 "internal_error",
               ],
@@ -591,26 +611,40 @@ function buildSchemas(): Record<string, unknown> {
         },
       },
     },
-    FilterObject: {
+    FilterScalar: { type: ["string", "number", "boolean", "null"] },
+    FilterFieldTarget: {
       type: "object",
-      description: "Simple equality filters keyed by stable dimension name.",
-      additionalProperties: { type: "string", maxLength: 500 },
-    },
-    ComplexFilter: {
-      type: "object",
-      description:
-        "Advanced filter rule for explore and search endpoints. For eq, neq, contains, startsWith, and endsWith, use a scalar value. For in and notIn, use an array value. For gt, gte, lt, and lte, use a number or ISO 8601 date-time string depending on the field. For exists and notExists, value may be omitted.",
-      required: ["field", "op"],
+      required: ["kind", "field"],
       properties: {
-        field: {
+        kind: { const: "field" },
+        field: { type: "string", maxLength: 128 },
+      },
+      additionalProperties: false,
+    },
+    FilterEventPayloadTarget: {
+      type: "object",
+      required: ["kind", "path"],
+      properties: {
+        kind: { const: "event-payload" },
+        path: {
           type: "string",
-          maxLength: 120,
-          description: "Stable filter field path.",
+          pattern: "^/(?:[^/]|~[01])+(?:/(?:[^/]|~[01])+)*$",
+          maxLength: 240,
         },
-        op: {
+      },
+      additionalProperties: false,
+    },
+    FilterTarget: {
+      oneOf: [ref("FilterFieldTarget"), ref("FilterEventPayloadTarget")],
+    },
+    FilterCondition: {
+      type: "object",
+      required: ["kind", "target", "operator"],
+      properties: {
+        kind: { const: "condition" },
+        target: ref("FilterTarget"),
+        operator: {
           type: "string",
-          description:
-            "Filter operator. exists and notExists ignore value; in and notIn expect an array-compatible value.",
           enum: [
             "eq",
             "neq",
@@ -623,28 +657,62 @@ function buildSchemas(): Record<string, unknown> {
             "gte",
             "lt",
             "lte",
+            "between",
             "exists",
             "notExists",
+            "isNull",
+            "notNull",
+            "isEmpty",
+            "notEmpty",
           ],
         },
         value: {
           oneOf: [
-            { type: "string" },
-            { type: "number" },
-            { type: "boolean" },
+            ref("FilterScalar"),
             {
               type: "array",
-              items: {
-                oneOf: [
-                  { type: "string" },
-                  { type: "number" },
-                  { type: "boolean" },
-                ],
-              },
+              minItems: 1,
+              maxItems: 128,
+              items: ref("FilterScalar"),
             },
           ],
         },
       },
+      additionalProperties: false,
+    },
+    FilterGroup: {
+      type: "object",
+      required: ["kind", "children"],
+      properties: {
+        kind: { type: "string", enum: ["and", "or"] },
+        children: {
+          type: "array",
+          minItems: 1,
+          maxItems: 128,
+          items: ref("FilterExpression"),
+        },
+      },
+      additionalProperties: false,
+    },
+    FilterNot: {
+      type: "object",
+      required: ["kind", "child"],
+      properties: { kind: { const: "not" }, child: ref("FilterExpression") },
+      additionalProperties: false,
+    },
+    FilterExpression: {
+      oneOf: [ref("FilterCondition"), ref("FilterGroup"), ref("FilterNot")],
+    },
+    FilterDocument: {
+      type: "object",
+      description:
+        "Canonical filter AST. Conditions use registered fields or event-payload JSON Pointer targets; group expressions compose AND/OR/NOT.",
+      required: ["version", "root"],
+      properties: {
+        version: { const: 1 },
+        root: { oneOf: [ref("FilterExpression"), { type: "null" }] },
+      },
+      additionalProperties: false,
     },
     MetricDefinition: {
       type: "object",
@@ -994,6 +1062,39 @@ function buildSchemas(): Record<string, unknown> {
         dimensions: { type: "array", items: ref("DimensionDefinition") },
         filters: { type: "array", items: { type: "string" } },
         operators: { type: "array", items: { type: "string" } },
+        filterProtocol: {
+          type: "object",
+          required: ["version", "urlGrammar", "fields"],
+          properties: {
+            version: { const: 1 },
+            urlGrammar: { type: "string" },
+            fields: {
+              type: "array",
+              items: {
+                type: "object",
+                required: ["id", "valueKind", "operators"],
+                properties: {
+                  id: { type: "string" },
+                  valueKind: {
+                    type: "string",
+                    enum: [
+                      "string",
+                      "enum",
+                      "number",
+                      "boolean",
+                      "date",
+                      "datetime",
+                      "json-scalar",
+                    ],
+                  },
+                  operators: { type: "array", items: { type: "string" } },
+                },
+                additionalProperties: false,
+              },
+            },
+          },
+          additionalProperties: false,
+        },
         intervals: { type: "array", items: { type: "string" } },
         presets: { type: "array", items: ref("Preset") },
         timeRange: {
@@ -1007,6 +1108,23 @@ function buildSchemas(): Record<string, unknown> {
           },
         },
         links: ref("LinkMap"),
+      },
+    }),
+    FilterValueOption: {
+      type: "object",
+      required: ["value", "label", "occurrences"],
+      properties: {
+        value: { type: ["string", "number", "boolean", "null"] },
+        label: { type: "string" },
+        occurrences: { type: "integer", minimum: 0 },
+      },
+    },
+    FilterValuesResponse: envelope({
+      type: "object",
+      required: ["field", "data"],
+      properties: {
+        field: { type: "string", maxLength: 128 },
+        data: { type: "array", items: ref("FilterValueOption") },
       },
     }),
     OverviewMetrics: {
@@ -1143,7 +1261,7 @@ function buildSchemas(): Record<string, unknown> {
             "Dimensions to group by. Use analytics/schema to discover supported dimensions.",
           items: { type: "string", maxLength: 120 },
         },
-        filters: { type: "array", items: ref("ComplexFilter") },
+        filters: ref("FilterDocument"),
         orderBy: {
           type: "array",
           items: {
@@ -1166,8 +1284,8 @@ function buildSchemas(): Record<string, unknown> {
         change: {
           type: "object",
           description:
-            "Relative changes as 0-based rates. Example: 0.12 means +12%.",
-          additionalProperties: { type: "number" },
+            "Relative changes as 0-based rates. Example: 0.12 means +12%. A zero previous value yields 0 when current is also zero, otherwise null.",
+          additionalProperties: { type: ["number", "null"] },
         },
       },
     }),
@@ -1183,7 +1301,7 @@ function buildSchemas(): Record<string, unknown> {
         rows: { type: "array", items: ref("AnalyticsExploreRow") },
         metrics: { type: "array", items: { type: "string" } },
         dimensions: { type: "array", items: { type: "string" } },
-        filters: { type: "array", items: ref("ComplexFilter") },
+        filters: ref("FilterDocument"),
       },
     }),
     RetentionCohortsResponse: envelope({
@@ -1285,6 +1403,38 @@ function buildSchemas(): Record<string, unknown> {
         },
       },
     },
+    EventFieldDiscoveryItem: {
+      type: "object",
+      required: [
+        "path",
+        "valueType",
+        "events",
+        "occurrences",
+        "firstSeenAt",
+        "lastSeenAt",
+        "exampleValue",
+      ],
+      properties: {
+        path: { type: "string", maxLength: 240 },
+        valueType: {
+          type: "string",
+          enum: ["string", "number", "boolean", "null", "object", "array"],
+        },
+        events: { type: "integer", minimum: 0 },
+        occurrences: { type: "integer", minimum: 0 },
+        firstSeenAt: { type: "integer", minimum: 0 },
+        lastSeenAt: { type: "integer", minimum: 0 },
+        exampleValue: { type: ["string", "number", "boolean", "null"] },
+      },
+    },
+    EventFieldsResponse: envelope({
+      type: "object",
+      required: ["eventName", "fields"],
+      properties: {
+        eventName: { type: "string", maxLength: 120 },
+        fields: { type: "array", items: ref("EventFieldDiscoveryItem") },
+      },
+    }),
     EventType: {
       type: "object",
       description: "Details and aggregate metrics for one custom event type.",
@@ -1342,78 +1492,15 @@ function buildSchemas(): Record<string, unknown> {
       ref("EventType"),
       "Response envelope for one custom event type.",
     ),
-    EventPayloadFilter: {
-      type: "object",
-      description: "Filter applied to custom event payload fields.",
-      required: ["path", "op"],
-      properties: {
-        path: {
-          type: "string",
-          maxLength: 240,
-          description: "Dot-notation path inside the event payload.",
-        },
-        op: {
-          type: "string",
-          description:
-            "Payload filter operator. eq/neq compare equality, in/notIn compare sets, contains/startsWith/endsWith compare strings, gt/gte/lt/lte compare ordered values, exists/notExists ignore value.",
-          enum: [
-            "eq",
-            "neq",
-            "in",
-            "notIn",
-            "contains",
-            "startsWith",
-            "endsWith",
-            "gt",
-            "gte",
-            "lt",
-            "lte",
-            "exists",
-            "notExists",
-          ],
-        },
-        value: {
-          description:
-            "Comparison value. Required unless op is exists or notExists.",
-          oneOf: [
-            { type: "string" },
-            { type: "number" },
-            { type: "boolean" },
-            {
-              type: "array",
-              items: {
-                oneOf: [
-                  { type: "string" },
-                  { type: "number" },
-                  { type: "boolean" },
-                ],
-              },
-            },
-          ],
-        },
-      },
-      additionalProperties: false,
-    },
     EventSearchRequest: {
       type: "object",
-      description: "Request for searching event records with complex filters.",
+      description:
+        "Request for searching event records. Time range, filters, limit, and cursor are read only from this body.",
       properties: {
         timeRange: ref("TimeRangeInput"),
-        eventName: {
-          type: "string",
-          maxLength: 120,
-          description: "Optional event name filter.",
-        },
-        payloadFilters: {
-          type: "array",
-          items: ref("EventPayloadFilter"),
-        },
-        filters: {
-          type: "array",
-          items: ref("ComplexFilter"),
-        },
+        filters: ref("FilterDocument"),
         limit: { type: "integer", minimum: 1, maximum: 1000, default: 100 },
-        cursor: { type: "string", maxLength: 512 },
+        cursor: { type: "string", maxLength: MAX_CURSOR_LENGTH },
       },
       additionalProperties: false,
     },
@@ -1541,11 +1628,6 @@ function buildSchemas(): Record<string, unknown> {
           maxLength: 200,
           description: "Human-readable funnel name.",
         },
-        description: {
-          type: ["string", "null"],
-          maxLength: 500,
-          description: "Optional funnel description.",
-        },
         steps: {
           type: "array",
           minItems: 2,
@@ -1560,7 +1642,6 @@ function buildSchemas(): Record<string, unknown> {
       description: "Partial update for a saved funnel.",
       properties: {
         name: { type: "string", minLength: 1, maxLength: 200 },
-        description: { type: ["string", "null"], maxLength: 500 },
         steps: {
           type: "array",
           minItems: 2,
@@ -1603,7 +1684,6 @@ function buildSchemas(): Record<string, unknown> {
         id: uuid,
         siteId: uuid,
         name: { type: "string", maxLength: 200 },
-        description: { type: ["string", "null"], maxLength: 500 },
         steps: { type: "array", items: ref("FunnelStep") },
         createdAt: iso,
         updatedAt: iso,
@@ -1706,7 +1786,15 @@ function buildSchemas(): Record<string, unknown> {
             properties: {
               id: { type: "string" },
               status: { type: "integer" },
-              body: {},
+              body: {
+                oneOf: [
+                  ref("SuccessEnvelope"),
+                  ref("ListEnvelope"),
+                  ref("PaginatedEnvelope"),
+                  ref("ErrorResponse"),
+                  { type: "null" },
+                ],
+              },
             },
           },
         },
@@ -1719,175 +1807,6 @@ function buildSchemas(): Record<string, unknown> {
         status: { type: "string", enum: ["healthy"] },
         timestamp: iso,
       },
-    },
-    CollectPage: {
-      type: "object",
-      description: "Page context for a collect payload.",
-      properties: {
-        url: {
-          type: "string",
-          maxLength: 2048,
-          description: "Full page URL.",
-        },
-        path: { type: "string", maxLength: 2048, description: "Page path." },
-        title: { type: "string", maxLength: 300, description: "Page title." },
-        referrer: {
-          type: ["string", "null"],
-          maxLength: 2048,
-          description: "Full referrer URL, if available.",
-        },
-        hostname: {
-          type: "string",
-          maxLength: 255,
-          description: "Page hostname.",
-        },
-        query: {
-          type: "string",
-          maxLength: 2048,
-          description: "URL query string.",
-        },
-        hash: {
-          type: "string",
-          maxLength: 512,
-          description: "URL hash fragment.",
-        },
-      },
-    },
-    CollectClient: {
-      type: "object",
-      description: "Browser and device context reported by the client SDK.",
-      properties: {
-        language: {
-          type: "string",
-          maxLength: 40,
-          description: "Browser language.",
-        },
-        userAgent: {
-          type: "string",
-          maxLength: 1024,
-          description: "Browser user agent string.",
-        },
-        screen: {
-          type: "object",
-          properties: {
-            width: { type: "integer", minimum: 0 },
-            height: { type: "integer", minimum: 0 },
-          },
-        },
-        viewport: {
-          type: "object",
-          properties: {
-            width: { type: "integer", minimum: 0 },
-            height: { type: "integer", minimum: 0 },
-          },
-        },
-      },
-    },
-    CollectEvent: {
-      type: "object",
-      description: "Custom event data.",
-      required: ["name"],
-      properties: {
-        name: {
-          type: "string",
-          maxLength: 120,
-          description: "Event name.",
-        },
-        data: {
-          type: "object",
-          additionalProperties: true,
-          description: "Custom JSON-serializable event payload.",
-        },
-      },
-    },
-    CollectEngagement: {
-      type: "object",
-      description: "Engagement metrics reported by the client SDK.",
-      properties: {
-        durationMs: {
-          type: "integer",
-          minimum: 0,
-          description: "Engagement duration in milliseconds.",
-        },
-        scrollDepth: {
-          type: "number",
-          minimum: 0,
-          maximum: 1,
-          description: "Maximum scroll depth as a 0-1 ratio.",
-        },
-      },
-    },
-    CollectPerformance: {
-      type: "object",
-      description: "Core Web Vitals and navigation timing data.",
-      properties: {
-        ttfb: {
-          type: "number",
-          minimum: 0,
-          description: "Time to first byte in milliseconds.",
-        },
-        fcp: {
-          type: "number",
-          minimum: 0,
-          description: "First contentful paint in milliseconds.",
-        },
-        lcp: {
-          type: "number",
-          minimum: 0,
-          description: "Largest contentful paint in milliseconds.",
-        },
-        cls: {
-          type: "number",
-          minimum: 0,
-          description: "Cumulative layout shift.",
-        },
-        inp: {
-          type: "number",
-          minimum: 0,
-          description: "Interaction to next paint in milliseconds.",
-        },
-      },
-    },
-    CollectPayload: {
-      type: "object",
-      description:
-        "Payload sent by the InsightFlare client SDK to ingest pageviews, events, engagement, and performance metrics.",
-      required: ["siteId", "type"],
-      properties: {
-        siteId: {
-          type: "string",
-          format: "uuid",
-          description: "Site identifier.",
-        },
-        type: {
-          type: "string",
-          enum: ["pageview", "event", "engagement", "performance"],
-          description:
-            "Tracking payload type. pageview records a page view; event records a custom user-defined event; engagement records duration or scroll; performance records Core Web Vitals.",
-        },
-        timestamp: {
-          ...iso,
-          description:
-            "Client-side event time. If omitted, the server receive time may be used.",
-        },
-        anonymousId: {
-          type: "string",
-          maxLength: 120,
-          description:
-            "Anonymous visitor identifier generated by the client SDK.",
-        },
-        sessionId: {
-          type: "string",
-          maxLength: 120,
-          description: "Client session identifier.",
-        },
-        page: ref("CollectPage"),
-        client: ref("CollectClient"),
-        event: ref("CollectEvent"),
-        engagement: ref("CollectEngagement"),
-        performance: ref("CollectPerformance"),
-      },
-      additionalProperties: false,
     },
   };
 }
@@ -1913,21 +1832,6 @@ function buildPaths(): OpenAPISpec["paths"] {
         responses: {
           "200": response("Service is healthy", "HealthResponse"),
           ...errorResponses("400", "500"),
-        },
-      }),
-    },
-    "/collect": {
-      post: op({
-        operationId: "collectEvent",
-        summary: "Collect tracking event",
-        description:
-          "/collect is the unauthenticated client SDK ingestion endpoint. Successful receipt or silent drop returns 204.",
-        tags: ["Ingestion"],
-        security: [],
-        requestBody: requestBody("CollectPayload"),
-        responses: {
-          "204": { description: "No Content" },
-          ...errorResponses("400", "413"),
         },
       }),
     },
@@ -2080,17 +1984,8 @@ function buildPaths(): OpenAPISpec["paths"] {
       post: op({
         operationId: "createSite",
         summary: "Create site",
-        description:
-          "Creates a site in the token's team. Supports Idempotency-Key.",
+        description: "Creates a site in the token's team.",
         tags: ["Sites"],
-        parameters: [
-          {
-            name: "Idempotency-Key",
-            in: "header",
-            schema: { type: "string", maxLength: 200 },
-            description: "Client-generated idempotency key.",
-          },
-        ],
         requestBody: requestBody("SiteCreateInput"),
         responses: {
           "201": ok("SiteResponse", "Created site"),
@@ -2259,6 +2154,39 @@ function buildPaths(): OpenAPISpec["paths"] {
         },
       }),
     },
+    "/api/v1/sites/{siteId}/analytics/filter-values": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getAnalyticsFilterValues",
+        summary: "Search canonical filter values",
+        description:
+          "Returns candidate values for one canonical analytics filter field. The current field's own condition is excluded before candidate values are calculated.",
+        tags: ["Analytics"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          queryParam(
+            "field",
+            { type: "string", maxLength: 128 },
+            "Canonical filter field ID.",
+          ),
+          queryParam(
+            "search",
+            { type: "string", maxLength: 160 },
+            "Case-insensitive candidate value search text.",
+          ),
+          queryParam(
+            "limit",
+            { type: "integer", minimum: 1, maximum: 500, default: 50 },
+            "Maximum candidate values.",
+          ),
+        ],
+        responses: {
+          "200": ok("FilterValuesResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
     "/api/v1/sites/{siteId}/analytics/breakdowns/{dimension}": {
       parameters: [siteParam, dimensionParam],
       get: op({
@@ -2320,15 +2248,20 @@ function buildPaths(): OpenAPISpec["paths"] {
       get: op({
         operationId: "compareAnalytics",
         summary: "Compare analytics",
-        description: "Compares analytics against another period.",
+        description:
+          "Compares analytics with the immediately preceding equal-width time window.",
         tags: ["Analytics"],
         parameters: [
           ...timeParams(),
           filterParam(),
           queryParam(
             "compare",
-            { type: "string", maxLength: 80, default: "previous_period" },
-            "Comparison mode.",
+            {
+              type: "string",
+              enum: ["previous_period"],
+              default: "previous_period",
+            },
+            "Comparison mode. Only previous_period is supported.",
           ),
         ],
         responses: {
@@ -2343,7 +2276,7 @@ function buildPaths(): OpenAPISpec["paths"] {
         operationId: "exploreAnalytics",
         summary: "Explore analytics",
         description:
-          "Runs an advanced multidimensional query with complex filters.",
+          "Runs an advanced multidimensional query using the canonical FilterDocument AST from the request body.",
         tags: ["Analytics"],
         requestBody: requestBody("AnalyticsExploreRequest"),
         responses: {
@@ -2466,7 +2399,8 @@ function buildPaths(): OpenAPISpec["paths"] {
       post: op({
         operationId: "searchEvents",
         summary: "Search events",
-        description: "Searches events using complex payload filters.",
+        description:
+          "Searches events using the canonical FilterDocument AST from the request body. Express event names with an event.name condition and payload fields with event-payload JSON Pointer targets.",
         tags: ["Events"],
         requestBody: requestBody("EventSearchRequest"),
         responses: {
@@ -2523,6 +2457,34 @@ function buildPaths(): OpenAPISpec["paths"] {
         ],
         responses: {
           "200": ok("AnalyticsBreakdownResponse"),
+          ...errorResponses("400", "401", "403", "404"),
+        },
+      }),
+    },
+    "/api/v1/sites/{siteId}/event-fields": {
+      parameters: [siteParam],
+      get: op({
+        operationId: "getEventFields",
+        summary: "Discover dynamic event JSON fields",
+        description:
+          "Returns observed JSON pointer paths and scalar types for one custom event name.",
+        tags: ["Events"],
+        parameters: [
+          ...timeParams(),
+          filterParam(),
+          queryParam(
+            "eventName",
+            { type: "string", maxLength: 120 },
+            "Event name.",
+          ),
+          queryParam(
+            "limit",
+            { type: "integer", minimum: 1, maximum: 200, default: 100 },
+            "Maximum discovered fields.",
+          ),
+        ],
+        responses: {
+          "200": ok("EventFieldsResponse"),
           ...errorResponses("400", "401", "403", "404"),
         },
       }),
@@ -2661,14 +2623,6 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Create funnel",
         description: "Creates a saved funnel.",
         tags: ["Funnels"],
-        parameters: [
-          {
-            name: "Idempotency-Key",
-            in: "header",
-            schema: { type: "string", maxLength: 200 },
-            description: "Client-generated idempotency key.",
-          },
-        ],
         requestBody: requestBody("FunnelCreateInput"),
         responses: {
           "201": ok("FunnelResponse", "Created funnel"),
@@ -2862,14 +2816,6 @@ function buildPaths(): OpenAPISpec["paths"] {
         summary: "Execute global batch",
         description: "Executes up to 20 GET subrequests under /api/v1.",
         tags: ["Batch"],
-        parameters: [
-          {
-            name: "Idempotency-Key",
-            in: "header",
-            schema: { type: "string", maxLength: 200 },
-            description: "Client-generated idempotency key.",
-          },
-        ],
         requestBody: requestBody("BatchRequest"),
         responses: {
           "200": ok("BatchResponse"),
@@ -2991,7 +2937,7 @@ function responseExampleFor(schemaName: string | null, operationId: string) {
         batch: true,
       },
       limits: {
-        batchMaxRequests: 20,
+        batchMaxRequests: 50,
         defaultTimeRangeDays: 7,
         maxTimeRangeDays: 365,
         defaultPageLimit: 100,
@@ -3094,6 +3040,23 @@ function responseExampleFor(schemaName: string | null, operationId: string) {
       ],
       filters: ["page.path", "geo.country"],
       operators: ["eq", "in", "startsWith"],
+      filterProtocol: {
+        version: 1,
+        urlGrammar:
+          "filter[field]=operator:value; use filter[event.payload][/json-pointer]=operator:json:value for event payloads and [or.N]/[or.N.not] path segments for boolean groups.",
+        fields: [
+          {
+            id: "page.path",
+            valueKind: "string",
+            operators: ["eq", "in", "startsWith"],
+          },
+          {
+            id: "event.payload",
+            valueKind: "json-scalar",
+            operators: ["eq", "gte", "exists"],
+          },
+        ],
+      },
       intervals: ["hour", "day", "week"],
       presets: ["last_7_days", "last_30_days"],
       timeRange: {
@@ -3155,7 +3118,15 @@ function responseExampleFor(schemaName: string | null, operationId: string) {
         rows: [{ "page.path": "/pricing", "geo.country": "US", views: 850 }],
         metrics: ["views"],
         dimensions: ["page.path", "geo.country"],
-        filters: [{ field: "page.path", op: "startsWith", value: "/pricing" }],
+        filters: {
+          version: 1,
+          root: {
+            kind: "condition",
+            target: { kind: "field", field: "page.path" },
+            operator: "startsWith",
+            value: "/pricing",
+          },
+        },
       },
       { timeRange: sampleTimeRange },
     ),
@@ -3305,10 +3276,26 @@ function requestExamplesFor(schemaName: string | null) {
           timeRange: sampleTimeRange,
           metrics: ["views"],
           dimensions: ["page.path", "geo.country"],
-          filters: [
-            { field: "page.path", op: "startsWith", value: "/pricing" },
-            { field: "geo.country", op: "in", value: ["US", "CA"] },
-          ],
+          filters: {
+            version: 1,
+            root: {
+              kind: "and",
+              children: [
+                {
+                  kind: "condition",
+                  target: { kind: "field", field: "page.path" },
+                  operator: "startsWith",
+                  value: "/pricing",
+                },
+                {
+                  kind: "condition",
+                  target: { kind: "field", field: "geo.country" },
+                  operator: "in",
+                  value: ["US", "CA"],
+                },
+              ],
+            },
+          },
           limit: 100,
         },
       },
@@ -3318,9 +3305,26 @@ function requestExamplesFor(schemaName: string | null) {
         summary: "Search signup events",
         value: {
           timeRange: sampleTimeRange,
-          eventName: "signup",
-          payloadFilters: [{ path: "plan", op: "eq", value: "pro" }],
-          filters: [{ field: "page.path", op: "startsWith", value: "/signup" }],
+          filters: {
+            version: 1,
+            root: {
+              kind: "and",
+              children: [
+                {
+                  kind: "condition",
+                  target: { kind: "field", field: "event.name" },
+                  operator: "eq",
+                  value: "signup",
+                },
+                {
+                  kind: "condition",
+                  target: { kind: "event-payload", path: "/plan" },
+                  operator: "eq",
+                  value: "pro",
+                },
+              ],
+            },
+          },
           limit: 100,
         },
       },
@@ -3330,7 +3334,6 @@ function requestExamplesFor(schemaName: string | null) {
         summary: "Create signup funnel",
         value: {
           name: "Signup funnel",
-          description: "Pricing page to signup conversion.",
           steps: funnelExample.steps,
         },
       },
@@ -3370,49 +3373,6 @@ function requestExamplesFor(schemaName: string | null) {
               query: { preset: "last_30_days", metrics: "views,sessions" },
             },
           ],
-        },
-      },
-    },
-    CollectPayload: {
-      pageview: {
-        summary: "Pageview payload",
-        value: {
-          siteId: sampleSiteId,
-          type: "pageview",
-          timestamp: sampleGeneratedAt,
-          anonymousId: "anon_abc123",
-          sessionId: "sess_abc123",
-          page: {
-            url: "https://example.com/posts/hello",
-            path: "/posts/hello",
-            title: "Hello",
-            referrer: "https://google.com",
-            hostname: "example.com",
-          },
-          client: {
-            language: "zh-CN",
-            screen: { width: 1920, height: 1080 },
-            viewport: { width: 1280, height: 720 },
-          },
-        },
-      },
-      event: {
-        summary: "Custom event payload",
-        value: {
-          siteId: sampleSiteId,
-          type: "event",
-          timestamp: "2026-06-26T12:01:00Z",
-          anonymousId: "anon_abc123",
-          sessionId: "sess_abc123",
-          page: {
-            url: "https://example.com/signup",
-            path: "/signup",
-            title: "Signup",
-          },
-          event: {
-            name: "signup",
-            data: { plan: "pro", source: "pricing_page" },
-          },
         },
       },
     },
@@ -3458,7 +3418,7 @@ function buildSpec(): OpenAPISpec {
     info: {
       title: "InsightFlare API",
       description:
-        "Privacy-focused web analytics API. Authenticated endpoints require an API key passed as a Bearer token in the Authorization header. All timestamps in query parameters and response objects are ISO 8601 date-time strings unless the field name explicitly ends with `Ms`. Fields ending with `Ms` represent millisecond values, such as durations or Unix timestamps depending on context. Analytics ranges use [from, to) semantics. If from, to, and preset are omitted, analytics endpoints default to the last 7 days ending at request time. The default timeZone is UTC.\n\nThis OpenAPI document describes the behavior of the InsightFlare origin API. Depending on deployment configuration, upstream infrastructure, proxies, gateways, or edge providers may return additional HTTP responses before requests reach the API origin, such as 429 Too Many Requests. These responses are outside the standard API error envelope and are not part of the stable API contract.",
+        "Privacy-focused web analytics API. API v1 endpoints use an API key passed as a Bearer token in the Authorization header. All timestamps in typed API v1 query bodies and response objects are ISO 8601 date-time strings unless the field name explicitly ends with `Ms`. Fields ending with `Ms` represent millisecond values, such as durations or Unix timestamps depending on context. Analytics ranges use [from, to) semantics.",
       version: getAppVersion(),
       contact: {
         name: "InsightFlare",
@@ -3473,7 +3433,6 @@ function buildSpec(): OpenAPISpec {
       description: "InsightFlare API documentation",
       url: "https://insight.ravelloh.com/docs",
     },
-    "x-possible-upstream-responses": [429],
     servers: [
       { url: "https://insight.ravelloh.com", description: "Production" },
     ],
@@ -3495,8 +3454,12 @@ function buildSpec(): OpenAPISpec {
       { name: "Performance", description: "Core Web Vitals performance data" },
       { name: "Realtime", description: "Realtime activity" },
       { name: "Batch", description: "Global batch requests" },
-      { name: "Ingestion", description: "Client SDK event collection" },
       { name: "Health", description: "Health checks" },
+      { name: "Ingestion", description: "Browser event ingestion" },
+      { name: "Dashboard", description: "Dashboard session endpoints" },
+      { name: "Sharing", description: "Public shared-dashboard queries" },
+      { name: "Management", description: "Dashboard management endpoints" },
+      { name: "Internal", description: "Deployment or test-only endpoints" },
     ],
     paths: buildPaths(),
     components: {
@@ -3625,8 +3588,9 @@ function buildSpec(): OpenAPISpec {
           in: "query",
           style: "deepObject",
           explode: true,
-          schema: ref("FilterObject"),
-          description: "Simple equality filters as filter[field]=value.",
+          schema: { type: "object", additionalProperties: { type: "string" } },
+          description:
+            "Canonical URL filter DSL. Use filter[field]=operator:value, for example filter[geo.country]=in:US,JP. Event payload targets use filter[event.payload][/score]=gte:json:7. Boolean groups use [or.N] and negation uses .not, for example filter[page.path][or.0]=/docs and filter[page.path][or.1.not]=/pricing. Typed values use json:<JSON>.",
         },
         LimitQueryParam: {
           name: "limit",
@@ -3637,7 +3601,7 @@ function buildSpec(): OpenAPISpec {
         CursorQueryParam: {
           name: "cursor",
           in: "query",
-          schema: { type: "string", maxLength: 512 },
+          schema: { type: "string", maxLength: MAX_CURSOR_LENGTH },
           description: "Opaque pagination cursor from the previous response.",
         },
       },
@@ -3648,32 +3612,989 @@ function buildSpec(): OpenAPISpec {
         NotFound: { description: "Resource not found", ...errorContent },
         Conflict: { description: "Conflict", ...errorContent },
         PayloadTooLarge: { description: "Payload too large", ...errorContent },
+        MethodNotAllowed: {
+          description: "Method not allowed",
+          ...errorContent,
+        },
         InternalError: { description: "Internal error", ...errorContent },
       },
     },
   };
 }
 
-function main() {
+/** The typed registry is the sole source of API v1 operations. */
+function pointerSegment(value: string): string {
+  return value.replaceAll("~", "~0").replaceAll("/", "~1");
+}
+
+/**
+ * Zod emits local $defs beside an inline schema, while its references are
+ * rooted at #/$defs. Once that schema is embedded in an OpenAPI operation,
+ * make the pointers absolute to the embedded $defs location.
+ */
+function rewriteEmbeddedSchemaRefs(
+  value: unknown,
+  pointer: string,
+  inheritedDefsPointer?: string,
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      rewriteEmbeddedSchemaRefs(
+        item,
+        `${pointer}/${index}`,
+        inheritedDefsPointer,
+      ),
+    );
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+
+  const node = value as Record<string, unknown>;
+  const defsPointer =
+    node.$defs && typeof node.$defs === "object" && !Array.isArray(node.$defs)
+      ? `${pointer}/$defs`
+      : inheritedDefsPointer;
+  if (
+    defsPointer &&
+    typeof node.$ref === "string" &&
+    node.$ref.startsWith("#/$defs/")
+  ) {
+    const definitionPath = node.$ref
+      .slice("#/$defs/".length)
+      .split("/")
+      .map(pointerSegment)
+      .join("/");
+    node.$ref = `${defsPointer}/${definitionPath}`;
+  }
+  for (const [key, child] of Object.entries(node)) {
+    if (key !== "$ref") {
+      rewriteEmbeddedSchemaRefs(
+        child,
+        `${pointer}/${pointerSegment(key)}`,
+        defsPointer,
+      );
+    }
+  }
+}
+
+function normalizeApiV1Security(operation: Record<string, unknown>): void {
+  if (!Array.isArray(operation.security)) return;
+  operation.security = operation.security.map((requirement) => {
+    if (!requirement || typeof requirement !== "object") return requirement;
+    const normalized = { ...(requirement as Record<string, unknown>) };
+    if ("bearerAuth" in normalized) {
+      normalized.BearerAuth = normalized.bearerAuth;
+      delete normalized.bearerAuth;
+    }
+    return normalized;
+  });
+}
+
+function resolveSpecPointer(spec: OpenAPISpec, pointer: string): unknown {
+  if (!pointer.startsWith("#/")) return undefined;
+  let current: unknown = spec;
+  for (const rawSegment of pointer.slice(2).split("/")) {
+    if (!current || typeof current !== "object") return undefined;
+    const segment = rawSegment.replaceAll("~1", "/").replaceAll("~0", "~");
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+function exampleForSchema(
+  spec: OpenAPISpec,
+  schema: unknown,
+  seen = new Set<string>(),
+): unknown {
+  if (!schema || typeof schema !== "object") return undefined;
+  const source = schema as Record<string, unknown>;
+  if (typeof source.$ref === "string") {
+    if (seen.has(source.$ref)) return undefined;
+    const resolved = resolveSpecPointer(spec, source.$ref);
+    return resolved
+      ? exampleForSchema(spec, resolved, new Set([...seen, source.$ref]))
+      : undefined;
+  }
+  if ("const" in source) return source.const;
+  if (Array.isArray(source.enum) && source.enum.length > 0)
+    return source.enum[0];
+  if (source.default !== undefined) return source.default;
+  if (Array.isArray(source.oneOf) || Array.isArray(source.anyOf)) {
+    const variants = (source.oneOf ?? source.anyOf) as unknown[];
+    const nonNull = variants.find(
+      (candidate) =>
+        candidate &&
+        typeof candidate === "object" &&
+        (candidate as Record<string, unknown>).type !== "null",
+    );
+    return exampleForSchema(spec, nonNull ?? variants[0], seen);
+  }
+  if (Array.isArray(source.allOf)) {
+    const values = source.allOf
+      .map((part) => exampleForSchema(spec, part, seen))
+      .filter((value) => value !== undefined);
+    if (values.every((value) => value && typeof value === "object")) {
+      return Object.assign({}, ...values);
+    }
+    return values[0];
+  }
+
+  const type = Array.isArray(source.type)
+    ? source.type.find((candidate) => candidate !== "null")
+    : source.type;
+  if (type === "object" || source.properties) {
+    const properties = (source.properties ?? {}) as Record<string, unknown>;
+    // Include optional fields so a later allOf branch can refine a broadly
+    // typed envelope field such as data.
+    const fields = Object.keys(properties);
+    return Object.fromEntries(
+      fields.map((name) => [
+        name,
+        exampleForSchema(spec, properties[name], seen),
+      ]),
+    );
+  }
+  if (type === "array") {
+    const minItems = Math.max(1, Number(source.minItems) || 0);
+    return Array.from({ length: minItems }, () =>
+      exampleForSchema(spec, source.items, seen),
+    );
+  }
+  if (type === "boolean") return false;
+  if (type === "integer" || type === "number") {
+    const minimum = Number(source.minimum);
+    const exclusiveMinimum = source.exclusiveMinimum;
+    const lowerBound = Number.isFinite(minimum) ? minimum : 0;
+    if (exclusiveMinimum === true) return lowerBound + 1;
+    if (typeof exclusiveMinimum === "number") return exclusiveMinimum + 1;
+    return lowerBound;
+  }
+  if (type === "null") return null;
+  if (type === "string" || !type) {
+    if (source.format === "date-time") return "2026-01-01T00:00:00Z";
+    if (source.format === "uuid") return "550e8400-e29b-41d4-a716-446655440000";
+    if (source.format === "uri") return "https://example.com";
+    if (source.format === "email") return "user@example.com";
+    return "example";
+  }
+  return undefined;
+}
+
+function populateTypedApiV1Examples(spec: OpenAPISpec): void {
+  const legacyOperationsWithInvalidExamples = new Set([
+    "getAnalyticsFilterValues",
+    "getEventFields",
+  ]);
+  for (const pathItem of Object.values(spec.paths)) {
+    for (const operation of Object.values(pathItem)) {
+      if (
+        !operation ||
+        Array.isArray(operation) ||
+        typeof operation !== "object" ||
+        ((operation as unknown as Record<string, unknown>)[
+          "x-api-v1-lifecycle"
+        ] !== "exposed" &&
+          !legacyOperationsWithInvalidExamples.has(
+            String(
+              (operation as unknown as Record<string, unknown>).operationId,
+            ),
+          ))
+      ) {
+        continue;
+      }
+      const typedOperation = operation as unknown as Record<string, unknown>;
+      const bodies = [
+        typedOperation.requestBody,
+        ...Object.entries(
+          (typedOperation.responses ?? {}) as Record<string, unknown>,
+        )
+          .filter(([status]) => status === "200" || status === "201")
+          .map(([, response]) => response),
+      ];
+      for (const body of bodies) {
+        if (!body || typeof body !== "object") continue;
+        const content = (body as Record<string, unknown>).content as
+          | Record<string, unknown>
+          | undefined;
+        const jsonContent = content?.[json] as
+          | Record<string, unknown>
+          | undefined;
+        if (!jsonContent?.schema) continue;
+        const example = exampleForSchema(spec, jsonContent.schema);
+        if (example === undefined) continue;
+        jsonContent.example = example;
+        delete jsonContent.examples;
+      }
+    }
+  }
+}
+
+function pathParameterFor(name: string): unknown {
+  const reusableParameters: Record<string, string> = {
+    siteId: "SiteIdPathParam",
+    dimension: "DimensionPathParam",
+    eventName: "EventNamePathParam",
+    eventId: "EventIdPathParam",
+    visitorId: "VisitorIdPathParam",
+    sessionId: "SessionIdPathParam",
+    funnelId: "FunnelIdPathParam",
+  };
+  const reusable = reusableParameters[name];
+  if (reusable) return parameterRef(reusable);
+  return {
+    name,
+    in: "path",
+    required: true,
+    schema: { type: "string" },
+    description: `${name} path parameter.`,
+  };
+}
+
+function parameterName(parameter: unknown): string | undefined {
+  if (!parameter || typeof parameter !== "object") return undefined;
+  const entry = parameter as Record<string, unknown>;
+  if (typeof entry.name === "string") return entry.name;
+  if (typeof entry.$ref === "string") {
+    const componentName = entry.$ref
+      .split("/")
+      .at(-1)
+      ?.replace(/PathParam$/, "");
+    return componentName
+      ? componentName.charAt(0).toLowerCase() + componentName.slice(1)
+      : undefined;
+  }
+  return undefined;
+}
+
+function ensureTypedPathParameters(
+  path: string,
+  operation: Record<string, unknown>,
+): void {
+  const requiredNames = [...path.matchAll(/\{([^}]+)\}/g)].map(
+    (match) => match[1],
+  );
+  if (requiredNames.length === 0) return;
+  const parameters = Array.isArray(operation.parameters)
+    ? [...operation.parameters]
+    : [];
+  const declared = new Set(parameters.map(parameterName).filter(Boolean));
+  for (const name of requiredNames) {
+    if (!declared.has(name)) parameters.push(pathParameterFor(name));
+  }
+  operation.parameters = parameters;
+}
+
+function referencedComponentNames(value: unknown): Set<string> {
+  const names = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const entry = node as Record<string, unknown>;
+    if (typeof entry.$ref === "string") {
+      const match = entry.$ref.match(/^#\/components\/([^/]+)\/([^/]+)$/);
+      if (match) names.add(`${match[1]}/${match[2]}`);
+    }
+    Object.values(entry).forEach(visit);
+  };
+  visit(value);
+  return names;
+}
+
+/** Remove legacy component definitions no longer reachable from the active API. */
+function pruneUnusedComponents(spec: OpenAPISpec): void {
+  const reachable = referencedComponentNames(spec.paths);
+  const componentGroups = ["schemas", "parameters", "responses"] as const;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const group of componentGroups) {
+      for (const [name, component] of Object.entries(spec.components[group])) {
+        const key = `${group}/${name}`;
+        if (!reachable.has(key)) continue;
+        for (const dependency of referencedComponentNames(component)) {
+          if (!reachable.has(dependency)) {
+            reachable.add(dependency);
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+  for (const group of componentGroups) {
+    spec.components[group] = Object.fromEntries(
+      Object.entries(spec.components[group]).filter(([name]) =>
+        reachable.has(`${group}/${name}`),
+      ),
+    );
+  }
+}
+
+function mergeApiV1TargetOperations(spec: OpenAPISpec): void {
+  const targetPaths = buildApiV1OpenApiPaths();
+  const methods = new Set<HttpMethod>(["get", "post", "patch", "delete"]);
+  // API v1 is registry-owned. The legacy generator is only retained as a
+  // source for shared components while its stale v1 operations are removed.
+  spec.paths = Object.fromEntries(
+    Object.entries(spec.paths).filter(([path]) => !path.startsWith("/api/v1")),
+  );
+  for (const [path, targetPathItem] of Object.entries(targetPaths)) {
+    const pathItem = spec.paths[path] ?? {};
+    for (const [method, targetOperation] of Object.entries(targetPathItem)) {
+      if (!methods.has(method as HttpMethod)) {
+        continue;
+      }
+      const operation = JSON.parse(JSON.stringify(targetOperation)) as Record<
+        string,
+        unknown
+      >;
+      rewriteEmbeddedSchemaRefs(
+        operation,
+        `#/paths/${pointerSegment(path)}/${method}`,
+      );
+      normalizeApiV1Security(operation);
+      ensureTypedPathParameters(path, operation);
+      operation["x-required-scopes"] = operation["x-api-v1-scopes"] ?? [];
+      pathItem[method as HttpMethod] = operation as unknown as Operation;
+    }
+    spec.paths[path] = pathItem;
+  }
+}
+
+/**
+ * The registry owns API v1, while these routes are implemented by the rest of
+ * the Hono application. Keep their public HTTP shapes in the same generated
+ * document so the main OpenAPI contract describes the whole origin API.
+ */
+function mergeProjectOperations(spec: OpenAPISpec): void {
+  const genericResponse = {
+    description:
+      "JSON response. The response shape is owned by the dashboard protocol and is not part of the public API v1 contract.",
+    content: {
+      [json]: {
+        schema: { type: "object", additionalProperties: true },
+      },
+    },
+  };
+  const genericError = {
+    description: "Error response.",
+    content: {
+      [json]: {
+        schema: ref("ErrorResponse"),
+      },
+    },
+  };
+  const publicRouteSecurity: Array<Record<string, unknown>> = [];
+  const dashboardSession = [{ DashboardSession: [] }];
+  const e2eControlToken = [{ E2EControlToken: [] }];
+  const sharedQueryPaths = [
+    "overview",
+    "trend",
+    "pages",
+    "pages-dashboard",
+    "referrers",
+    "retention",
+    "performance",
+    "countries",
+    "filter-values",
+    "event-types",
+    "overview-page-path",
+    "overview-page-title",
+    "overview-page-hostname",
+    "overview-page-entry",
+    "overview-page-exit",
+    "overview-source-domain",
+    "overview-source-channel",
+    "overview-client-browser",
+    "overview-client-os-version",
+    "overview-client-device-type",
+    "overview-client-language",
+    "overview-client-screen-size",
+    "overview-geo-country",
+    "overview-geo-region",
+    "overview-geo-city",
+    "overview-geo-continent",
+    "overview-geo-timezone",
+    "overview-geo-organization",
+    "overview-geo-points",
+    "browser-trend",
+    "browser-engine-trend",
+    "browser-version-breakdown",
+    "browser-cross-breakdown",
+    "client-cross-breakdown",
+    "browser-radar",
+    "referrer-radar",
+    "referrer-dimension-trend",
+    "client-dimension-trend",
+    "utm-dimension-trend",
+    "utm-source",
+    "utm-medium",
+    "utm-campaign",
+    "utm-term",
+    "utm-content",
+  ];
+  const dashboardQueryPaths = [
+    ...sharedQueryPaths,
+    "events-summary",
+    "events-trend",
+    "events-records",
+    "event-type-fields",
+    "event-type-field-values",
+    "event-type-context",
+    "event-type-detail",
+    "event-record-detail",
+    "sessions",
+    "session-detail",
+    "visitor-detail",
+    "visitors",
+  ];
+  const jsonObjectBody = {
+    required: true,
+    description:
+      "Dashboard protocol payload. This internal request shape is not part of the public API v1 contract.",
+    content: {
+      [json]: {
+        schema: { type: "object", additionalProperties: true },
+        example: {},
+      },
+    },
+  };
+  const routes: Array<{
+    path: string;
+    methods: readonly HttpMethod[];
+    operationId: string;
+    summary: string;
+    tag: string;
+    security?: Array<Record<string, unknown>>;
+    internal?: boolean;
+    parameters?: unknown[];
+    requestBody?: unknown;
+    responses?: Record<string, unknown>;
+  }> = [
+    {
+      path: "/collect",
+      methods: ["post"],
+      operationId: "collect.ingest",
+      summary: "Ingest a tracking event",
+      tag: "Ingestion",
+      security: publicRouteSecurity,
+      requestBody: {
+        description:
+          "Tracker event payload. The tracker SDK is the authoritative producer for this ingestion protocol.",
+        content: {
+          [json]: {
+            schema: { type: "object", additionalProperties: true },
+            example: {},
+          },
+        },
+      },
+    },
+    {
+      path: "/script.js",
+      methods: ["get"],
+      operationId: "tracker.script",
+      summary: "Get the tracking script",
+      tag: "Ingestion",
+      security: publicRouteSecurity,
+      parameters: [
+        {
+          name: "siteId",
+          in: "query",
+          required: true,
+          schema: { type: "string", minLength: 1 },
+          description: "Site identifier embedded in the tracker snippet.",
+        },
+      ],
+      responses: {
+        "200": {
+          description: "JavaScript tracker source.",
+          content: {
+            "application/javascript": { schema: { type: "string" } },
+          },
+        },
+        "400": {
+          description: "The siteId query parameter is missing or invalid.",
+          content: { "text/plain": { schema: { type: "string" } } },
+        },
+        "404": {
+          description: "The site does not have a tracking configuration.",
+          content: { "text/plain": { schema: { type: "string" } } },
+        },
+        "405": {
+          description: "Only GET is supported.",
+          content: { "text/plain": { schema: { type: "string" } } },
+        },
+        "500": {
+          description: "Tracker configuration or token issuance failed.",
+          content: { "text/plain": { schema: { type: "string" } } },
+        },
+      },
+    },
+    {
+      path: "/.well-known/openapi.json",
+      methods: ["get"],
+      operationId: "wellKnown.openapi",
+      summary: "Get the OpenAPI document",
+      tag: "Discovery",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/.well-known/skills.json",
+      methods: ["get"],
+      operationId: "wellKnown.skills",
+      summary: "Get the API skills manifest",
+      tag: "Discovery",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/.well-known/security.txt",
+      methods: ["get"],
+      operationId: "wellKnown.security",
+      summary: "Get security contact information",
+      tag: "Discovery",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/.well-known/health",
+      methods: ["get"],
+      operationId: "wellKnown.health",
+      summary: "Get service health",
+      tag: "Health",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/.well-known/change-password",
+      methods: ["get"],
+      operationId: "wellKnown.changePassword",
+      summary: "Get the password change entry point",
+      tag: "Discovery",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/api/public/session",
+      methods: ["post"],
+      operationId: "public.session.login",
+      summary: "Create a dashboard session",
+      tag: "Dashboard",
+      security: publicRouteSecurity,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/public/session",
+      methods: ["delete"],
+      operationId: "public.session.logout",
+      summary: "End a dashboard session",
+      tag: "Dashboard",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/api/public/login-security",
+      methods: ["get"],
+      operationId: "public.loginSecurity.get",
+      summary: "Get login security settings",
+      tag: "Dashboard",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/api/public/account-links/inspect",
+      methods: ["post"],
+      operationId: "public.accountLinks.inspect",
+      summary: "Inspect an account link",
+      tag: "Dashboard",
+      security: publicRouteSecurity,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/public/account-links/complete",
+      methods: ["post"],
+      operationId: "public.accountLinks.complete",
+      summary: "Complete an account link",
+      tag: "Dashboard",
+      security: publicRouteSecurity,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/public/resources/world-countries",
+      methods: ["get"],
+      operationId: "public.resources.worldCountries",
+      summary: "List world countries",
+      tag: "Dashboard",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/api/public/resources/wiki-summary",
+      methods: ["get"],
+      operationId: "public.resources.wikiSummary",
+      summary: "Get a wiki summary",
+      tag: "Dashboard",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/api/public/share/{slug}/site",
+      methods: ["get"],
+      operationId: "public.share.site",
+      summary: "Get public shared-site metadata",
+      tag: "Sharing",
+      security: publicRouteSecurity,
+    },
+    {
+      path: "/api/public/share/{slug}/{queryPath}",
+      methods: ["get"],
+      operationId: "public.share.query",
+      summary: "Run a public shared-dashboard query",
+      tag: "Sharing",
+      security: publicRouteSecurity,
+      parameters: [
+        {
+          name: "queryPath",
+          in: "path",
+          required: true,
+          schema: { type: "string", enum: sharedQueryPaths },
+          description: "Shared dashboard query name.",
+        },
+      ],
+    },
+    {
+      path: "/api",
+      methods: ["get"],
+      operationId: "api.redirectToV1",
+      summary: "Redirect to the API v1 entry point",
+      tag: "Discovery",
+      security: publicRouteSecurity,
+      responses: { "307": { description: "Temporary redirect to /api/v1." } },
+    },
+    {
+      path: "/api/private/session",
+      methods: ["get"],
+      operationId: "private.session.get",
+      summary: "Get the current dashboard session",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/notifications",
+      methods: ["get"],
+      operationId: "private.notifications.list",
+      summary: "List dashboard notifications",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/notifications/preferences",
+      methods: ["get"],
+      operationId: "private.notifications.preferences.get",
+      summary: "Get notification preferences",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/notifications/preferences",
+      methods: ["patch"],
+      operationId: "private.notifications.preferences.update",
+      summary: "Update notification preferences",
+      tag: "Dashboard",
+      security: dashboardSession,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/private/notifications/{messageId}",
+      methods: ["patch"],
+      operationId: "private.notifications.update",
+      summary: "Update a notification",
+      tag: "Dashboard",
+      security: dashboardSession,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/private/notifications",
+      methods: ["patch"],
+      operationId: "private.notifications.markAllRead",
+      summary: "Mark all dashboard notifications as read",
+      tag: "Dashboard",
+      security: dashboardSession,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/private/releases/compare",
+      methods: ["get"],
+      operationId: "private.releases.compare",
+      summary: "Compare releases",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/archive/manifest",
+      methods: ["get"],
+      operationId: "private.archive.manifest",
+      summary: "Get an archive manifest",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/archive/file",
+      methods: ["get", "head"],
+      operationId: "private.archive.file",
+      summary: "Download an archive file",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/saved-filters",
+      methods: ["get"],
+      operationId: "private.savedFilters.list",
+      summary: "List saved filters",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/saved-filters",
+      methods: ["post"],
+      operationId: "private.savedFilters.create",
+      summary: "Create a saved filter",
+      tag: "Dashboard",
+      security: dashboardSession,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/private/saved-filters/{filterId}",
+      methods: ["get", "put", "delete"],
+      operationId: "private.savedFilters.update",
+      summary: "Get, update, or delete a saved filter",
+      tag: "Dashboard",
+      security: dashboardSession,
+      requestBody: jsonObjectBody,
+    },
+  ];
+
+  routes.push(
+    {
+      path: "/api/private/team-dashboard",
+      methods: ["get"],
+      operationId: "private.teamDashboard",
+      summary: "Get dashboard-wide team analytics",
+      tag: "Dashboard",
+      security: dashboardSession,
+    },
+    {
+      path: "/api/private/{queryPath}",
+      methods: ["get"],
+      operationId: "private.dashboardQuery",
+      summary: "Run a dashboard analytics query",
+      tag: "Dashboard",
+      security: dashboardSession,
+      parameters: [
+        {
+          name: "queryPath",
+          in: "path",
+          required: true,
+          schema: { type: "string", enum: dashboardQueryPaths },
+          description: "Dashboard analytics query name.",
+        },
+      ],
+    },
+    {
+      path: "/api/private/funnels",
+      methods: ["get", "post", "delete"],
+      operationId: "private.funnels",
+      summary: "Manage dashboard funnels",
+      tag: "Dashboard",
+      security: dashboardSession,
+      requestBody: jsonObjectBody,
+    },
+    {
+      path: "/api/private/realtime/ws",
+      methods: ["get"],
+      operationId: "private.realtime.websocket",
+      summary: "Open the dashboard realtime WebSocket",
+      tag: "Dashboard",
+      security: dashboardSession,
+      responses: { "101": { description: "WebSocket protocol switch." } },
+    },
+  );
+
+  const adminMethods: Record<string, readonly HttpMethod[]> = {
+    "account-links": ["post"],
+    users: ["get", "post", "patch"],
+    profile: ["get", "post", "patch"],
+    teams: ["get", "post", "patch"],
+    "team-invites": ["get", "post", "patch"],
+    sites: ["get", "post", "patch"],
+    members: ["get", "post", "patch"],
+    "site-config": ["get", "post", "patch"],
+    "script-snippet": ["get"],
+    "api-keys": ["get", "post", "patch"],
+    "notification-email": ["get", "post", "patch", "delete"],
+    "notification-email/test": ["post"],
+    "login-turnstile": ["get", "post", "patch", "delete"],
+    "login-turnstile/test": ["post"],
+    "bot-analytics-config": ["get", "post", "patch", "delete"],
+    "bot-analytics": ["get"],
+    "notification-email-preview": ["post"],
+    "notification-rules": ["get", "post", "patch", "delete"],
+    "notification-rules/preview": ["post"],
+    "notification-rules/run": ["post"],
+    "notification-test": ["post"],
+    "system-performance": ["get"],
+    "scheduled-tasks": ["get"],
+    "do-diagnostic": ["get"],
+    "e2e/flush": ["post"],
+  };
+  for (const [adminPath, methods] of Object.entries(adminMethods)) {
+    routes.push({
+      path: `/api/private/admin/${adminPath}`,
+      methods,
+      operationId: `private.admin.${adminPath.replaceAll("/", ".")}`,
+      summary: `Manage ${adminPath.replaceAll("-", " ")}`,
+      tag: "Management",
+      security: dashboardSession,
+      internal: true,
+      requestBody: jsonObjectBody,
+    });
+  }
+
+  const e2eRoutes: Array<[string, readonly HttpMethod[], string]> = [
+    ["/clock", ["get"], "Read the E2E clock"],
+    ["/clock/set", ["post"], "Set the E2E clock"],
+    ["/clock/advance", ["post"], "Advance the E2E clock"],
+    ["/scheduled/run", ["post"], "Run an E2E scheduled task"],
+    ["/ingest/flush", ["post"], "Flush E2E ingestion"],
+    ["/ingest/status", ["get"], "Get E2E ingestion status"],
+  ];
+  for (const [path, methods, summary] of e2eRoutes) {
+    routes.push({
+      path: `/__e2e__${path}`,
+      methods,
+      operationId: `internal.e2e${path.replaceAll("/", ".")}`,
+      summary,
+      tag: "Internal",
+      security: e2eControlToken,
+      internal: true,
+      requestBody: jsonObjectBody,
+    });
+  }
+
+  for (const route of routes) {
+    const pathItem = spec.paths[route.path] ?? {};
+    const definedParameters = new Set(
+      (route.parameters ?? [])
+        .map((parameter) =>
+          parameter && typeof parameter === "object" && "name" in parameter
+            ? String(parameter.name)
+            : "",
+        )
+        .filter(Boolean),
+    );
+    const pathParameters = [...route.path.matchAll(/\{([^}]+)\}/g)]
+      .map((match) => match[1])
+      .filter((name) => !definedParameters.has(name))
+      .map((name) => ({
+        name,
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+        description: `${name} path parameter.`,
+      }));
+    for (const method of route.methods) {
+      const requiresBody = ["post", "put", "patch"].includes(method);
+      const responseSet = route.responses ?? {
+        "200": genericResponse,
+        "400": genericError,
+        ...(route.security && route.security.length > 0
+          ? { "401": genericError, "403": genericError }
+          : {}),
+      };
+      pathItem[method] = {
+        operationId:
+          route.methods.length === 1
+            ? route.operationId
+            : `${route.operationId}.${method}`,
+        summary: route.summary,
+        description: route.internal
+          ? `${route.summary}. This endpoint is internal to the InsightFlare dashboard and is not a public API v1 compatibility contract.`
+          : `${route.summary}.`,
+        tags: [route.tag],
+        "x-required-scopes": [],
+        ...(route.internal ? { "x-internal": true } : {}),
+        ...(route.security ? { security: route.security } : {}),
+        ...(route.parameters || pathParameters.length > 0
+          ? { parameters: [...pathParameters, ...(route.parameters ?? [])] }
+          : {}),
+        ...(requiresBody && route.requestBody
+          ? { requestBody: route.requestBody }
+          : {}),
+        responses: responseSet,
+      } as Operation;
+    }
+    spec.paths[route.path] = pathItem;
+  }
+}
+
+/**
+ * The published document is an external integration contract, not a catalog
+ * of dashboard browser protocols, administrative actions, or test controls.
+ */
+function retainPublishedOperations(spec: OpenAPISpec): void {
+  const publishedPaths = new Set([
+    "/collect",
+    "/script.js",
+    "/.well-known/openapi.json",
+    "/.well-known/skills.json",
+    "/.well-known/health",
+  ]);
+  spec.paths = Object.fromEntries(
+    Object.entries(spec.paths).filter(
+      ([path]) => path.startsWith("/api/v1") || publishedPaths.has(path),
+    ),
+  );
+}
+
+function pruneUnusedTags(spec: OpenAPISpec): void {
+  const usedTags = new Set<string>();
+  for (const pathItem of Object.values(spec.paths)) {
+    for (const operation of Object.values(pathItem)) {
+      if (
+        !operation ||
+        typeof operation !== "object" ||
+        Array.isArray(operation)
+      ) {
+        continue;
+      }
+      const tags = (operation as unknown as { tags?: unknown }).tags;
+      if (!Array.isArray(tags)) continue;
+      for (const tag of tags) {
+        if (typeof tag === "string") usedTags.add(tag);
+      }
+    }
+  }
+  spec.tags = spec.tags.filter((tag) => usedTags.has(tag.name));
+}
+
+async function main() {
   const spec = buildSpec();
   enrichSpecWithExamples(spec);
   const root = resolve(import.meta.dirname, "..");
+  mergeApiV1TargetOperations(spec);
+  mergeProjectOperations(spec);
+  retainPublishedOperations(spec);
+  populateTypedApiV1Examples(spec);
+  pruneUnusedComponents(spec);
+  pruneUnusedTags(spec);
   const yamlPath = resolve(root, "docs", "openapi.yaml");
   const jsonPath = resolve(root, "docs", "openapi.json");
 
-  writeFileSync(yamlPath, YAML.stringify(spec, { indent: 2 }), "utf8");
-  writeFileSync(jsonPath, JSON.stringify(spec, null, 2), "utf8");
-
-  try {
-    execSync(`npx prettier --write "${yamlPath}" "${jsonPath}"`, {
-      stdio: "pipe",
-    });
-  } catch {
-    // Files are valid even if formatting fails.
-  }
+  writeAtomically(yamlPath, YAML.stringify(spec, { indent: 2 }));
+  const prettierOptions = await resolveConfig(jsonPath);
+  const formattedJson = await format(`${JSON.stringify(spec, null, 2)}\n`, {
+    ...prettierOptions,
+    filepath: jsonPath,
+    parser: "json",
+  });
+  writeAtomically(jsonPath, formattedJson);
 
   rlog.success(`Generated ${yamlPath}`);
   rlog.success(`Generated ${jsonPath}`);
 }
 
-main();
+await main();

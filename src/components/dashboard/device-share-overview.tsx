@@ -1,19 +1,24 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import { memo, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { resolveDeviceTypeMeta } from "@/components/dashboard/journey-display";
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Spinner } from "@/components/ui/spinner";
 import { fetchClientDimensionTrend } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { BrowserTrendData } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 function emptyTrend(): BrowserTrendData {
   return { ok: true, interval: "day", series: [], data: [] };
+}
+
+function emptyTrendUnlessAborted(error: unknown): BrowserTrendData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyTrend();
 }
 
 function seriesLabel(
@@ -29,73 +34,91 @@ interface DeviceShareOverviewProps {
   messages: AppMessages;
   siteId: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
 }
 
-export function DeviceShareOverview({
+export const DeviceShareOverview = memo(function DeviceShareOverview({
   locale,
   messages,
   siteId,
   window,
   filters,
 }: DeviceShareOverviewProps) {
-  const [deviceTrend, setDeviceTrend] = useState<BrowserTrendData>(emptyTrend);
-  const [osTrend, setOsTrend] = useState<BrowserTrendData>(emptyTrend);
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchClientDimensionTrend(siteId, window, "deviceType", filters, {
-        limit: 5,
-      }).catch(() => emptyTrend()),
-      fetchClientDimensionTrend(siteId, window, "operatingSystem", filters, {
-        limit: 5,
-      }).catch(() => emptyTrend()),
-    ])
-      .then(([nextDeviceTrend, nextOsTrend]) => {
-        if (!active) return;
-        setDeviceTrend(nextDeviceTrend);
-        setOsTrend(nextOsTrend);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.interval, window.to]);
-
-  const showOverlayLoading = loading && hydrated;
-  const showInitialLoading = loading && !hydrated;
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isFetching, isPending } = useQuery({
+    queryKey: [
+      "dashboard",
+      "device-share-overview",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [deviceTrend, osTrend] = await Promise.all([
+        fetchClientDimensionTrend(siteId, window, "deviceType", filters, {
+          limit: 5,
+          signal,
+        }).catch(emptyTrendUnlessAborted),
+        fetchClientDimensionTrend(siteId, window, "operatingSystem", filters, {
+          limit: 5,
+          signal,
+        }).catch(emptyTrendUnlessAborted),
+      ]);
+      return { deviceTrend, osTrend };
+    },
+    enabled: !import.meta.env.SSR,
+  });
+  const deviceTrend = useMemo(
+    () => data?.deviceTrend ?? emptyTrend(),
+    [data?.deviceTrend],
+  );
+  const osTrend = useMemo(() => data?.osTrend ?? emptyTrend(), [data?.osTrend]);
+  const deviceItems = useMemo(
+    () =>
+      deviceTrend.series.map((item) => {
+        const deviceMeta = resolveDeviceTypeMeta(
+          item.label,
+          messages.common.deviceLabels,
+          messages.common.unknown,
+        );
+        return {
+          key: item.key,
+          label: item.isOther ? messages.devices.otherLabel : deviceMeta.label,
+          value: item.visitors,
+          isOther: item.isOther,
+          icon: item.isOther ? undefined : deviceMeta.Icon,
+        };
+      }),
+    [
+      deviceTrend.series,
+      messages.common.deviceLabels,
+      messages.common.unknown,
+      messages.devices.otherLabel,
+    ],
+  );
+  const osItems = useMemo(
+    () =>
+      osTrend.series.map((item) => ({
+        key: item.key,
+        label: seriesLabel(item, messages),
+        value: item.visitors,
+        isOther: item.isOther,
+      })),
+    [messages, osTrend.series],
+  );
+  const showOverlayLoading = isFetching && data !== undefined;
+  const showInitialLoading = isPending;
 
   return (
     <div className="relative">
       <div className="grid gap-4">
         <ShareRadialCard
           title={messages.devices.deviceShareTitle}
-          items={deviceTrend.series.map((item) => {
-            const deviceMeta = resolveDeviceTypeMeta(
-              item.label,
-              messages.common.deviceLabels,
-              messages.common.unknown,
-            );
-            return {
-              key: item.key,
-              label: item.isOther
-                ? messages.devices.otherLabel
-                : deviceMeta.label,
-              value: item.visitors,
-              isOther: item.isOther,
-              icon: item.isOther ? undefined : deviceMeta.Icon,
-            };
-          })}
+          items={deviceItems}
+          maxItems={6}
           locale={locale}
           valueLabel={messages.common.visitors}
           loading={showInitialLoading}
@@ -103,12 +126,8 @@ export function DeviceShareOverview({
         />
         <ShareRadialCard
           title={messages.devices.osShareTitle}
-          items={osTrend.series.map((item) => ({
-            key: item.key,
-            label: seriesLabel(item, messages),
-            value: item.visitors,
-            isOther: item.isOther,
-          }))}
+          items={osItems}
+          maxItems={6}
           locale={locale}
           valueLabel={messages.common.visitors}
           loading={showInitialLoading}
@@ -138,4 +157,4 @@ export function DeviceShareOverview({
       </AutoTransition>
     </div>
   );
-}
+});

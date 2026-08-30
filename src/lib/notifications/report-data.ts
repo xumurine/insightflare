@@ -1,10 +1,24 @@
-import type { QueryWindow } from "@/lib/edge/query/core";
-import { queryOverviewAggregate } from "@/lib/edge/query/overview";
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import type {
+  FilterDocument,
+  QueryWindow,
+} from "@/lib/edge/analytics/providers/d1/internal/core";
+import { queryOverviewAggregate } from "@/lib/edge/analytics/providers/d1/internal/overview";
 import {
   queryPagesAggregate,
   queryReferrerAggregate,
-} from "@/lib/edge/query/pages";
+} from "@/lib/edge/analytics/providers/d1/internal/pages";
+import { SITE_PK_FROM_SITE_ID_SQL } from "@/lib/edge/site-identity-sql";
 import type { Env } from "@/lib/edge/types";
+
+import {
+  getOrCreateCachedPromise,
+  notificationCacheKey,
+  type NotificationInvocationCache,
+  type NotificationMetricCacheKey,
+  type NotificationReportCacheKey,
+  type NotificationSiteInfo,
+} from "./notification-cache";
 
 export type NotificationMetric = "views" | "visitors" | "sessions";
 export type NotificationMetricWindow = "last_1h" | "last_24h" | "yesterday";
@@ -127,9 +141,15 @@ function dateLabel(parts: { year: number; month: number; day: number }) {
   return `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
 }
 
-function rangeLabel(fromMs: number, toMs: number, timeZone: string): string {
-  const from = dateLabel(partsInTimezone(new Date(fromMs), timeZone));
-  const to = dateLabel(partsInTimezone(new Date(toMs), timeZone));
+function rangeLabel(
+  startMs: number,
+  endExclusiveMs: number,
+  timeZone: string,
+): string {
+  const from = dateLabel(partsInTimezone(new Date(startMs), timeZone));
+  const to = dateLabel(
+    partsInTimezone(new Date(Math.max(startMs, endExclusiveMs - 1)), timeZone),
+  );
   return from === to ? from : `${from} to ${to}`;
 }
 
@@ -142,8 +162,8 @@ export function notificationWindowFor(input: {
   const timeZone = cleanTimezone(input.timezone);
   if (input.window === "last_1h") {
     return {
-      fromMs: nowMs - 60 * 60 * 1000,
-      toMs: nowMs,
+      startMs: nowMs - 60 * 60 * 1000,
+      endExclusiveMs: nowMs,
       nowMs,
       timeZone,
       label: "last 1 hour",
@@ -151,8 +171,8 @@ export function notificationWindowFor(input: {
   }
   if (input.window === "last_24h") {
     return {
-      fromMs: nowMs - 24 * 60 * 60 * 1000,
-      toMs: nowMs,
+      startMs: nowMs - 24 * 60 * 60 * 1000,
+      endExclusiveMs: nowMs,
       nowMs,
       timeZone,
       label: "last 24 hours",
@@ -177,8 +197,8 @@ export function notificationWindowFor(input: {
   });
   const yesterdayParts = partsInTimezone(new Date(startYesterday), timeZone);
   return {
-    fromMs: startYesterday,
-    toMs: Math.max(startYesterday, startToday - 1),
+    startMs: startYesterday,
+    endExclusiveMs: startToday,
     nowMs,
     timeZone,
     label: dateLabel(yesterdayParts),
@@ -215,14 +235,14 @@ export function notificationReportWindowFor(input: {
       minute: 0,
       timeZone,
     });
-    const fromMs = startThisWeek - 7 * 24 * 60 * 60 * 1000;
-    const toMs = Math.max(fromMs, startThisWeek - 1);
+    const startMs = startThisWeek - 7 * 24 * 60 * 60 * 1000;
+    const endExclusiveMs = startThisWeek;
     return {
-      fromMs,
-      toMs,
+      startMs,
+      endExclusiveMs,
       nowMs,
       timeZone,
-      label: rangeLabel(fromMs, toMs, timeZone),
+      label: rangeLabel(startMs, endExclusiveMs, timeZone),
     };
   }
 
@@ -237,7 +257,7 @@ export function notificationReportWindowFor(input: {
     });
     const previousMonth = local.month === 1 ? 12 : local.month - 1;
     const previousYear = local.month === 1 ? local.year - 1 : local.year;
-    const fromMs = zonedTimeToUtcMs({
+    const startMs = zonedTimeToUtcMs({
       year: previousYear,
       month: previousMonth,
       day: 1,
@@ -246,8 +266,8 @@ export function notificationReportWindowFor(input: {
       timeZone,
     });
     return {
-      fromMs,
-      toMs: Math.max(fromMs, startThisMonth - 1),
+      startMs,
+      endExclusiveMs: startThisMonth,
       nowMs,
       timeZone,
       label: `${previousYear}-${String(previousMonth).padStart(2, "0")}`,
@@ -268,7 +288,7 @@ export function notificationReportWindowFor(input: {
       currentQuarterStartMonth === 1 ? 10 : currentQuarterStartMonth - 3;
     const previousQuarterYear =
       currentQuarterStartMonth === 1 ? local.year - 1 : local.year;
-    const fromMs = zonedTimeToUtcMs({
+    const startMs = zonedTimeToUtcMs({
       year: previousQuarterYear,
       month: previousQuarterStartMonth,
       day: 1,
@@ -278,8 +298,8 @@ export function notificationReportWindowFor(input: {
     });
     const quarter = Math.floor((previousQuarterStartMonth - 1) / 3) + 1;
     return {
-      fromMs,
-      toMs: Math.max(fromMs, startThisQuarter - 1),
+      startMs,
+      endExclusiveMs: startThisQuarter,
       nowMs,
       timeZone,
       label: `${previousQuarterYear} Q${quarter}`,
@@ -295,7 +315,7 @@ export function notificationReportWindowFor(input: {
     timeZone,
   });
   const previousYear = local.year - 1;
-  const fromMs = zonedTimeToUtcMs({
+  const startMs = zonedTimeToUtcMs({
     year: previousYear,
     month: 1,
     day: 1,
@@ -304,23 +324,34 @@ export function notificationReportWindowFor(input: {
     timeZone,
   });
   return {
-    fromMs,
-    toMs: Math.max(fromMs, startThisYear - 1),
+    startMs,
+    endExclusiveMs: startThisYear,
     nowMs,
     timeZone,
     label: String(previousYear),
   };
 }
 
-async function getSite(
+export async function loadSiteInfo(
   env: Env,
   siteId: string,
-): Promise<{ name: string; domain: string } | null> {
+  cache?: NotificationInvocationCache,
+): Promise<NotificationSiteInfo | null> {
+  if (!cache) return loadSiteInfoUncached(env, siteId);
+  return getOrCreateCachedPromise(cache.sites, siteId, () =>
+    loadSiteInfoUncached(env, siteId),
+  );
+}
+
+async function loadSiteInfoUncached(
+  env: Env,
+  siteId: string,
+): Promise<NotificationSiteInfo | null> {
   const row = await env.DB.prepare(
     "SELECT name, domain FROM sites WHERE id = ? LIMIT 1",
   )
     .bind(siteId)
-    .first<{ name: string; domain: string }>();
+    .first<NotificationSiteInfo>();
   return row ?? null;
 }
 
@@ -330,6 +361,7 @@ export async function loadDailyReportData(
     siteId: string;
     now: number;
     timezone?: string;
+    cache?: NotificationInvocationCache;
   },
 ): Promise<DailyReportData | null> {
   return loadReportData(env, { ...input, reportType: "daily" });
@@ -342,9 +374,34 @@ export async function loadReportData(
     now: number;
     timezone?: string;
     reportType: NotificationReportType;
+    cache?: NotificationInvocationCache;
   },
 ): Promise<ReportData | null> {
-  const site = await getSite(env, input.siteId);
+  const key = notificationCacheKey([
+    input.siteId,
+    input.reportType,
+    Math.trunc(input.now),
+    cleanTimezone(input.timezone),
+  ] satisfies NotificationReportCacheKey);
+  if (input.cache) {
+    return getOrCreateCachedPromise(input.cache.reports, key, () =>
+      loadReportDataUncached(env, input),
+    );
+  }
+  return loadReportDataUncached(env, input);
+}
+
+async function loadReportDataUncached(
+  env: Env,
+  input: {
+    siteId: string;
+    now: number;
+    timezone?: string;
+    reportType: NotificationReportType;
+    cache?: NotificationInvocationCache;
+  },
+): Promise<ReportData | null> {
+  const site = await loadSiteInfo(env, input.siteId, input.cache);
   if (!site) return null;
   const window = notificationReportWindowFor({
     reportType: input.reportType,
@@ -352,17 +409,37 @@ export async function loadReportData(
     timezone: input.timezone,
   });
   const [overview, pages, referrers] = await Promise.all([
-    queryOverviewAggregate(env, input.siteId, window, {}),
-    queryPagesAggregate(env, input.siteId, window, {}, 5, false),
-    queryReferrerAggregate(env, input.siteId, window, {}, 5, false),
+    loadOverviewAggregate(
+      env,
+      input.siteId,
+      window,
+      EMPTY_FILTER_DOCUMENT,
+      input.cache,
+    ),
+    queryPagesAggregate(
+      env,
+      input.siteId,
+      window,
+      EMPTY_FILTER_DOCUMENT,
+      5,
+      false,
+    ),
+    queryReferrerAggregate(
+      env,
+      input.siteId,
+      window,
+      EMPTY_FILTER_DOCUMENT,
+      5,
+      false,
+    ),
   ]);
   return {
     siteName: site.name,
     siteDomain: site.domain,
     reportType: input.reportType,
     range: {
-      from: Math.floor(window.fromMs / 1000),
-      to: Math.floor(window.toMs / 1000),
+      from: Math.floor(window.startMs / 1000),
+      to: Math.floor(window.endExclusiveMs / 1000),
       label: window.label,
     },
     metrics: {
@@ -389,6 +466,7 @@ export async function loadMetricValue(
     window: NotificationMetricWindow;
     now: number;
     timezone?: string;
+    cache?: NotificationInvocationCache;
   },
 ): Promise<MetricValueResult> {
   const window = notificationWindowFor({
@@ -396,14 +474,48 @@ export async function loadMetricValue(
     now: input.now,
     timezone: input.timezone,
   });
-  const overview = await queryOverviewAggregate(env, input.siteId, window, {});
+  const key = notificationCacheKey([
+    input.siteId,
+    input.metric,
+    input.window,
+    Math.trunc(window.startMs),
+    Math.trunc(window.endExclusiveMs),
+    window.timeZone,
+  ] satisfies NotificationMetricCacheKey);
+  if (input.cache) {
+    return getOrCreateCachedPromise(input.cache.metrics, key, () =>
+      loadMetricValueUncached(env, input, window),
+    );
+  }
+  return loadMetricValueUncached(env, input, window);
+}
+
+async function loadMetricValueUncached(
+  env: Env,
+  input: {
+    siteId: string;
+    metric: NotificationMetric;
+    window: NotificationMetricWindow;
+    now: number;
+    timezone?: string;
+    cache?: NotificationInvocationCache;
+  },
+  window: QueryWindow,
+): Promise<MetricValueResult> {
+  const overview = await loadOverviewAggregate(
+    env,
+    input.siteId,
+    window,
+    EMPTY_FILTER_DOCUMENT,
+    input.cache,
+  );
   return {
     metric: input.metric,
     window: input.window,
     value: overview.value[input.metric],
     range: {
-      from: Math.floor(window.fromMs / 1000),
-      to: Math.floor(window.toMs / 1000),
+      from: Math.floor(window.startMs / 1000),
+      to: Math.floor(window.endExclusiveMs / 1000),
     },
   };
 }
@@ -416,6 +528,7 @@ export async function loadPreviousMetricValue(
     window: NotificationMetricWindow;
     now: number;
     timezone?: string;
+    cache?: NotificationInvocationCache;
   },
 ): Promise<MetricValueResult> {
   const currentWindow = notificationWindowFor({
@@ -423,26 +536,56 @@ export async function loadPreviousMetricValue(
     now: input.now,
     timezone: input.timezone,
   });
-  const width = Math.max(1, currentWindow.toMs - currentWindow.fromMs);
+  const width = Math.max(
+    1,
+    currentWindow.endExclusiveMs - currentWindow.startMs,
+  );
   const previousWindow = {
-    fromMs: Math.max(0, currentWindow.fromMs - width),
-    toMs: Math.max(0, currentWindow.fromMs - 1),
+    startMs: Math.max(0, currentWindow.startMs - width),
+    endExclusiveMs: Math.max(1, currentWindow.startMs),
     nowMs: currentWindow.nowMs,
     timeZone: currentWindow.timeZone,
   };
-  const overview = await queryOverviewAggregate(
+  const key = notificationCacheKey([
+    input.siteId,
+    input.metric,
+    input.window,
+    Math.trunc(previousWindow.startMs),
+    Math.trunc(previousWindow.endExclusiveMs),
+    previousWindow.timeZone,
+  ] satisfies NotificationMetricCacheKey);
+  if (input.cache) {
+    return getOrCreateCachedPromise(input.cache.previousMetrics, key, () =>
+      loadPreviousMetricValueUncached(env, input, previousWindow),
+    );
+  }
+  return loadPreviousMetricValueUncached(env, input, previousWindow);
+}
+
+async function loadPreviousMetricValueUncached(
+  env: Env,
+  input: {
+    siteId: string;
+    metric: NotificationMetric;
+    window: NotificationMetricWindow;
+    cache?: NotificationInvocationCache;
+  },
+  previousWindow: QueryWindow,
+): Promise<MetricValueResult> {
+  const overview = await loadOverviewAggregate(
     env,
     input.siteId,
     previousWindow,
-    {},
+    EMPTY_FILTER_DOCUMENT,
+    input.cache,
   );
   return {
     metric: input.metric,
     window: input.window,
     value: overview.value[input.metric],
     range: {
-      from: Math.floor(previousWindow.fromMs / 1000),
-      to: Math.floor(previousWindow.toMs / 1000),
+      from: Math.floor(previousWindow.startMs / 1000),
+      to: Math.floor(previousWindow.endExclusiveMs / 1000),
     },
   };
 }
@@ -454,19 +597,45 @@ export async function loadCumulativeMetricValue(
     metric: NotificationMetric;
     now: number;
     timezone?: string;
+    cache?: NotificationInvocationCache;
   },
 ): Promise<number> {
   const nowMs = Math.max(0, Math.trunc(input.now)) * 1000;
-  const overview = await queryOverviewAggregate(
+  const window = {
+    startMs: 0,
+    endExclusiveMs: Math.max(1, nowMs),
+    nowMs,
+    timeZone: cleanTimezone(input.timezone),
+  } satisfies QueryWindow;
+  const key = notificationCacheKey([
+    input.siteId,
+    input.metric,
+    Math.trunc(nowMs),
+    window.timeZone,
+  ]);
+  if (input.cache) {
+    return getOrCreateCachedPromise(input.cache.cumulativeMetrics, key, () =>
+      loadCumulativeMetricValueUncached(env, input, window),
+    );
+  }
+  return loadCumulativeMetricValueUncached(env, input, window);
+}
+
+async function loadCumulativeMetricValueUncached(
+  env: Env,
+  input: {
+    siteId: string;
+    metric: NotificationMetric;
+    cache?: NotificationInvocationCache;
+  },
+  window: QueryWindow,
+): Promise<number> {
+  const overview = await loadOverviewAggregate(
     env,
     input.siteId,
-    {
-      fromMs: 0,
-      toMs: nowMs,
-      nowMs,
-      timeZone: cleanTimezone(input.timezone),
-    },
-    {},
+    window,
+    EMPTY_FILTER_DOCUMENT,
+    input.cache,
   );
   return overview.value[input.metric];
 }
@@ -474,25 +643,48 @@ export async function loadCumulativeMetricValue(
 export async function loadSiteLastSeenAt(
   env: Env,
   siteId: string,
+  cache?: NotificationInvocationCache,
+): Promise<number | null> {
+  if (cache) {
+    return getOrCreateCachedPromise(cache.lastSeenAt, siteId, () =>
+      loadSiteLastSeenAtUncached(env, siteId),
+    );
+  }
+  return loadSiteLastSeenAtUncached(env, siteId);
+}
+
+async function loadSiteLastSeenAtUncached(
+  env: Env,
+  siteId: string,
 ): Promise<number | null> {
   const row = await env.DB.prepare(
-    `
-      SELECT MAX(lastSeenAt) AS lastSeenAt
-      FROM (
-        SELECT MAX(last_activity_at) AS lastSeenAt
-        FROM visits
-        WHERE site_id = ?
-
-        UNION ALL
-
-        SELECT MAX(last_activity_at) AS lastSeenAt
-        FROM visits_archive
-        WHERE site_id = ?
-      )
-    `,
+    `SELECT MAX(last_activity_at) AS lastSeenAt
+     FROM visits
+     WHERE site_pk = ${SITE_PK_FROM_SITE_ID_SQL}`,
   )
-    .bind(siteId, siteId)
+    .bind(siteId)
     .first<{ lastSeenAt: number | null }>();
   const value = Number(row?.lastSeenAt ?? 0);
   return Number.isFinite(value) && value > 0 ? Math.floor(value / 1000) : null;
+}
+
+async function loadOverviewAggregate(
+  env: Env,
+  siteId: string,
+  window: QueryWindow,
+  filters: FilterDocument,
+  cache?: NotificationInvocationCache,
+) {
+  if (!cache) return queryOverviewAggregate(env, siteId, window, filters);
+  const key = notificationCacheKey([
+    siteId,
+    window.startMs,
+    window.endExclusiveMs,
+    window.nowMs,
+    window.timeZone,
+    filters,
+  ]);
+  return getOrCreateCachedPromise(cache.overviews, key, () =>
+    queryOverviewAggregate(env, siteId, window, filters),
+  );
 }

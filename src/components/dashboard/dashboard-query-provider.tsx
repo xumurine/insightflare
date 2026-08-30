@@ -1,5 +1,3 @@
-"use client";
-
 import {
   createContext,
   type ReactNode,
@@ -11,11 +9,17 @@ import {
   useState,
 } from "react";
 
+import { useReportingTimeZone } from "@/components/time-zone-provider";
+import { EMPTY_DASHBOARD_FILTER_DOCUMENT } from "@/lib/dashboard/filter-state";
+import {
+  readDashboardQueryPreferences,
+  readReportingTimeZoneFromCookie,
+  writeDashboardQueryPreferences,
+} from "@/lib/dashboard/query-preferences";
 import {
   allowedIntervalsForRange,
   clampIntervalForRange,
   type CustomTimeRange,
-  type DashboardFilters,
   type DashboardInterval,
   DEFAULT_RANGE_PRESET,
   finestIntervalForRange,
@@ -25,87 +29,61 @@ import {
   type TimeWindow,
 } from "@/lib/dashboard/query-state";
 import {
-  browserTimeZone,
-  resolveReportingTimeZone,
-} from "@/lib/dashboard/time-zone";
-
-interface PersistedDashboardQueryState {
-  range?: string;
-  interval?: DashboardInterval;
-  customRange?: CustomTimeRange | null;
-  uiFilters?: DashboardFilters;
-}
+  analyticsFilterRegistry,
+  type FilterDocument,
+  normalizeFilterDocument,
+} from "@/lib/filter-contract";
 
 interface DashboardQueryContextValue {
   range: RangePreset;
   window: TimeWindow;
-  filters: DashboardFilters;
-  uiFilters: DashboardFilters;
+  filters: FilterDocument;
+  uiFilters: FilterDocument;
+  uiFilterDsl?: string;
   customRange: CustomTimeRange | null;
   setRange: (range: RangePreset) => void;
   setCustomRange: (range: CustomTimeRange | null) => void;
   setInterval: (interval: DashboardInterval) => void;
-  setUiFilters: (filters: DashboardFilters) => void;
+  setUiFilters: (filters: FilterDocument, rawDsl?: string) => void;
   clearUiFilters: () => void;
   allowedIntervals: DashboardInterval[];
   timeZone: string;
-  timeZonePreference: string;
-  browserTimeZone: string;
-  setTimeZonePreference: (timeZone: string) => void;
   maxRangeDays?: number;
 }
 
 interface DashboardQueryProviderProps {
   children: ReactNode;
   scopeKey?: string;
-  initialTimeZonePreference?: string;
   maxRangeDays?: number;
+  initialWindow?: TimeWindow;
 }
 
-const STORAGE_KEY = "insightflare.dashboard.query.v2";
-const EMPTY_FILTERS: DashboardFilters = {};
+const EMPTY_FILTERS = EMPTY_DASHBOARD_FILTER_DOCUMENT;
 const DEFAULT_RANGE: RangePreset = DEFAULT_RANGE_PRESET;
 
 const DashboardQueryContext = createContext<DashboardQueryContextValue | null>(
   null,
 );
 
-function clampFilter(value: string | undefined): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const normalized = value.trim().slice(0, 120);
-  if (normalized.length === 0) return undefined;
-  const lowered = normalized.toLowerCase();
-  if (lowered === "all" || lowered === "null" || lowered === "undefined") {
-    return undefined;
+function normalizeFilters(
+  filters: FilterDocument | undefined | null,
+): FilterDocument {
+  if (!filters) return EMPTY_FILTERS;
+  try {
+    return normalizeFilterDocument(filters, analyticsFilterRegistry);
+  } catch {
+    return EMPTY_FILTERS;
   }
-  return normalized;
 }
 
-function normalizeFilters(
-  filters: DashboardFilters | undefined | null,
-): DashboardFilters {
-  return {
-    country: clampFilter(filters?.country),
-    device: clampFilter(filters?.device),
-    browser: clampFilter(filters?.browser),
-    path: clampFilter(filters?.path),
-    query: clampFilter(filters?.query),
-    title: clampFilter(filters?.title),
-    hostname: clampFilter(filters?.hostname),
-    entry: clampFilter(filters?.entry),
-    exit: clampFilter(filters?.exit),
-    sourceDomain: clampFilter(filters?.sourceDomain),
-    sourceLink: clampFilter(filters?.sourceLink),
-    clientBrowser: clampFilter(filters?.clientBrowser),
-    clientOsVersion: clampFilter(filters?.clientOsVersion),
-    clientDeviceType: clampFilter(filters?.clientDeviceType),
-    clientLanguage: clampFilter(filters?.clientLanguage),
-    clientScreenSize: clampFilter(filters?.clientScreenSize),
-    geo: clampFilter(filters?.geo),
-    geoContinent: clampFilter(filters?.geoContinent),
-    geoTimezone: clampFilter(filters?.geoTimezone),
-    geoOrganization: clampFilter(filters?.geoOrganization),
-  };
+function filterDocumentKey(filters: FilterDocument): string {
+  return JSON.stringify(normalizeFilters(filters));
+}
+
+function persistedRawDsl(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : undefined;
 }
 
 function normalizeCustomRange(
@@ -120,20 +98,20 @@ function normalizeCustomRange(
   };
 }
 
-function parsePersistedState(
-  raw: string | null,
-): PersistedDashboardQueryState | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as PersistedDashboardQueryState;
-    return parsed;
-  } catch {
-    return null;
+function buildInitialState(timeZone: string, initialWindow?: TimeWindow) {
+  if (initialWindow) {
+    return {
+      range: initialWindow.preset,
+      interval: initialWindow.interval,
+      customRange:
+        initialWindow.preset === "custom"
+          ? { from: initialWindow.from, to: initialWindow.to }
+          : null,
+      uiFilters: EMPTY_FILTERS,
+      uiFilterDsl: undefined,
+    };
   }
-}
 
-function buildInitialState(initialTimeZonePreference: string) {
-  const timeZone = resolveReportingTimeZone(initialTimeZonePreference);
   if (typeof window === "undefined") {
     const initialWindow = resolveTimeWindow(DEFAULT_RANGE, Date.now(), {
       timeZone,
@@ -142,32 +120,17 @@ function buildInitialState(initialTimeZonePreference: string) {
       range: DEFAULT_RANGE as RangePreset,
       interval: initialWindow.interval as DashboardInterval,
       customRange: null as CustomTimeRange | null,
-      uiFilters: EMPTY_FILTERS as DashboardFilters,
-      timeZonePreference: initialTimeZonePreference,
+      uiFilters: EMPTY_FILTERS,
+      uiFilterDsl: undefined,
     };
   }
 
-  const persisted = parsePersistedState(
-    window.localStorage.getItem(STORAGE_KEY),
-  );
-  if (!persisted) {
-    const initialWindow = resolveTimeWindow(DEFAULT_RANGE, Date.now(), {
-      timeZone,
-    });
-    return {
-      range: DEFAULT_RANGE as RangePreset,
-      interval: initialWindow.interval as DashboardInterval,
-      customRange: null as CustomTimeRange | null,
-      uiFilters: EMPTY_FILTERS as DashboardFilters,
-      timeZonePreference: initialTimeZonePreference,
-    };
-  }
-
+  const persisted = readDashboardQueryPreferences(document.cookie);
   const persistedRange = resolveRangePreset(persisted.range) as RangePreset;
   const persistedCustomRange = normalizeCustomRange(persisted.customRange);
   const persistedWindow = resolveTimeWindow(persistedRange, Date.now(), {
-    customRange: persistedCustomRange || undefined,
-    interval: persisted.interval ?? null,
+    customRange: persistedCustomRange ?? undefined,
+    interval: persisted.interval,
     timeZone,
   });
 
@@ -175,8 +138,8 @@ function buildInitialState(initialTimeZonePreference: string) {
     range: persistedRange,
     interval: persistedWindow.interval,
     customRange: persistedCustomRange,
-    uiFilters: normalizeFilters(persisted.uiFilters),
-    timeZonePreference: initialTimeZonePreference,
+    uiFilters: EMPTY_FILTERS,
+    uiFilterDsl: undefined,
   };
 }
 
@@ -211,12 +174,20 @@ function clampPresetForMaxDays(
 export function DashboardQueryProvider({
   children,
   scopeKey = "",
-  initialTimeZonePreference = "",
   maxRangeDays,
+  initialWindow,
 }: DashboardQueryProviderProps) {
-  const initial = useMemo(
-    () => buildInitialState(initialTimeZonePreference),
-    [initialTimeZonePreference],
+  const { timeZone: managedTimeZone } = useReportingTimeZone();
+  const initialCookieTimeZone =
+    typeof document === "undefined"
+      ? managedTimeZone
+      : readReportingTimeZoneFromCookie(document.cookie);
+  const initialWindowRef = useRef(initialWindow);
+  const [timeZone, setTimeZone] = useState(
+    () => initialWindowRef.current?.timeZone ?? initialCookieTimeZone,
+  );
+  const [initial] = useState(() =>
+    buildInitialState(timeZone, initialWindowRef.current),
   );
   const [range, setRangeState] = useState<RangePreset>(
     clampPresetForMaxDays(initial.range, maxRangeDays),
@@ -227,20 +198,22 @@ export function DashboardQueryProvider({
   const [customRange, setCustomRangeState] = useState<CustomTimeRange | null>(
     clampCustomRangeToMaxDays(initial.customRange, maxRangeDays),
   );
-  const [uiFilters, setUiFiltersState] = useState<DashboardFilters>(
+  const [uiFilters, setUiFiltersState] = useState<FilterDocument>(
     initial.uiFilters,
   );
-  const [timeZonePreference, setTimeZonePreferenceState] = useState(
-    initial.timeZonePreference,
+  const [uiFilterDsl, setUiFilterDslState] = useState<string | undefined>(
+    initial.uiFilterDsl,
   );
-  const [detectedBrowserTimeZone, setDetectedBrowserTimeZone] = useState("");
+  const [uiFilterDslDocumentKey, setUiFilterDslDocumentKey] = useState(() =>
+    initial.uiFilterDsl ? filterDocumentKey(initial.uiFilters) : undefined,
+  );
   const previousScopeKeyRef = useRef(scopeKey);
-  const timeZone = resolveReportingTimeZone(
-    timeZonePreference,
-    detectedBrowserTimeZone,
-  );
 
-  const windowState = useMemo(
+  useEffect(() => {
+    setTimeZone(managedTimeZone);
+  }, [managedTimeZone]);
+
+  const resolvedWindow = useMemo(
     () =>
       resolveTimeWindow(
         clampPresetForMaxDays(range, maxRangeDays),
@@ -253,10 +226,20 @@ export function DashboardQueryProvider({
       ),
     [range, maxRangeDays, customRange, interval, timeZone],
   );
-
-  useEffect(() => {
-    setDetectedBrowserTimeZone(browserTimeZone());
-  }, []);
+  const windowState = useMemo(() => {
+    const snapshot = initialWindowRef.current;
+    const initialCustomRange =
+      snapshot?.preset === "custom"
+        ? { from: snapshot.from, to: snapshot.to }
+        : null;
+    const isInitialSelection =
+      snapshot &&
+      range === snapshot.preset &&
+      interval === snapshot.interval &&
+      timeZone === snapshot.timeZone &&
+      JSON.stringify(customRange) === JSON.stringify(initialCustomRange);
+    return isInitialSelection ? snapshot : resolvedWindow;
+  }, [customRange, interval, range, resolvedWindow, timeZone]);
 
   useEffect(() => {
     const clamped = clampIntervalForRange(
@@ -272,20 +255,20 @@ export function DashboardQueryProvider({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const payload: PersistedDashboardQueryState = {
+    writeDashboardQueryPreferences({
       range,
       interval: windowState.interval,
       customRange,
-      uiFilters: normalizeFilters(uiFilters),
-    };
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  }, [range, windowState.interval, customRange, uiFilters]);
+    });
+  }, [range, windowState.interval, customRange]);
 
   useEffect(() => {
     if (previousScopeKeyRef.current === scopeKey) return;
     previousScopeKeyRef.current = scopeKey;
     // Site-scoped data filters are easy to carry across sites and cause empty states.
     setUiFiltersState(EMPTY_FILTERS);
+    setUiFilterDslState(undefined);
+    setUiFilterDslDocumentKey(undefined);
   }, [scopeKey]);
 
   const setRange = useCallback(
@@ -327,16 +310,29 @@ export function DashboardQueryProvider({
     setIntervalState(next);
   }, []);
 
-  const setTimeZonePreference = useCallback((next: string) => {
-    setTimeZonePreferenceState(next);
-  }, []);
-
-  const setUiFilters = useCallback((next: DashboardFilters) => {
-    setUiFiltersState(normalizeFilters(next));
-  }, []);
+  const setUiFilters = useCallback(
+    (next: FilterDocument, rawDsl?: string) => {
+      const normalized = normalizeFilters(next);
+      const nextKey = filterDocumentKey(normalized);
+      setUiFiltersState(normalized);
+      if (rawDsl !== undefined) {
+        const persisted = persistedRawDsl(rawDsl);
+        setUiFilterDslState(persisted);
+        setUiFilterDslDocumentKey(persisted ? nextKey : undefined);
+        return;
+      }
+      if (uiFilterDslDocumentKey !== nextKey) {
+        setUiFilterDslState(undefined);
+        setUiFilterDslDocumentKey(undefined);
+      }
+    },
+    [uiFilterDslDocumentKey],
+  );
 
   const clearUiFilters = useCallback(() => {
     setUiFiltersState(EMPTY_FILTERS);
+    setUiFilterDslState(undefined);
+    setUiFilterDslDocumentKey(undefined);
   }, []);
 
   const allowedIntervals = useMemo(
@@ -350,6 +346,7 @@ export function DashboardQueryProvider({
       window: windowState,
       filters: normalizeFilters(uiFilters),
       uiFilters,
+      uiFilterDsl,
       customRange,
       setRange,
       setCustomRange,
@@ -358,15 +355,13 @@ export function DashboardQueryProvider({
       clearUiFilters,
       allowedIntervals,
       timeZone,
-      timeZonePreference,
-      browserTimeZone: detectedBrowserTimeZone,
-      setTimeZonePreference,
       maxRangeDays,
     }),
     [
       range,
       windowState,
       uiFilters,
+      uiFilterDsl,
       customRange,
       setRange,
       setCustomRange,
@@ -375,9 +370,6 @@ export function DashboardQueryProvider({
       clearUiFilters,
       allowedIntervals,
       timeZone,
-      timeZonePreference,
-      detectedBrowserTimeZone,
-      setTimeZonePreference,
       maxRangeDays,
     ],
   );
@@ -398,6 +390,7 @@ function useDashboardQueryContext(): DashboardQueryContextValue {
       window: fallbackWindow,
       filters: EMPTY_FILTERS,
       uiFilters: EMPTY_FILTERS,
+      uiFilterDsl: undefined,
       customRange: null,
       setRange: () => {},
       setCustomRange: () => {},
@@ -406,9 +399,6 @@ function useDashboardQueryContext(): DashboardQueryContextValue {
       clearUiFilters: () => {},
       allowedIntervals: ["hour", "day", "week", "month"],
       timeZone: fallbackWindow.timeZone,
-      timeZonePreference: "",
-      browserTimeZone: "",
-      setTimeZonePreference: () => {},
       maxRangeDays: undefined,
     };
   }

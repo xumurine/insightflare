@@ -78,6 +78,26 @@ const LANGUAGE_LABELS: Record<Locale, Record<string, string>> = {
     ms: "马来语",
     hi: "印地语",
   },
+  ja: {
+    en: "英語",
+    zh: "中国語",
+    ja: "日本語",
+    ko: "韓国語",
+    fr: "フランス語",
+    de: "ドイツ語",
+    es: "スペイン語",
+    pt: "ポルトガル語",
+    ru: "ロシア語",
+    ar: "アラビア語",
+    it: "イタリア語",
+    nl: "オランダ語",
+    tr: "トルコ語",
+    vi: "ベトナム語",
+    th: "タイ語",
+    id: "インドネシア語",
+    ms: "マレー語",
+    hi: "ヒンディー語",
+  },
 };
 
 const countryNameFormatters = new Map<Locale, Intl.DisplayNames>();

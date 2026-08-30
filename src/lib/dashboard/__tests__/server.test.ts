@@ -7,10 +7,29 @@ import {
   fetchNotificationMessages,
 } from "@/lib/edge-client";
 
+const adminServiceMocks = vi.hoisted(() => ({
+  getRequest: vi.fn(() => new Request("https://app.test/app")),
+  readAdminService:
+    vi.fn<(input: { route: string; url: URL }) => Promise<unknown | null>>(),
+  resolveEdgeRuntime: vi.fn(),
+}));
+
 vi.mock("@/lib/edge-client", () => ({
   fetchAdminMe: vi.fn(),
   fetchAdminSites: vi.fn(),
   fetchNotificationMessages: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/admin-service", () => ({
+  readAdminService: adminServiceMocks.readAdminService,
+}));
+
+vi.mock("@/lib/edge/runtime", () => ({
+  resolveEdgeRuntime: adminServiceMocks.resolveEdgeRuntime,
+}));
+
+vi.mock("@tanstack/react-start/server", () => ({
+  getRequest: adminServiceMocks.getRequest,
 }));
 
 vi.mock("react", async (importOriginal) => {
@@ -24,6 +43,8 @@ vi.mock("react", async (importOriginal) => {
 const fetchAdminMeMock = vi.mocked(fetchAdminMe);
 const fetchAdminSitesMock = vi.mocked(fetchAdminSites);
 const fetchNotificationMessagesMock = vi.mocked(fetchNotificationMessages);
+const readAdminServiceMock = vi.mocked(adminServiceMocks.readAdminService);
+const resolveEdgeRuntimeMock = vi.mocked(adminServiceMocks.resolveEdgeRuntime);
 
 async function loadServerModule() {
   vi.resetModules();
@@ -66,6 +87,25 @@ describe("dashboard server helpers", () => {
     fetchNotificationMessagesMock.mockResolvedValue({
       messages: [],
       unreadAttentionCount: 0,
+    });
+    resolveEdgeRuntimeMock.mockResolvedValue({
+      request: new Request("https://app.test/app"),
+      env: {},
+      url: new URL("https://app.test/app"),
+    } as never);
+    readAdminServiceMock.mockImplementation((input) => {
+      if (input.route === "session") return fetchAdminMeMock() as never;
+      if (input.route === "sites") {
+        return fetchAdminSitesMock(
+          input.url.searchParams.get("teamId") ?? "",
+        ) as never;
+      }
+      if (input.route === "notifications") {
+        return fetchNotificationMessagesMock({
+          limit: Number(input.url.searchParams.get("limit") ?? 0),
+        }) as never;
+      }
+      return null;
     });
   });
 
@@ -311,6 +351,38 @@ describe("dashboard server helpers", () => {
       sites: [],
     });
     await expect(getDefaultTeamSite()).resolves.toBeNull();
+    await expect(getTeamDefaultSite("team-a")).resolves.toBeNull();
+  });
+
+  it("falls back to zero when root context notifications fail and returns null when teams are unresolvable", async () => {
+    fetchAdminMeMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        username: "admin",
+        email: "admin@example.test",
+        name: "Admin User",
+        systemRole: "user",
+      },
+      teams: [team("team-1", "team-a")],
+    } as any);
+    fetchAdminSitesMock.mockResolvedValue([site({ publicSlug: "Docs" })]);
+    fetchNotificationMessagesMock.mockRejectedValue(
+      new Error("notifications unavailable"),
+    );
+    const { getDashboardRootContext, getTeamSiteContext } =
+      await loadServerModule();
+
+    await expect(getDashboardRootContext()).resolves.toMatchObject({
+      unreadAttentionCount: 0,
+    });
+    await expect(
+      getTeamSiteContext("no-such-team", "docs-example-test"),
+    ).resolves.toBeNull();
+  });
+
+  it("returns null from getTeamDefaultSite when the profile is missing", async () => {
+    fetchAdminMeMock.mockResolvedValueOnce(null as any);
+    const { getTeamDefaultSite } = await loadServerModule();
     await expect(getTeamDefaultSite("team-a")).resolves.toBeNull();
   });
 });

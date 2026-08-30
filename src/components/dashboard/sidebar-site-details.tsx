@@ -1,56 +1,29 @@
-"use client";
+import { memo, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-
+import {
+  AnalyticsTimeTooltipProvider,
+  AnalyticsTooltipTarget,
+} from "@/components/dashboard/analytics-time-tooltip";
+import { TrafficPairBarChart } from "@/components/dashboard/charts/traffic-pair-bar-chart";
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { SiteBrandIcon } from "@/components/dashboard/site-brand-icon";
-import { TrafficPairBarChart } from "@/components/dashboard/site-traffic-charts";
+import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   SidebarMenu,
   SidebarMenuButton,
-  SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import type {
-  DashboardInterval,
-  TimeWindow,
-} from "@/lib/dashboard/query-state";
+import { Spinner } from "@/components/ui/spinner";
+import { numberFormat } from "@/lib/dashboard/format";
 import {
-  addZonedInterval,
-  startOfZonedInterval,
-} from "@/lib/dashboard/time-zone";
+  buildTeamSiteTrends,
+  teamDashboardQueryOptions,
+  type TeamDashboardWindow,
+  type TeamTrafficPoint,
+} from "@/lib/dashboard/team-dashboard-query";
 import type { Locale } from "@/lib/i18n/config";
-import type { AppMessages } from "@/lib/i18n/messages";
-
-interface SiteOverviewMetrics {
-  views: number;
-  sessions: number;
-  visitors: number;
-  bounces: number;
-  totalDurationMs: number;
-  avgDurationMs: number;
-  bounceRate: number;
-  approximateVisitors: boolean;
-}
-
-interface TeamDashboardTrendPoint {
-  bucket: number;
-  timestampMs: number;
-  sites: Array<{
-    siteId: string;
-    views: number;
-    visitors: number;
-  }>;
-}
-
-interface TeamDashboardData {
-  sites: Array<{
-    id: string;
-    overview?: SiteOverviewMetrics;
-  }>;
-  trend: TeamDashboardTrendPoint[];
-}
+import Link from "@/lib/router";
 
 interface SidebarSiteSummary {
   id: string;
@@ -67,17 +40,12 @@ interface SidebarSiteDetailsProps {
   activeSiteSlug?: string;
   currentSection?: string;
   sites: SidebarSiteSummary[];
+  loading?: boolean;
+  loadingLabel: string;
   labels: {
     views: string;
     visitors: string;
   };
-  messages: AppMessages;
-}
-
-interface SiteTrendPoint {
-  timestampMs: number;
-  views: number;
-  visitors: number;
 }
 
 const SIDEBAR_EXPAND_CHART_DELAY_MS = 220;
@@ -96,134 +64,141 @@ function buildSitePath(
   return `${base}/${section}`;
 }
 
-function safeCount(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.round(value));
-}
-
-function intervalStepMs(interval: DashboardInterval): number {
-  if (interval === "minute") return 60 * 1000;
-  if (interval === "hour") return 60 * 60 * 1000;
-  if (interval === "day") return 24 * 60 * 60 * 1000;
-  if (interval === "week") return 7 * 24 * 60 * 60 * 1000;
-  return 30 * 24 * 60 * 60 * 1000;
-}
-
-function buildZeroTrend(
-  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
-): SiteTrendPoint[] {
-  const points: SiteTrendPoint[] = [];
-  const end = startOfZonedInterval(window.to, window.interval, window.timeZone);
-  let current = startOfZonedInterval(
-    window.from,
-    window.interval,
-    window.timeZone,
-  );
-  const hardLimit = 2000;
-
-  for (let index = 0; index < hardLimit && current <= end; index += 1) {
-    points.push({
-      timestampMs: current,
-      views: 0,
-      visitors: 0,
-    });
-    let next = addZonedInterval(current, window.interval, window.timeZone);
-    if (!Number.isFinite(next) || next <= current) {
-      next = current + intervalStepMs(window.interval);
-    }
-    current = next;
-  }
-
-  return points;
-}
-
-async function fetchTeamDashboard(
-  teamId: string,
-  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
-  signal?: AbortSignal,
-): Promise<TeamDashboardData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: "/api/private/team-dashboard",
-      params: {
-        teamId,
-        from: window.from,
-        to: window.to,
-        interval: window.interval,
-        timeZone: window.timeZone,
-      },
-    }) as {
-      ok: boolean;
-      data?: {
-        sites?: Array<{ id: string; overview?: SiteOverviewMetrics }>;
-        trend?: TeamDashboardTrendPoint[];
-      };
-    };
-    return {
-      sites: Array.isArray(result.data?.sites) ? result.data.sites : [],
-      trend: Array.isArray(result.data?.trend) ? result.data.trend : [],
-    };
-  }
-  const params = new URLSearchParams({
-    teamId,
-    from: String(window.from),
-    to: String(window.to),
-    interval: window.interval,
-    timeZone: window.timeZone,
-  });
-  const response = await fetch(
-    `/api/private/team-dashboard?${params.toString()}`,
-    {
-      method: "GET",
-      credentials: "include",
-      signal,
-    },
-  );
-  if (!response.ok) throw new Error("fetch_team_dashboard_failed");
-  const payload = (await response.json()) as {
-    ok: boolean;
-    data?: {
-      sites?: Array<{
-        id: string;
-        overview?: SiteOverviewMetrics;
-      }>;
-      trend?: TeamDashboardTrendPoint[];
-    };
+interface SidebarSiteRowProps {
+  locale: Locale;
+  teamSlug: string;
+  activeSiteSlug?: string;
+  currentSection?: string;
+  site: SidebarSiteSummary;
+  trend: TeamTrafficPoint[];
+  dashboardWindow: TeamDashboardWindow;
+  viewsLabel: string;
+  visitorsLabel: string;
+  shouldRenderCharts: boolean;
+  metrics?: {
+    views: number;
+    visitors: number;
   };
-  if (!payload.ok || !payload.data) {
-    throw new Error("fetch_team_dashboard_failed");
-  }
-  return {
-    sites: Array.isArray(payload.data.sites) ? payload.data.sites : [],
-    trend: Array.isArray(payload.data.trend) ? payload.data.trend : [],
-  };
+  sidebarState: "expanded" | "collapsed";
+  isMobile: boolean;
 }
 
-export function SidebarSiteDetails({
+const SidebarSiteRow = memo(function SidebarSiteRow({
+  locale,
+  teamSlug,
+  activeSiteSlug,
+  currentSection,
+  site,
+  trend,
+  dashboardWindow,
+  viewsLabel,
+  visitorsLabel,
+  shouldRenderCharts,
+  metrics,
+  sidebarState,
+  isMobile,
+}: SidebarSiteRowProps) {
+  const isActive = Boolean(
+    activeSiteSlug &&
+    (site.slug === activeSiteSlug || site.id === activeSiteSlug),
+  );
+  const tooltipContent =
+    sidebarState === "collapsed" ? (
+      site.name
+    ) : (
+      <div className="grid min-w-24 gap-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-background/70">{viewsLabel}</span>
+          <span className="font-mono font-medium tabular-nums">
+            {metrics ? numberFormat(locale, metrics.views) : "—"}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-background/70">{visitorsLabel}</span>
+          <span className="font-mono font-medium tabular-nums">
+            {metrics ? numberFormat(locale, metrics.visitors) : "—"}
+          </span>
+        </div>
+      </div>
+    );
+  const tooltipKey =
+    sidebarState === "collapsed"
+      ? `sidebar-site:${site.id}:collapsed`
+      : `sidebar-site:${site.id}:expanded:${metrics?.views ?? "pending"}:${metrics?.visitors ?? "pending"}`;
+
+  const siteLink = (
+    <SidebarMenuButton asChild isActive={isActive} className="h-8 rounded-none">
+      <Link href={buildSitePath(locale, teamSlug, site.slug, currentSection)}>
+        <SiteBrandIcon
+          siteId={site.id}
+          siteName={site.name}
+          domain={site.domain}
+          iconSrc={site.iconPath}
+          size="sm"
+        />
+        <div className={SITE_ROW_DETAIL_CLASS}>
+          <div className="min-w-0">
+            <span className="block truncate text-xs">{site.name}</span>
+          </div>
+          <div className="min-w-0">
+            {shouldRenderCharts ? (
+              <TrafficPairBarChart
+                data={trend}
+                locale={locale}
+                timeZone={dashboardWindow.timeZone}
+                interval={dashboardWindow.interval}
+                viewsLabel={viewsLabel}
+                visitorsLabel={visitorsLabel}
+                compact
+                dataIsComplete
+              />
+            ) : (
+              <div className="h-4 w-full" />
+            )}
+          </div>
+        </div>
+      </Link>
+    </SidebarMenuButton>
+  );
+
+  return isMobile ? (
+    siteLink
+  ) : (
+    <AnalyticsTooltipTarget
+      className="block"
+      request={{ key: tooltipKey, content: tooltipContent }}
+    >
+      {siteLink}
+    </AnalyticsTooltipTarget>
+  );
+});
+
+export const SidebarSiteDetails = memo(function SidebarSiteDetails({
   locale,
   teamId,
   teamSlug,
   activeSiteSlug,
   currentSection,
   sites,
+  loading = false,
+  loadingLabel,
   labels,
-  messages,
 }: SidebarSiteDetailsProps) {
   const { state: sidebarState, isMobile } = useSidebar();
   const { window } = useDashboardQuery();
-  const [teamTrend, setTeamTrend] = useState<TeamDashboardTrendPoint[]>([]);
-  const [chartWindow, setChartWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
-  >(() => ({
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    timeZone: window.timeZone,
-  }));
   const [shouldRenderCharts, setShouldRenderCharts] = useState(
     isMobile || sidebarState !== "collapsed",
   );
+  const teamDashboardQuery = useQuery(
+    teamDashboardQueryOptions({
+      teamId,
+      window,
+      range: window.preset,
+      enabled: Boolean(teamId) && sites.length > 0 && shouldRenderCharts,
+    }),
+  );
+  const dashboardSnapshot = teamDashboardQuery.data;
+  const dashboardWindow = dashboardSnapshot?.window ?? window;
 
   useEffect(() => {
     if (isMobile) {
@@ -245,215 +220,89 @@ export function SidebarSiteDetails({
     return () => clearTimeout(timeout);
   }, [sidebarState, isMobile]);
 
-  useEffect(() => {
-    if (!teamId || sites.length === 0) {
-      setTeamTrend([]);
-      setChartWindow({
-        from: window.from,
-        to: window.to,
-        interval: window.interval,
-        timeZone: window.timeZone,
-      });
-      return;
-    }
-
-    if (!shouldRenderCharts) {
-      return;
-    }
-
-    const controller = new AbortController();
-    let active = true;
-
-    fetchTeamDashboard(teamId, window, controller.signal)
-      .then((dashboard) => {
-        if (!active) return;
-        setTeamTrend(dashboard.trend);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .catch((error: unknown) => {
-        if ((error as { name?: string } | null)?.name === "AbortError") return;
-        if (!active) return;
-        setTeamTrend([]);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [
-    teamId,
-    sites.length,
-    shouldRenderCharts,
-    window.from,
-    window.to,
-    window.interval,
-    window.timeZone,
-  ]);
-
   const siteTrendById = useMemo(() => {
-    const siteBuckets = new Map<string, Map<number, SiteTrendPoint>>();
-    const starts: number[] = [];
-    const end = startOfZonedInterval(
-      chartWindow.to,
-      chartWindow.interval,
-      chartWindow.timeZone,
+    return buildTeamSiteTrends(
+      sites.map((site) => site.id),
+      dashboardSnapshot?.data.trend ?? [],
+      dashboardWindow,
     );
-    const hardLimit = 2000;
-    let current = startOfZonedInterval(
-      chartWindow.from,
-      chartWindow.interval,
-      chartWindow.timeZone,
-    );
-    for (let index = 0; index < hardLimit && current <= end; index += 1) {
-      starts.push(current);
-      let next = addZonedInterval(
-        current,
-        chartWindow.interval,
-        chartWindow.timeZone,
-      );
-      if (!Number.isFinite(next) || next <= current) {
-        next = current + intervalStepMs(chartWindow.interval);
-      }
-      current = next;
-    }
+  }, [dashboardSnapshot?.data.trend, dashboardWindow, sites]);
 
-    for (const site of sites) {
-      const bucketMap = new Map<number, SiteTrendPoint>();
-      for (const start of starts) {
-        bucketMap.set(start, {
-          timestampMs: start,
-          views: 0,
-          visitors: 0,
-        });
-      }
-      siteBuckets.set(site.id, bucketMap);
-    }
-
-    for (const point of teamTrend) {
-      const bucket = startOfZonedInterval(
-        Number(point.timestampMs ?? 0),
-        chartWindow.interval,
-        chartWindow.timeZone,
-      );
-
-      for (const sitePoint of point.sites) {
-        const bucketMap = siteBuckets.get(sitePoint.siteId);
-        if (!bucketMap) continue;
-        const existing = bucketMap.get(bucket) ?? {
-          timestampMs: bucket,
-          views: 0,
-          visitors: 0,
-        };
-        existing.views += safeCount(sitePoint.views);
-        existing.visitors += safeCount(sitePoint.visitors);
-        bucketMap.set(bucket, existing);
-      }
-    }
-
-    return Object.fromEntries(
-      Array.from(siteBuckets.entries()).map(([siteId, bucketMap]) => [
-        siteId,
-        Array.from(bucketMap.entries())
-          .sort((left, right) => left[0] - right[0])
-          .map(([, value]) => value),
-      ]),
-    ) as Record<string, SiteTrendPoint[]>;
-  }, [
-    sites,
-    teamTrend,
-    chartWindow.from,
-    chartWindow.to,
-    chartWindow.interval,
-    chartWindow.timeZone,
-  ]);
-
-  const zeroTrend = useMemo(
-    () => buildZeroTrend(chartWindow),
-    [
-      chartWindow.from,
-      chartWindow.to,
-      chartWindow.interval,
-      chartWindow.timeZone,
-    ],
+  const siteMetricsById = useMemo(
+    () =>
+      new Map(
+        (dashboardSnapshot?.data.sites ?? []).map((site) => [
+          site.id,
+          {
+            views: site.overview.views,
+            visitors: site.overview.visitors,
+          },
+        ]),
+      ),
+    [dashboardSnapshot?.data.sites],
   );
 
   const cards = useMemo(
     () =>
       sites.map((site) => ({
         site,
-        trend: siteTrendById[site.id] ?? zeroTrend,
+        trend: siteTrendById[site.id] ?? [],
       })),
-    [sites, siteTrendById, zeroTrend],
+    [sites, siteTrendById],
   );
 
-  return (
-    <SidebarMenu>
-      {cards.map(({ site, trend }) => {
-        const isActive = Boolean(
-          activeSiteSlug &&
-          (site.slug === activeSiteSlug || site.id === activeSiteSlug),
-        );
-
-        return (
-          <SidebarMenuItem key={site.id}>
-            <SidebarMenuButton
-              asChild
-              isActive={isActive}
-              tooltip={site.name}
-              className="h-8 rounded-none"
-            >
-              <Link
-                href={buildSitePath(
-                  locale,
-                  teamSlug,
-                  site.slug,
-                  currentSection,
-                )}
-              >
-                <SiteBrandIcon
-                  siteId={site.id}
-                  siteName={site.name}
-                  domain={site.domain}
-                  iconSrc={site.iconPath}
-                  size="sm"
-                />
-                <div className={SITE_ROW_DETAIL_CLASS}>
-                  <div className="min-w-0">
-                    <span className="block truncate text-xs">{site.name}</span>
-                  </div>
-                  <div className="min-w-0">
-                    {shouldRenderCharts ? (
-                      <TrafficPairBarChart
-                        data={trend}
-                        locale={locale}
-                        timeZone={chartWindow.timeZone}
-                        interval={chartWindow.interval}
-                        viewsLabel={labels.views}
-                        visitorsLabel={labels.visitors}
-                        messages={messages}
-                        compact
-                      />
-                    ) : (
-                      <div className="h-4 w-full" />
-                    )}
-                  </div>
-                </div>
-              </Link>
+  const menu = (
+    <SidebarMenu aria-busy={loading}>
+      <AutoTransition
+        as="li"
+        initial={false}
+        transitionKey={loading ? "loading" : "sites"}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+        aria-hidden={loading ? undefined : cards.length === 0}
+        className="group/menu-item relative"
+      >
+        {loading ? (
+          <div role="status" aria-live="polite">
+            <SidebarMenuButton type="button" disabled aria-label={loadingLabel}>
+              <Spinner aria-hidden="true" />
+              <span>{loadingLabel}</span>
             </SidebarMenuButton>
-          </SidebarMenuItem>
-        );
-      })}
+          </div>
+        ) : (
+          <div className="flex w-full min-w-0 flex-col gap-1">
+            {cards.map(({ site, trend }) => {
+              return (
+                <SidebarSiteRow
+                  key={site.id}
+                  locale={locale}
+                  teamSlug={teamSlug}
+                  activeSiteSlug={activeSiteSlug}
+                  currentSection={currentSection}
+                  site={site}
+                  trend={trend}
+                  dashboardWindow={dashboardWindow}
+                  viewsLabel={labels.views}
+                  visitorsLabel={labels.visitors}
+                  shouldRenderCharts={shouldRenderCharts}
+                  metrics={siteMetricsById.get(site.id)}
+                  sidebarState={sidebarState}
+                  isMobile={isMobile}
+                />
+              );
+            })}
+          </div>
+        )}
+      </AutoTransition>
     </SidebarMenu>
   );
-}
+
+  return isMobile ? (
+    menu
+  ) : (
+    <AnalyticsTimeTooltipProvider retentionMode="target">
+      {menu}
+    </AnalyticsTimeTooltipProvider>
+  );
+});

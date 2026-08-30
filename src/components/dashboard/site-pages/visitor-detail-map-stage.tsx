@@ -1,10 +1,13 @@
-"use client";
-
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import Map, { useControl } from "react-map-gl/maplibre";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { MapboxOverlay, type MapboxOverlayProps } from "@deck.gl/mapbox";
-import type { StyleSpecification } from "maplibre-gl";
+
+import {
+  applyVectorBasemapColorOverrides,
+  getVectorBasemapStyleUrl,
+} from "@/lib/dashboard/map-basemap";
+import type { Locale } from "@/lib/i18n/config";
 
 export type VisitorDetailMapTheme = "light" | "dark";
 
@@ -33,34 +36,6 @@ const VISITOR_MAP_MAX_RENDERED_POINTS = 320;
 const VISITOR_MAP_POINT_RGB = [52, 211, 153] as const;
 const VISITOR_MAP_POINT_BASE_RADIUS_PX = 4.8;
 
-function buildRasterStyle(theme: VisitorDetailMapTheme): StyleSpecification {
-  const sourceId = `insightflare-visitor-map-source-${theme}`;
-  const layerId = `insightflare-visitor-map-layer-${theme}`;
-  const endpoint = `/api/public/resources/map-tiles/{z}/{x}/{y}.png?theme=${theme}`;
-
-  return {
-    version: 8,
-    name: `insightflare-visitor-map-${theme}`,
-    sources: {
-      [sourceId]: {
-        type: "raster",
-        tiles: [endpoint],
-        tileSize: 256,
-        attribution: "OpenStreetMap contributors CARTO",
-      },
-    },
-    layers: [
-      {
-        id: layerId,
-        type: "raster",
-        source: sourceId,
-        minzoom: 0,
-        maxzoom: 22,
-      },
-    ],
-  };
-}
-
 function resolveVisitorMapFillColor(
   opacity: number,
 ): [number, number, number, number] {
@@ -84,14 +59,19 @@ function DeckOverlay(props: MapboxOverlayProps) {
   return null;
 }
 
-export function VisitorDetailMapStage({
+export const VisitorDetailMapStage = memo(function VisitorDetailMapStage({
+  locale,
   theme,
   points,
 }: {
+  locale: Locale;
   theme: VisitorDetailMapTheme;
   points: VisitorLocationPoint[];
 }) {
-  const mapStyle = useMemo(() => buildRasterStyle(theme), [theme]);
+  const mapStyle = useMemo(
+    () => getVectorBasemapStyleUrl(theme, locale),
+    [locale, theme],
+  );
   const renderedPoints = useMemo<RenderedVisitorLocationPoint[]>(
     () =>
       points.slice(0, VISITOR_MAP_MAX_RENDERED_POINTS).map((point, index) => ({
@@ -126,10 +106,13 @@ export function VisitorDetailMapStage({
         mapStyle={mapStyle}
         attributionControl={false}
         interactive={false}
+        onStyleData={(event) =>
+          applyVectorBasemapColorOverrides(event.target, theme)
+        }
         style={{ width: "100%", height: "100%" }}
       >
         <DeckOverlay interleaved={false} layers={layers} />
       </Map>
     </div>
   );
-}
+});

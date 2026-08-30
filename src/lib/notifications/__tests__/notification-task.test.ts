@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setE2eClock } from "@/lib/edge/e2e-clock";
 import type { ScheduledTaskContext } from "@/lib/edge/scheduled-task-runner";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
 import {
@@ -17,6 +18,11 @@ const applyNotificationRuleManualRunResult = vi.hoisted(() => vi.fn());
 const evaluateNotificationRule = vi.hoisted(() => vi.fn());
 const createNotificationMessage = vi.hoisted(() => vi.fn());
 const deliverNotificationMessage = vi.hoisted(() => vi.fn());
+const CLOCK_KEY = "__insightflare_e2e_clock__";
+
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, CLOCK_KEY);
+});
 
 vi.mock("@/lib/notifications/rule-store", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -196,6 +202,18 @@ describe("notification task", () => {
     expect(ctx.events).toContain("notification_rule_triggered");
   });
 
+  it("uses the controlled E2E clock for due rules and evaluations", async () => {
+    setE2eClock(1_700_000_000_000);
+    listDueNotificationRules.mockResolvedValue([]);
+
+    await runNotificationTick(context());
+
+    expect(listDueNotificationRules).toHaveBeenCalledWith(
+      expect.anything(),
+      1_700_000_000,
+    );
+  });
+
   it("advances checked rules without creating messages", async () => {
     listDueNotificationRules.mockResolvedValue([rule()]);
     evaluateNotificationRule.mockResolvedValue({
@@ -215,6 +233,26 @@ describe("notification task", () => {
     });
     expect(createNotificationMessage).not.toHaveBeenCalled();
     expect(advanceNotificationRuleSchedule).toHaveBeenCalled();
+  });
+
+  it("shares one invocation cache across every rule evaluated by a tick", async () => {
+    listDueNotificationRules.mockResolvedValue([
+      rule({ id: "rule-1" }),
+      rule({ id: "rule-2" }),
+    ]);
+    evaluateNotificationRule.mockResolvedValue({
+      status: "checked",
+      triggered: false,
+      summary: "Not triggered",
+    });
+
+    await runNotificationTick(context());
+
+    expect(evaluateNotificationRule).toHaveBeenCalledTimes(2);
+    const firstCache = evaluateNotificationRule.mock.calls[0]?.[3];
+    const secondCache = evaluateNotificationRule.mock.calls[1]?.[3];
+    expect(firstCache).toBe(secondCache);
+    expect(firstCache).not.toBeUndefined();
   });
 
   it("continues when one rule evaluation fails", async () => {

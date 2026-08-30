@@ -164,7 +164,6 @@ import {
 } from "@/lib/realtime/mock/site-curves";
 import type {
   DemoDimensionRow,
-  DemoEventPayloadFilterRule,
   DemoFactDataset,
   DemoFilteredFacts,
   DemoQueryFilters,
@@ -417,6 +416,7 @@ export function generateDemoUtmDimension(
     data: buildDemoUtmRows(siteId, tab, params, limit)
       .map((row) => ({
         value: row.label,
+        label: row.label,
         views: row.views,
         sessions: row.sessions,
       }))

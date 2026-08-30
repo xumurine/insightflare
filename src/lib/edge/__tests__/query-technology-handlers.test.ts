@@ -1,23 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  handleBrowserCrossBreakdownContract as handleBrowserCrossBreakdown,
+  handleBrowserEngineTrendContract as handleBrowserEngineTrend,
+  handleBrowserRadarContract as handleBrowserRadar,
+  handleBrowserTrendContract as handleBrowserTrend,
+  handleBrowserVersionBreakdownContract as handleBrowserVersionBreakdown,
+  handleClientDimensionTrendContract as handleClientDimensionTrend,
+  handleCrossBreakdownContract as handleCrossBreakdown,
+  handleReferrerChannelTrendContract as handleReferrerChannelTrend,
+  handleReferrerDimensionTrendContract as handleReferrerDimensionTrend,
+  handleReferrerRadarContract as handleReferrerRadar,
+  handleUtmDimensionTrendContract as handleUtmDimensionTrend,
+} from "@/lib/edge/analytics/composition/protocol/technology-contract-adapter";
 import type {
   BrowserCrossBreakdownDimensionDataRow,
   BrowserTrendPointRow,
   BrowserTrendSeriesRow,
-} from "@/lib/edge/query/core";
-import {
-  handleBrowserCrossBreakdown,
-  handleBrowserEngineTrend,
-  handleBrowserRadar,
-  handleBrowserTrend,
-  handleBrowserVersionBreakdown,
-  handleClientDimensionTrend,
-  handleCrossBreakdown,
-  handleReferrerDimensionTrend,
-  handleReferrerRadar,
-  handleUtmDimensionTrend,
-} from "@/lib/edge/query/technology/handlers";
+} from "@/lib/edge/analytics/providers/d1/internal/core";
 import type { Env } from "@/lib/edge/types";
+
+import { filterFixture } from "./filter-fixtures";
 
 const queryMocks = vi.hoisted(() => ({
   queryBrowserCrossBreakdownFromD1: vi.fn(),
@@ -27,33 +30,46 @@ const queryMocks = vi.hoisted(() => ({
   queryBrowserVersionBreakdownFromD1: vi.fn(),
   queryCrossDimensionFromD1: vi.fn(),
   queryClientDimensionTrendFromD1: vi.fn(),
+  queryReferrerAndChannelTrendFromD1: vi.fn(),
   queryReferrerRadarFromD1: vi.fn(),
   queryReferrerTrendFromD1: vi.fn(),
   queryUtmDimensionTrendFromD1: vi.fn(),
 }));
 
-vi.mock("@/lib/edge/query/technology/browser", () => ({
-  queryBrowserCrossBreakdownFromD1: queryMocks.queryBrowserCrossBreakdownFromD1,
-  queryBrowserEngineTrendFromD1: queryMocks.queryBrowserEngineTrendFromD1,
-  queryBrowserTrendFromD1: queryMocks.queryBrowserTrendFromD1,
-  queryBrowserVersionBreakdownFromD1:
-    queryMocks.queryBrowserVersionBreakdownFromD1,
-}));
+vi.mock(
+  "@/lib/edge/analytics/providers/d1/internal/technology/browser",
+  () => ({
+    queryBrowserCrossBreakdownFromD1:
+      queryMocks.queryBrowserCrossBreakdownFromD1,
+    queryBrowserEngineTrendFromD1: queryMocks.queryBrowserEngineTrendFromD1,
+    queryBrowserTrendFromD1: queryMocks.queryBrowserTrendFromD1,
+    queryBrowserVersionBreakdownFromD1:
+      queryMocks.queryBrowserVersionBreakdownFromD1,
+  }),
+);
 
-vi.mock("@/lib/edge/query/technology/client-cross", () => ({
-  queryCrossDimensionFromD1: queryMocks.queryCrossDimensionFromD1,
-}));
+vi.mock(
+  "@/lib/edge/analytics/providers/d1/internal/technology/client-cross",
+  () => ({
+    queryCrossDimensionFromD1: queryMocks.queryCrossDimensionFromD1,
+  }),
+);
 
-vi.mock("@/lib/edge/query/technology/radar", () => ({
+vi.mock("@/lib/edge/analytics/providers/d1/internal/technology/radar", () => ({
   queryBrowserRadarFromD1: queryMocks.queryBrowserRadarFromD1,
   queryReferrerRadarFromD1: queryMocks.queryReferrerRadarFromD1,
 }));
 
-vi.mock("@/lib/edge/query/technology/share-trend", () => ({
-  queryClientDimensionTrendFromD1: queryMocks.queryClientDimensionTrendFromD1,
-  queryReferrerTrendFromD1: queryMocks.queryReferrerTrendFromD1,
-  queryUtmDimensionTrendFromD1: queryMocks.queryUtmDimensionTrendFromD1,
-}));
+vi.mock(
+  "@/lib/edge/analytics/providers/d1/internal/technology/share-trend",
+  () => ({
+    queryClientDimensionTrendFromD1: queryMocks.queryClientDimensionTrendFromD1,
+    queryReferrerAndChannelTrendFromD1:
+      queryMocks.queryReferrerAndChannelTrendFromD1,
+    queryReferrerTrendFromD1: queryMocks.queryReferrerTrendFromD1,
+    queryUtmDimensionTrendFromD1: queryMocks.queryUtmDimensionTrendFromD1,
+  }),
+);
 
 const env = {
   DB: {},
@@ -83,8 +99,8 @@ async function responseJson(response: Response): Promise<unknown> {
 
 function parsedWindow() {
   return expect.objectContaining({
-    fromMs,
-    toMs,
+    startMs: fromMs,
+    endExclusiveMs: toMs,
     timeZone: "Asia/Shanghai",
   });
 }
@@ -97,6 +113,7 @@ function expectNoQueryCalls() {
   expect(queryMocks.queryBrowserVersionBreakdownFromD1).not.toHaveBeenCalled();
   expect(queryMocks.queryCrossDimensionFromD1).not.toHaveBeenCalled();
   expect(queryMocks.queryClientDimensionTrendFromD1).not.toHaveBeenCalled();
+  expect(queryMocks.queryReferrerAndChannelTrendFromD1).not.toHaveBeenCalled();
   expect(queryMocks.queryReferrerRadarFromD1).not.toHaveBeenCalled();
   expect(queryMocks.queryReferrerTrendFromD1).not.toHaveBeenCalled();
   expect(queryMocks.queryUtmDimensionTrendFromD1).not.toHaveBeenCalled();
@@ -132,6 +149,7 @@ describe("edge query technology handlers", () => {
     ["browser cross breakdown", handleBrowserCrossBreakdown, {}],
     ["browser radar", handleBrowserRadar, {}],
     ["referrer radar", handleReferrerRadar, {}],
+    ["referrer and channel trend", handleReferrerChannelTrend, {}],
     [
       "client dimension trend",
       handleClientDimensionTrend,
@@ -171,8 +189,8 @@ describe("edge query technology handlers", () => {
       testUrl({
         interval: "hour",
         limit: "99",
-        country: " US ",
-        clientDeviceType: "desktop",
+        "filter[geo.country]": " US ",
+        "filter[client.deviceType]": "desktop",
       }),
     );
 
@@ -188,7 +206,7 @@ describe("edge query technology handlers", () => {
       siteId,
       parsedWindow(),
       "hour",
-      expect.objectContaining({ country: "US", clientDeviceType: "desktop" }),
+      filterFixture({ country: "US", clientDeviceType: "desktop" }),
       12,
     );
   });
@@ -535,6 +553,34 @@ describe("edge query technology handlers", () => {
       "month",
       expect.any(Object),
       8,
+    );
+  });
+
+  it("passes parsed combined referrer and channel trend arguments", async () => {
+    const combinedResult = { source: trendResult, channel: trendResult };
+    queryMocks.queryReferrerAndChannelTrendFromD1.mockResolvedValue(
+      combinedResult,
+    );
+
+    const response = await handleReferrerChannelTrend(
+      env,
+      siteId,
+      testUrl({ interval: "month", limit: "99" }),
+    );
+
+    expect(await responseJson(response)).toEqual({
+      ok: true,
+      interval: "month",
+      source: trendResult,
+      channel: trendResult,
+    });
+    expect(queryMocks.queryReferrerAndChannelTrendFromD1).toHaveBeenCalledWith(
+      env,
+      siteId,
+      parsedWindow(),
+      "month",
+      expect.any(Object),
+      12,
     );
   });
 

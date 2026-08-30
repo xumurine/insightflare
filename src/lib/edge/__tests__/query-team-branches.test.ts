@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handleTeamDashboard, listTeamSites } from "@/lib/edge/query/team";
+import { executePrivateTeamDashboard } from "@/lib/edge/analytics/adapters/private";
+import {
+  badRequest,
+  parseWindow,
+  resolvePrivateTeam,
+} from "@/lib/edge/analytics/providers/d1/internal/core";
+import { listTeamSites } from "@/lib/edge/analytics/providers/d1/internal/team";
 import type { EdgeSessionClaims } from "@/lib/edge/session-auth";
 import type { Env } from "@/lib/edge/types";
 
@@ -75,6 +81,22 @@ function url(params: Record<string, string | number>) {
   return parsed;
 }
 
+async function handleTeamDashboard(
+  request: Request,
+  env: Env,
+  target: URL,
+): Promise<Response> {
+  if (!parseWindow(target)) return badRequest("Invalid time window");
+  const team = await resolvePrivateTeam(request, env, target);
+  if (team instanceof Response) return team;
+  return executePrivateTeamDashboard({
+    env,
+    teamId: team.id,
+    allowedSiteIds: team.allowedSiteIds,
+    url: target,
+  });
+}
+
 describe("edge team query low branch coverage", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW });
@@ -145,7 +167,17 @@ describe("edge team query low branch coverage", () => {
 
   it("uses membership-aware team resolution for non-admin sessions", async () => {
     requireSessionMock.mockResolvedValue(memberSession);
-    const { env, calls } = createD1Env([[]], [{ id: "team-1" }]);
+    const { env, calls } = createD1Env(
+      [[]],
+      [
+        {
+          id: "team-1",
+          ownerUserId: "owner-1",
+          role: "member",
+          siteIdsJson: "[]",
+        },
+      ],
+    );
 
     const response = await handleTeamDashboard(
       new Request("https://edge.test/api/private/team-dashboard"),
@@ -160,7 +192,7 @@ describe("edge team query low branch coverage", () => {
     });
     expect(calls[0]).toMatchObject({
       kind: "first",
-      bindings: ["user-1", "team-1", "user-1"],
+      bindings: ["user-1", "team-1"],
     });
     expect(calls[0].sql).toContain("LEFT JOIN team_members");
   });
@@ -207,7 +239,6 @@ describe("edge team query low branch coverage", () => {
         [],
         [],
         [],
-        [],
         [{ siteId: "site-1", bucket: 0, views: 3, visitors: 2 }],
       ],
       [{ id: "team-1" }],
@@ -244,8 +275,8 @@ describe("edge team query low branch coverage", () => {
         ],
       },
     });
-    expect(calls).toHaveLength(8);
-    expect(calls[7].sql).toContain(
+    expect(calls).toHaveLength(7);
+    expect(calls[6].sql).toContain(
       `started_at >= ${FROM} AND started_at < ${FROM + 24 * 60 * 60 * 1000}`,
     );
   });

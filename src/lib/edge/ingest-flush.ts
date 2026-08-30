@@ -10,9 +10,13 @@ import {
   WS_PRESENCE_LEAVE_EVENT,
 } from "./ingest-constants";
 import { flushCustomEventRowIndividually } from "./ingest-custom-event-flush";
-import type { IngestFlushContext } from "./ingest-flush-types";
-import { errorToMessage, logDoTrace, toUnixSeconds } from "./ingest-log";
-import { UPSERT_VISIT_SQL, visitBindings } from "./ingest-sql";
+import {
+  type IngestFlushContext,
+  recordFlushCounter,
+  resolveSitePk,
+} from "./ingest-flush-types";
+import { visitBindings, visitUpsertSql } from "./ingest-sql";
+import { toUnixSeconds } from "./ingest-time";
 import type { BufferedCustomEventRow, BufferedVisitRow } from "./ingest-types";
 import { clampString } from "./utils";
 
@@ -26,26 +30,104 @@ interface TimedOutVisitCandidate {
   lastActivityAt: number;
   hiddenAt: number | null;
   pathname: string;
+  queryString: string;
   hash: string;
   title: string;
   hostname: string;
   referrerUrl: string;
   referrerHost: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmTerm: string;
+  utmContent: string;
+  userId: string;
+  userName: string;
+  isEU: number;
   country: string;
   region: string;
   regionCode: string;
   city: string;
   continent: string;
+  postalCode: string;
+  metroCode: string;
   timezone: string;
   organization: string;
+  uaRaw: string;
   browser: string;
+  browserVersion: string;
   os: string;
   osVersion: string;
   deviceType: string;
   language: string;
+  screenWidth: number | null;
+  screenHeight: number | null;
   screenSize: string;
   latitude: number | null;
   longitude: number | null;
+}
+
+async function pushFinalizedVisitRealtimeEvent(
+  context: IngestFlushContext,
+  visit: TimedOutVisitCandidate,
+  eventAt: number,
+  durationMs: number | null,
+  durationSource: string,
+  exitReason: string,
+): Promise<void> {
+  await context.pushRealtimeRecord({
+    id: `leave:${visit.visitId}`,
+    eventType: WS_PRESENCE_LEAVE_EVENT,
+    eventKind: "leave",
+    eventAt,
+    siteId: visit.siteId,
+    visitId: visit.visitId,
+    sessionId: visit.sessionId,
+    startedAt: visit.startedAt,
+    pathname: visit.pathname,
+    queryString: visit.queryString,
+    hash: visit.hash,
+    title: visit.title,
+    hostname: visit.hostname,
+    referrerUrl: visit.referrerUrl,
+    referrerHost: visit.referrerHost,
+    utmSource: visit.utmSource,
+    utmMedium: visit.utmMedium,
+    utmCampaign: visit.utmCampaign,
+    utmTerm: visit.utmTerm,
+    utmContent: visit.utmContent,
+    visitorId: visit.visitorId,
+    userId: visit.userId,
+    userName: visit.userName,
+    isEU: visit.isEU,
+    country: visit.country,
+    region: visit.region,
+    regionCode: visit.regionCode,
+    city: visit.city,
+    continent: visit.continent,
+    postalCode: visit.postalCode,
+    metroCode: visit.metroCode,
+    timezone: visit.timezone,
+    organization: visit.organization,
+    uaRaw: visit.uaRaw,
+    browser: visit.browser,
+    browserVersion: visit.browserVersion,
+    os: visit.os,
+    osVersion: visit.osVersion,
+    deviceType: visit.deviceType,
+    screenWidth: visit.screenWidth,
+    screenHeight: visit.screenHeight,
+    language: visit.language,
+    status: "complete",
+    endedAt: eventAt,
+    finalizedAt: eventAt,
+    durationMs,
+    durationSource,
+    exitReason,
+    leaveAt: eventAt,
+    latitude: visit.latitude,
+    longitude: visit.longitude,
+  });
 }
 
 export async function flushPendingToD1(
@@ -146,36 +228,29 @@ export async function flushPendingToD1(
     if (visitRows.length === 0 && eventRows.length === 0) {
       return;
     }
-    logDoTrace("d1_flush_batch_start", {
-      batch: batches,
-      visitRows: visitRows.length,
-      customEventRows: eventRows.length,
-      visitIds: visitRows.slice(0, 10).map((row) => row.visitId),
-      eventIds: eventRows.slice(0, 10).map((row) => row.eventId),
-    });
+    context.observability?.info("do.flush.pending_batch");
 
     if (visitRows.length > 0) {
       try {
-        await context.env.DB.batch(
-          visitRows.map((row) => prepareVisitStatement(context, row)),
-        );
-        logDoTrace("d1_flush_visit_batch_ok", {
-          batch: batches,
-          count: visitRows.length,
-          visitIds: visitRows.slice(0, 10).map((row) => row.visitId),
+        const sitePkById = new Map<string, number>();
+        for (const siteId of new Set(visitRows.map((row) => row.siteId))) {
+          sitePkById.set(siteId, await resolveSitePk(context, siteId));
+        }
+        recordFlushCounter(context, "d1Statements", visitRows.length);
+        const preparedVisits = visitRows.map((row) => {
+          const sitePk = sitePkById.get(row.siteId);
+          if (sitePk === undefined) {
+            throw new Error(`Missing site identity for ${row.siteId}`);
+          }
+          return prepareVisitStatement(context, row, sitePk);
         });
+        await context.env.DB.batch(preparedVisits);
+        recordFlushCounter(context, "flushedVisits", visitRows.length);
         markVisitRowsFlushed(context, visitRows);
       } catch (error) {
-        logDoTrace(
-          "d1_flush_visit_batch_failed",
-          {
-            batch: batches,
-            count: visitRows.length,
-            visitIds: visitRows.slice(0, 10).map((row) => row.visitId),
-            error: errorToMessage(error),
-          },
-          "error",
-        );
+        void error;
+        recordFlushCounter(context, "failedStatements", visitRows.length);
+        context.observability?.error("do.flush.visit_batch_failed");
         await flushRowsIndividually(context, visitRows, []);
       }
     }
@@ -229,10 +304,7 @@ export async function cleanupBufferedRows(
     visitCutoff,
   );
   if (deletedVisits > 0) {
-    logDoTrace("do_visit_rows_deleted", {
-      count: deletedVisits,
-      cutoffMs: visitCutoff,
-    });
+    context.observability?.info("do.cleanup.visit_rows_deleted");
   }
   const deletedEvents = context.sqlRun(
     `
@@ -243,10 +315,7 @@ export async function cleanupBufferedRows(
     eventCutoff,
   );
   if (deletedEvents > 0) {
-    logDoTrace("do_custom_event_rows_deleted", {
-      count: deletedEvents,
-      cutoffMs: eventCutoff,
-    });
+    context.observability?.info("do.cleanup.custom_event_rows_deleted");
   }
   await cleanupOrphanedCustomEvents(context, now);
 }
@@ -268,25 +337,38 @@ export async function flushTimeouts(
         last_activity_at AS lastActivityAt,
         hidden_at AS hiddenAt,
         pathname,
+        query_string AS queryString,
         hash_fragment AS hash,
         title,
         hostname,
         referrer_url AS referrerUrl,
         referrer_host AS referrerHost,
+        utm_source AS utmSource,
+        utm_medium AS utmMedium,
+        utm_campaign AS utmCampaign,
+        utm_term AS utmTerm,
+        utm_content AS utmContent,
+        user_id AS userId,
+        user_name AS userName,
+        is_eu AS isEU,
         country,
         region,
         region_code AS regionCode,
         city,
         continent,
+        postal_code AS postalCode,
+        metro_code AS metroCode,
         timezone,
         as_organization AS organization,
+        ua_raw AS uaRaw,
         browser,
+        browser_version AS browserVersion,
         os,
         os_version AS osVersion,
         device_type AS deviceType,
         language,
-        user_id,
-        user_name,
+        screen_width AS screenWidth,
+        screen_height AS screenHeight,
         CASE
           WHEN screen_width IS NOT NULL AND screen_height IS NOT NULL
             THEN CAST(screen_width AS TEXT) || 'x' || CAST(screen_height AS TEXT)
@@ -303,11 +385,7 @@ export async function flushTimeouts(
     TIMEOUT_FINALIZE_BATCH_SIZE,
   );
   if (rows.length > 0) {
-    logDoTrace("do_timeout_flush_found", {
-      count: rows.length,
-      cutoffMs: now - VISIT_TIMEOUT_MS,
-      visitIds: rows.slice(0, 20).map((row) => row.visitId),
-    });
+    context.observability?.info("do.timeout_visits_found");
   }
 
   for (const visit of rows) {
@@ -333,44 +411,15 @@ export async function flushTimeouts(
       visit.visitId,
     );
     if (rowsWritten === 0) continue;
-    logDoTrace("do_visit_timed_out", {
-      siteId: visit.siteId,
-      visitId: visit.visitId,
-      visitorId: visit.visitorId,
-      startedAt: visit.startedAt,
-      lastActivityAt: visit.lastActivityAt,
-      finalizedAt: now,
-    });
     if (!context.hasOpenVisitsForVisitor(visit.siteId, visit.visitorId)) {
-      await context.pushRealtimeRecord({
-        id: `leave:${visit.visitId}`,
-        eventType: WS_PRESENCE_LEAVE_EVENT,
-        eventAt: now,
-        visitId: visit.visitId,
-        sessionId: visit.sessionId,
-        pathname: visit.pathname,
-        hash: visit.hash,
-        title: visit.title,
-        hostname: visit.hostname,
-        referrerUrl: visit.referrerUrl,
-        referrerHost: visit.referrerHost,
-        visitorId: visit.visitorId,
-        country: visit.country,
-        region: visit.region,
-        regionCode: visit.regionCode,
-        city: visit.city,
-        continent: visit.continent,
-        timezone: visit.timezone,
-        organization: visit.organization,
-        browser: visit.browser,
-        os: visit.os,
-        osVersion: visit.osVersion,
-        deviceType: visit.deviceType,
-        language: visit.language,
-        screenSize: visit.screenSize,
-        latitude: visit.latitude,
-        longitude: visit.longitude,
-      });
+      await pushFinalizedVisitRealtimeEvent(
+        context,
+        visit,
+        now,
+        null,
+        "timeout",
+        "timeout",
+      );
     }
   }
 }
@@ -391,23 +440,38 @@ async function flushHiddenFallbacks(
         last_activity_at AS lastActivityAt,
         hidden_at AS hiddenAt,
         pathname,
+        query_string AS queryString,
         hash_fragment AS hash,
         title,
         hostname,
         referrer_url AS referrerUrl,
         referrer_host AS referrerHost,
+        utm_source AS utmSource,
+        utm_medium AS utmMedium,
+        utm_campaign AS utmCampaign,
+        utm_term AS utmTerm,
+        utm_content AS utmContent,
+        user_id AS userId,
+        user_name AS userName,
+        is_eu AS isEU,
         country,
         region,
         region_code AS regionCode,
         city,
         continent,
+        postal_code AS postalCode,
+        metro_code AS metroCode,
         timezone,
         as_organization AS organization,
+        ua_raw AS uaRaw,
         browser,
+        browser_version AS browserVersion,
         os,
         os_version AS osVersion,
         device_type AS deviceType,
         language,
+        screen_width AS screenWidth,
+        screen_height AS screenHeight,
         CASE
           WHEN screen_width IS NOT NULL AND screen_height IS NOT NULL
             THEN CAST(screen_width AS TEXT) || 'x' || CAST(screen_height AS TEXT)
@@ -425,11 +489,7 @@ async function flushHiddenFallbacks(
     TIMEOUT_FINALIZE_BATCH_SIZE,
   );
   if (rows.length > 0) {
-    logDoTrace("do_hidden_fallback_found", {
-      count: rows.length,
-      cutoffMs: now - HIDDEN_LEAVE_GRACE_MS,
-      visitIds: rows.slice(0, 20).map((row) => row.visitId),
-    });
+    context.observability?.info("do.hidden_fallbacks_found");
   }
 
   for (const visit of rows) {
@@ -459,44 +519,15 @@ async function flushHiddenFallbacks(
       visit.visitId,
     );
     if (rowsWritten === 0) continue;
-    logDoTrace("do_hidden_fallback_closed_visit", {
-      siteId: visit.siteId,
-      visitId: visit.visitId,
-      visitorId: visit.visitorId,
-      startedAt: visit.startedAt,
-      hiddenAt,
-      durationMs,
-    });
     if (!context.hasOpenVisitsForVisitor(visit.siteId, visit.visitorId)) {
-      await context.pushRealtimeRecord({
-        id: `leave:${visit.visitId}`,
-        eventType: WS_PRESENCE_LEAVE_EVENT,
-        eventAt: hiddenAt,
-        visitId: visit.visitId,
-        sessionId: visit.sessionId,
-        pathname: visit.pathname,
-        hash: visit.hash,
-        title: visit.title,
-        hostname: visit.hostname,
-        referrerUrl: visit.referrerUrl,
-        referrerHost: visit.referrerHost,
-        visitorId: visit.visitorId,
-        country: visit.country,
-        region: visit.region,
-        regionCode: visit.regionCode,
-        city: visit.city,
-        continent: visit.continent,
-        timezone: visit.timezone,
-        organization: visit.organization,
-        browser: visit.browser,
-        os: visit.os,
-        osVersion: visit.osVersion,
-        deviceType: visit.deviceType,
-        language: visit.language,
-        screenSize: visit.screenSize,
-        latitude: visit.latitude,
-        longitude: visit.longitude,
-      });
+      await pushFinalizedVisitRealtimeEvent(
+        context,
+        visit,
+        hiddenAt,
+        durationMs,
+        "hidden",
+        "hidden_timeout",
+      );
     }
   }
 }
@@ -511,11 +542,7 @@ function markVisitRowsFlushed(
     `UPDATE buffered_visits SET dirty = 0, flush_attempts = 0, last_flush_error = NULL WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
     ...ids,
   );
-  logDoTrace("do_visit_rows_marked_flushed", {
-    count: rows.length,
-    updated,
-    visitIds: ids.slice(0, 10),
-  });
+  void updated;
   deleteFlushedVisitRows(context, rows);
 }
 
@@ -530,22 +557,18 @@ function markVisitRowsFailed(
     `DELETE FROM buffered_visits WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
     ...ids,
   );
-  logDoTrace(
-    "do_failed_visit_rows_deleted",
-    {
-      count: deleted,
-      reason: errorMessage,
-      visitIds: ids.slice(0, 20),
-    },
-    "error",
-  );
+  void deleted;
+  void errorMessage;
 }
 
 function prepareVisitStatement(
   context: IngestFlushContext,
   row: BufferedVisitRow,
+  sitePk: number,
 ): D1PreparedStatement {
-  return context.env.DB.prepare(UPSERT_VISIT_SQL).bind(...visitBindings(row));
+  return context.env.DB.prepare(visitUpsertSql(row.status)).bind(
+    ...visitBindings(row, sitePk),
+  );
 }
 
 function deleteFlushedVisitRows(
@@ -567,11 +590,8 @@ function deleteFlushedVisitRows(
     `DELETE FROM buffered_visits WHERE visit_id IN (${ids.map(() => "?").join(",")})`,
     ...ids,
   );
-  logDoTrace("do_flushed_visit_rows_deleted", {
-    count: deleted,
-    cutoffMs,
-    visitIds: ids.slice(0, 20),
-  });
+  void deleted;
+  void cutoffMs;
 }
 
 function visitEndedBeforeRealtimeCutoff(
@@ -613,33 +633,18 @@ async function flushVisitRowIndividually(
   row: BufferedVisitRow,
 ): Promise<void> {
   try {
-    await context.env.DB.batch([prepareVisitStatement(context, row)]);
-    logDoTrace("d1_flush_visit_ok", {
-      visitId: row.visitId,
-      siteId: row.siteId,
-      status: row.status,
-      startedAt: row.startedAt,
-      updatedAt: row.updatedAt,
-    });
+    recordFlushCounter(context, "d1Statements");
+    const sitePk = await resolveSitePk(context, row.siteId);
+    await context.env.DB.batch([prepareVisitStatement(context, row, sitePk)]);
+    recordFlushCounter(context, "flushedVisits");
     markVisitRowsFlushed(context, [row]);
   } catch (error) {
     const message = clampString(
       String(error instanceof Error ? error.message : error),
       400,
     );
-    logDoTrace(
-      "d1_flush_visit_failed",
-      {
-        visitId: row.visitId,
-        siteId: row.siteId,
-        status: row.status,
-        startedAt: row.startedAt,
-        updatedAt: row.updatedAt,
-        flushAttempts: row.flushAttempts,
-        error: message,
-      },
-      "error",
-    );
+    recordFlushCounter(context, "failedStatements");
+    context.observability?.error("do.flush.visit_failed");
     markVisitRowsFailed(context, [row], message);
   }
 }
@@ -694,13 +699,7 @@ async function cleanupOrphanedCustomEvents(
     `DELETE FROM buffered_custom_events WHERE event_id IN (${orphanEventIds.map(() => "?").join(",")})`,
     ...orphanEventIds,
   );
-  logDoTrace(
-    "do_orphan_custom_event_rows_deleted",
-    {
-      count: deleted,
-      eventIds: orphanEventIds.slice(0, 20),
-      cutoffMs,
-    },
-    "warn",
-  );
+  void deleted;
+  void cutoffMs;
+  context.observability?.warn("do.cleanup.orphan_custom_events_deleted");
 }

@@ -1,12 +1,10 @@
-"use client";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
-
+import { EVENT_TREND_MAX_SERIES } from "@/components/dashboard/charts/event-trend-bar-chart";
 import {
   DETAIL_QUERY_PARAM,
   DetailModal,
-  useDetailModalReady,
 } from "@/components/dashboard/site-pages/detail-query-modal";
 import {
   EventMetricGrid,
@@ -14,7 +12,7 @@ import {
   EventRecordsSection,
   EventTrendStackedBarCard,
 } from "@/components/dashboard/site-pages/event-analytics-components";
-import { EventTypeDetailLoadingState } from "@/components/dashboard/site-pages/event-type-detail-loading-state";
+import { EventTypeDetailClientPage } from "@/components/dashboard/site-pages/event-type-detail-client-page";
 import {
   OverviewPagesSection,
   type OverviewPagesSectionCardData,
@@ -30,6 +28,7 @@ import {
   fetchEventsSummary,
   fetchEventsTrend,
 } from "@/lib/dashboard/client-data";
+import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { EventsSummaryData, EventsTrendData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
@@ -41,71 +40,6 @@ interface EventsClientPageProps {
   siteId: string;
   siteDomain: string;
   pathname: string;
-}
-
-const EventTypeDetailClientPage = dynamic(
-  () =>
-    import("@/components/dashboard/site-pages/event-type-detail-client-page").then(
-      (module) => module.EventTypeDetailClientPage,
-    ),
-  {
-    ssr: false,
-    loading: () => <EventTypeDetailModalLoadingState />,
-  },
-);
-
-function EventTypeDetailModalLoadingState({
-  loadingLabel,
-}: {
-  loadingLabel?: string;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-[1400px] space-y-6 p-4 md:p-6">
-      <EventTypeDetailLoadingState loadingLabel={loadingLabel} />
-    </div>
-  );
-}
-
-function EventTypeDetailModalContent(props: {
-  locale: Locale;
-  messages: AppMessages;
-  siteId: string;
-  siteDomain: string;
-  pathname: string;
-  eventName: string;
-}) {
-  const modalReady = useDetailModalReady();
-  const [renderEventName, setRenderEventName] = useState("");
-
-  useEffect(() => {
-    if (!modalReady) {
-      setRenderEventName("");
-      return;
-    }
-
-    let firstFrame = 0;
-    let secondFrame = 0;
-    firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        setRenderEventName(props.eventName);
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(secondFrame);
-    };
-  }, [modalReady, props.eventName]);
-
-  if (!modalReady || renderEventName !== props.eventName) {
-    return (
-      <EventTypeDetailModalLoadingState
-        loadingLabel={props.messages.common.loading}
-      />
-    );
-  }
-
-  return <EventTypeDetailClientPage key={props.eventName} {...props} />;
 }
 
 function emptySummary(): EventsSummaryData {
@@ -215,7 +149,7 @@ function detailQueryTarget(
   const params = new URLSearchParams(searchParams.toString());
   params.set(DETAIL_QUERY_PARAM, normalized);
   params.delete("eventName");
-  const query = params.toString();
+  const query = serializeDashboardSearchParams(params);
   return query ? `${pathname}?${query}` : pathname;
 }
 
@@ -238,14 +172,6 @@ export function EventsClientPage({
     () => parseOverviewCardFilters(new URLSearchParams(searchParamsKey)),
     [searchParamsKey],
   );
-  const [summary, setSummary] = useState<EventsSummaryData>(() =>
-    emptySummary(),
-  );
-  const [trend, setTrend] = useState<EventsTrendData>(() =>
-    emptyTrend(timeWindow.interval),
-  );
-  const [loading, setLoading] = useState(true);
-
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
 
   useEffect(() => {
@@ -254,40 +180,39 @@ export function EventsClientPage({
     }
   }, [detailEventName]);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    void Promise.all([
-      fetchEventsSummary(siteId, timeWindow, filters),
-      fetchEventsTrend(siteId, timeWindow, filters, { limit: 8 }),
-    ])
-      .then(([nextSummary, nextTrend]) => {
-        if (!active) return;
-        setSummary(nextSummary);
-        setTrend(nextTrend);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [
-    filters,
-    filtersKey,
-    siteId,
-    timeWindow.from,
-    timeWindow.interval,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+  const { data, isFetching, isPending } = useQuery({
+    queryKey: [
+      "dashboard",
+      "events-overview",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [summary, trend] = await Promise.all([
+        fetchEventsSummary(siteId, timeWindow, filters, { signal }),
+        fetchEventsTrend(siteId, timeWindow, filters, {
+          limit: EVENT_TREND_MAX_SERIES,
+          signal,
+        }),
+      ]);
+      return { summary, trend };
+    },
+    enabled: typeof window !== "undefined",
+  });
+  const loading = isPending || isFetching;
+  const summary = data?.summary ?? emptySummary();
+  const trend = data?.trend ?? emptyTrend(timeWindow.interval);
+  const initialLoading = isPending && !data;
 
   const openEventType = useCallback(
     (eventName: string) => {
       const target = detailQueryTarget(pathname, searchParams, eventName);
       if (!target) return;
       openedDetailFromListRef.current = true;
-      void import("@/components/dashboard/site-pages/event-type-detail-client-page");
       pushUrlWithoutNavigation(target);
     },
     [pathname, searchParams],
@@ -304,7 +229,7 @@ export function EventsClientPage({
 
     params.delete(DETAIL_QUERY_PARAM);
     params.delete("eventName");
-    const query = params.toString();
+    const query = serializeDashboardSearchParams(params);
     replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
   }, [pathname]);
   const siteBasePath = useMemo(
@@ -342,6 +267,7 @@ export function EventsClientPage({
         window={timeWindow}
         title={labels.trendTitle}
         loading={loading}
+        cumulativeLabel={messages.common.cumulativeEvents}
         onSelectEvent={openEventType}
       />
 
@@ -353,6 +279,7 @@ export function EventsClientPage({
           siteDomain={siteDomain}
           pathname={pathname}
           filters={filters}
+          loading={initialLoading}
           cardDataOverride={eventCardDataOverride}
           visibleCards={["page"]}
           pageCardTabs={["path"]}
@@ -365,7 +292,7 @@ export function EventsClientPage({
               showIcon: false,
             },
           }}
-          pageCardQueryParamOverride={{ path: null }}
+          pageCardFilterEnabledOverride={{ path: false }}
           pageCardNavigableTabs={[]}
           pageCardDetailTabs={["path"]}
           pageCardDetailClickResolvers={{
@@ -383,6 +310,7 @@ export function EventsClientPage({
           siteDomain={siteDomain}
           pathname={siteBasePath}
           filters={filters}
+          loading={initialLoading}
           cardDataOverride={contextCardDataOverride}
           visibleCards={["page"]}
           pageCardTabs={["path", "title", "hostname"]}
@@ -407,7 +335,7 @@ export function EventsClientPage({
           modalKey={`event:${detailEventName}`}
           onClose={closeEventType}
         >
-          <EventTypeDetailModalContent
+          <EventTypeDetailClientPage
             locale={locale}
             messages={messages}
             siteId={siteId}

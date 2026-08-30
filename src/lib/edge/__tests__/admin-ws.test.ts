@@ -1,7 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { handleAdminWs } from "@/lib/edge/admin-ws";
+import { setE2eClock } from "@/lib/edge/e2e-clock";
 import { deriveSecret, SECRET_PURPOSES } from "@/lib/secrets";
+
+const CLOCK_KEY = "__insightflare_e2e_clock__";
+
+afterEach(() => {
+  Reflect.deleteProperty(globalThis, CLOCK_KEY);
+});
 
 function bytes(input: string): Uint8Array {
   return new TextEncoder().encode(input);
@@ -83,6 +90,30 @@ describe("handleAdminWs", () => {
     expect(unauthorized.status).toBe(401);
   });
 
+  it("uses the controlled clock when validating websocket sessions", async () => {
+    const root = "root-secret";
+    const secret = await dashboardSecret(root);
+    const token = await sessionToken(
+      {
+        userId: "user-1",
+        username: "admin",
+        systemRole: "admin",
+        exp: 1_001,
+      },
+      secret,
+    );
+    setE2eClock(1_001_000);
+
+    const response = await handleAdminWs(
+      new Request("https://app.test/api/private/realtime/ws?siteId=site-1", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      { MAIN_SECRET: root, DB: dbWithRows([]), INGEST_DO: {} } as any,
+    );
+
+    expect(response.status).toBe(401);
+  });
+
   it("checks site access and forwards websocket requests to the ingest DO", async () => {
     const root = "root-secret";
     const secret = await dashboardSecret(root);
@@ -157,5 +188,81 @@ describe("handleAdminWs", () => {
       } as any,
     );
     expect(forbidden.status).toBe(403);
+  });
+
+  it("rejects realtime access for members outside their site range", async () => {
+    const root = "root-secret";
+    const secret = await dashboardSecret(root);
+    const token = await sessionToken(
+      {
+        userId: "user-1",
+        username: "user",
+        systemRole: "user",
+        exp: Math.floor(Date.now() / 1000) + 60,
+      },
+      secret,
+    );
+
+    const denied = await handleAdminWs(
+      new Request("https://app.test/api/private/realtime/ws?siteId=site-1", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      {
+        MAIN_SECRET: root,
+        DB: dbWithRows([
+          {
+            id: "site-1",
+            ownerUserId: "owner-1",
+            role: "member",
+            siteIdsJson: '["site-2"]',
+          },
+        ]),
+        INGEST_DO: {},
+      } as any,
+    );
+
+    expect(denied.status).toBe(403);
+  });
+
+  it("allows realtime access for unrestricted ordinary members", async () => {
+    const root = "root-secret";
+    const secret = await dashboardSecret(root);
+    const token = await sessionToken(
+      {
+        userId: "user-1",
+        username: "user",
+        systemRole: "user",
+        exp: Math.floor(Date.now() / 1000) + 60,
+      },
+      secret,
+    );
+    const fetchMock = vi.fn(async (_request: Request) =>
+      Promise.resolve(new Response("upgraded")),
+    );
+    const env = {
+      MAIN_SECRET: root,
+      DB: dbWithRows([
+        {
+          id: "site-1",
+          ownerUserId: "owner-1",
+          role: "member",
+          siteIdsJson: "[]",
+        },
+      ]),
+      INGEST_DO: {
+        idFromName: vi.fn(() => "do-id"),
+        get: vi.fn(() => ({ fetch: fetchMock })),
+      },
+    };
+
+    const response = await handleAdminWs(
+      new Request("https://app.test/api/private/realtime/ws?siteId=site-1", {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      env as any,
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
   });
 });

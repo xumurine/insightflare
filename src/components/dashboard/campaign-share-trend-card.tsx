@@ -1,6 +1,4 @@
-"use client";
-
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 
 import { type CampaignTab } from "@/components/dashboard/campaign-utils";
 import {
@@ -8,7 +6,8 @@ import {
   type ShareTrendFetcher,
 } from "@/components/dashboard/share-trend-card";
 import { fetchUtmTrend } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -17,7 +16,7 @@ interface CampaignShareTrendCardProps {
   messages: AppMessages;
   siteId: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
 }
 
 interface CampaignTrendPanelProps extends CampaignShareTrendCardProps {
@@ -46,6 +45,7 @@ function CampaignTrendPanel({
       siteId={siteId}
       window={window}
       filters={filters}
+      queryKey={["campaign", tab]}
       title={title}
       fetchTrend={fetchTrend}
       otherLabel={messages.browsers.otherLabel}
@@ -53,7 +53,9 @@ function CampaignTrendPanel({
   );
 }
 
-export function CampaignShareTrendCard(props: CampaignShareTrendCardProps) {
+export const CampaignShareTrendCard = memo(function CampaignShareTrendCard(
+  props: CampaignShareTrendCardProps,
+) {
   const panels: Array<{
     tab: CampaignTab;
     title: string;
@@ -91,4 +93,4 @@ export function CampaignShareTrendCard(props: CampaignShareTrendCardProps) {
       ))}
     </div>
   );
-}
+});

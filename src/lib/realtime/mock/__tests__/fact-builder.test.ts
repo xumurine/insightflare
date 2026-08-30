@@ -12,11 +12,13 @@ import {
   collectGeoTabs,
   collectPageDataAndTabs,
   collectReferrerRows,
+  collectTrafficChannelRows,
   DEMO_FACT_DATASET_CACHE,
   emptyDemoFactDataset,
   weightedSessionCount,
   weightedVisitorCount,
 } from "@/lib/realtime/mock/fact-builder";
+import { computeMetrics } from "@/lib/realtime/mock/site-curves";
 import type {
   DemoFactDataset,
   DemoFilteredFacts,
@@ -83,6 +85,129 @@ describe("mock/fact-builder", () => {
       }
     });
 
+    it("includes varied UTM channels in demo facts", () => {
+      DEMO_FACT_DATASET_CACHE.clear();
+      const dataset = buildDemoFactDataset(SITE_ID, DAY_MS, 2 * DAY_MS);
+      const rows = collectTrafficChannelRows(
+        dataset,
+        applyDemoFilters(dataset, {}),
+        100,
+      );
+      const channels = new Set(rows.map((row) => row.channel));
+
+      expect(channels).toEqual(
+        new Set([
+          "direct",
+          "organic_search",
+          "social",
+          "paid_search",
+          "paid_social",
+          "display",
+          "email",
+          "affiliate",
+          "referral",
+          "campaign",
+          "other",
+        ]),
+      );
+    });
+
+    it("filters demo visits by the same derived channel classification", () => {
+      const dataset = emptyDemoFactDataset(0, 1);
+      dataset.visits.push(
+        makeVisit({
+          visitId: "organic",
+          referrerHost: "www.google.com",
+        }),
+        makeVisit({
+          visitId: "paid",
+          utmSource: "google",
+          utmMedium: "cpc",
+        }),
+        makeVisit({
+          visitId: "other",
+          utmMedium: "unknown",
+        }),
+      );
+
+      expect(
+        applyDemoFilters(dataset, { channel: "organic_search" }).visits.map(
+          (visit) => visit.visitId,
+        ),
+      ).toEqual(["organic"]);
+      expect(
+        applyDemoFilters(dataset, { channel: "paid_search" }).visits.map(
+          (visit) => visit.visitId,
+        ),
+      ).toEqual(["paid"]);
+      expect(
+        applyDemoFilters(dataset, { channel: "other" }).visits.map(
+          (visit) => visit.visitId,
+        ),
+      ).toEqual(["other"]);
+    });
+
+    it("adapts long-window sampling while preserving weighted metrics", () => {
+      DEMO_FACT_DATASET_CACHE.clear();
+      const to = Date.now();
+      const thirtyDayFrom = to - 30 * DAY_MS;
+      const ninetyDayFrom = to - 90 * DAY_MS;
+      const thirtyDayMetrics = computeMetrics(SITE_ID, thirtyDayFrom, to);
+      const ninetyDayMetrics = computeMetrics(SITE_ID, ninetyDayFrom, to);
+      const thirtyDay = buildDemoFactDataset(SITE_ID, thirtyDayFrom, to);
+      const ninetyDay = buildDemoFactDataset(SITE_ID, ninetyDayFrom, to);
+
+      const originalThirtyDayTarget = Math.max(
+        320,
+        Math.min(
+          12_000,
+          Math.round(Math.sqrt(thirtyDayMetrics.views + 1) * 46),
+        ),
+      );
+      const originalNinetyDayTarget = Math.max(
+        320,
+        Math.min(
+          12_000,
+          Math.round(Math.sqrt(ninetyDayMetrics.views + 1) * 46),
+        ),
+      );
+      expect(thirtyDay.visits.length).toBe(
+        Math.max(1, Math.min(thirtyDayMetrics.views, originalThirtyDayTarget)),
+      );
+      expect(ninetyDay.visits.length).toBeGreaterThan(0);
+      expect(ninetyDay.visits.length).toBeLessThan(thirtyDay.visits.length);
+      expect(ninetyDay.visits.length).toBeLessThan(originalNinetyDayTarget);
+      expect(
+        new Set(ninetyDay.visits.map((visit) => visit.pathname)).size,
+      ).toBeGreaterThan(1);
+      expect(
+        new Set(ninetyDay.visits.map((visit) => visit.country)).size,
+      ).toBeGreaterThan(1);
+      expect(ninetyDay.viewWeight).toBeGreaterThan(0);
+      expect(
+        [...ninetyDay.sessions.values()].every(
+          (session) => Number.isFinite(session.weight) && session.weight > 0,
+        ),
+      ).toBe(true);
+      expect(
+        [...ninetyDay.visitors.values()].every(
+          (visitor) => Number.isFinite(visitor.weight) && visitor.weight > 0,
+        ),
+      ).toBe(true);
+
+      const aggregated = aggregateOverviewMetrics(
+        ninetyDay,
+        applyDemoFilters(ninetyDay, {}),
+      );
+      expect(aggregated.views).toBe(ninetyDayMetrics.views);
+      expect(aggregated.sessions).toBe(ninetyDayMetrics.sessions);
+      expect(aggregated.visitors).toBe(ninetyDayMetrics.visitors);
+      expect(
+        Math.abs(aggregated.totalDurationMs - ninetyDayMetrics.totalDurationMs),
+      ).toBeLessThan(10_000);
+      expect(aggregated.bounceRate).toBeCloseTo(ninetyDayMetrics.bounceRate, 2);
+    });
+
     it("caches results", () => {
       DEMO_FACT_DATASET_CACHE.clear();
       const a = buildDemoFactDataset(SITE_ID, DAY_MS, 2 * DAY_MS);
@@ -90,7 +215,7 @@ describe("mock/fact-builder", () => {
       expect(a).toBe(b);
     });
 
-    it("clears oversized cache before storing a generated dataset", () => {
+    it("evicts the oldest entries before storing a generated dataset", () => {
       DEMO_FACT_DATASET_CACHE.clear();
       for (let index = 0; index < 141; index += 1) {
         DEMO_FACT_DATASET_CACHE.set(
@@ -102,7 +227,8 @@ describe("mock/fact-builder", () => {
       const dataset = buildDemoFactDataset(SITE_ID, DAY_MS, 2 * DAY_MS);
 
       expect(dataset.visits.length).toBeGreaterThan(0);
-      expect(DEMO_FACT_DATASET_CACHE.size).toBe(1);
+      expect(DEMO_FACT_DATASET_CACHE.size).toBe(140);
+      expect(DEMO_FACT_DATASET_CACHE.has("stale:0")).toBe(false);
     });
 
     it("handles non-finite endpoints by returning an empty dataset", () => {

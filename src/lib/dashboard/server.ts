@@ -1,30 +1,27 @@
-import "server-only";
+import "@tanstack/react-start/server-only";
 
 import { cache } from "react";
+import { getRequest } from "@tanstack/react-start/server";
 
 import {
-  fetchAdminMe,
-  fetchAdminSites,
-  fetchNotificationMessages,
+  type AdminServiceReadMap,
+  readAdminService,
+} from "@/lib/edge/admin-service";
+import { resolveEdgeRuntime } from "@/lib/edge/runtime";
+import {
+  type AccountUserData,
   type SessionTeamGroups,
   type SiteData,
   type TeamData,
-} from "@/lib/edge-client";
-import type { Locale } from "@/lib/i18n/config";
+} from "@/lib/edge-client-types";
+export { buildSitePath } from "@/lib/dashboard/paths";
 
 export interface SiteWithSlug extends SiteData {
   slug: string;
 }
 
 export interface DashboardContext {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    name: string;
-    systemRole: "admin" | "user";
-    timeZone?: string;
-  };
+  user: AccountUserData;
   teams: TeamData[];
   teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
@@ -33,14 +30,7 @@ export interface DashboardContext {
 }
 
 export interface DashboardTeamContext {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    name: string;
-    systemRole: "admin" | "user";
-    timeZone?: string;
-  };
+  user: AccountUserData;
   teams: TeamData[];
   teamGroups: SessionTeamGroups;
   activeTeam: TeamData;
@@ -49,14 +39,7 @@ export interface DashboardTeamContext {
 }
 
 export interface DashboardRootContext {
-  user: {
-    id: string;
-    username: string;
-    email: string;
-    name: string;
-    systemRole: "admin" | "user";
-    timeZone?: string;
-  };
+  user: AccountUserData;
   teams: TeamData[];
   teamGroups: SessionTeamGroups;
   unreadAttentionCount: number;
@@ -96,13 +79,60 @@ function findSiteBySlug(
 
 const getMe = cache(async () => {
   try {
-    return await fetchAdminMe();
+    return await readAdmin("session");
   } catch {
     return null;
   }
 });
 
-function teamGroupsForProfile(me: Awaited<ReturnType<typeof fetchAdminMe>>) {
+const getUnreadAttentionCount = cache(async (): Promise<number> => {
+  const notifications = await readAdmin("notifications", { limit: 1 });
+  return notifications?.unreadAttentionCount ?? 0;
+});
+
+const getAdminRuntime = cache(async () => {
+  const runtime = await resolveEdgeRuntime(getRequest());
+  return {
+    request: runtime.request,
+    env: runtime.env,
+    url: runtime.url,
+  };
+});
+
+async function readAdmin<K extends keyof AdminServiceReadMap>(
+  route: K,
+  params?: Record<string, string | number>,
+): Promise<AdminServiceReadMap[K] | null> {
+  try {
+    const runtime = await getAdminRuntime();
+    const url = new URL(runtime.url);
+    for (const [key, value] of Object.entries(params ?? {})) {
+      url.searchParams.set(key, String(value));
+    }
+    const result = await readAdminService({
+      route,
+      request: runtime.request,
+      env: runtime.env,
+      url,
+    });
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+/** Server-only typed reads shared by route-level SSR loaders. */
+export async function readDashboardAdmin<K extends keyof AdminServiceReadMap>(
+  route: K,
+  params?: Record<string, string | number>,
+): Promise<AdminServiceReadMap[K] | null> {
+  return readAdmin(route, params);
+}
+
+function teamGroupsForProfile(
+  me: Awaited<ReturnType<typeof readAdmin<"session">>>,
+) {
+  if (!me) return null;
   return (
     me.teamGroups ?? {
       created: [],
@@ -122,25 +152,22 @@ export const getDashboardRootContext = cache(
     const me = await getMe();
     if (!me) return null;
 
-    const unreadAttentionCount = await fetchNotificationMessages({
-      limit: 1,
-    })
-      .then((data) => data.unreadAttentionCount)
-      .catch(() => 0);
+    const unreadAttentionCount = await getUnreadAttentionCount();
 
     return {
       user: me.user,
       teams: me.teams,
-      teamGroups: teamGroupsForProfile(me),
+      teamGroups: teamGroupsForProfile(me)!,
       unreadAttentionCount,
     };
   },
 );
 
-const getSitesForTeam = cache(
+export const getDashboardTeamSites = cache(
   async (teamId: string): Promise<SiteWithSlug[]> => {
     try {
-      const sites = await fetchAdminSites(teamId);
+      const sites = await readAdmin("sites", { teamId });
+      if (!sites) return [];
       return sites.map(withSiteSlug);
     } catch {
       return [];
@@ -156,17 +183,15 @@ export const getDashboardTeamContext = cache(
     const activeTeam = me.teams.find((team) => team.slug === teamSlug);
     if (!activeTeam) return null;
 
-    const sites = await getSitesForTeam(activeTeam.id);
-    const unreadAttentionCount = await fetchNotificationMessages({
-      limit: 1,
-    })
-      .then((data) => data.unreadAttentionCount)
-      .catch(() => 0);
+    const [sites, unreadAttentionCount] = await Promise.all([
+      getDashboardTeamSites(activeTeam.id),
+      getUnreadAttentionCount(),
+    ]);
 
     return {
       user: me.user,
       teams: me.teams,
-      teamGroups: teamGroupsForProfile(me),
+      teamGroups: teamGroupsForProfile(me)!,
       activeTeam,
       sites,
       unreadAttentionCount,
@@ -202,7 +227,7 @@ export const getDefaultTeamSite = cache(
     if (!me || me.teams.length === 0) return null;
 
     const firstTeam = me.teams[0];
-    const sites = await getSitesForTeam(firstTeam.id);
+    const sites = await getDashboardTeamSites(firstTeam.id);
     if (sites.length === 0) {
       return null;
     }
@@ -224,7 +249,7 @@ export const getTeamDefaultSite = cache(
     const activeTeam = me.teams.find((team) => team.slug === teamSlug);
     if (!activeTeam) return null;
 
-    const sites = await getSitesForTeam(activeTeam.id);
+    const sites = await getDashboardTeamSites(activeTeam.id);
     if (sites.length === 0) return null;
 
     return {
@@ -233,28 +258,3 @@ export const getTeamDefaultSite = cache(
     };
   },
 );
-
-export function buildSitePath(
-  locale: Locale,
-  teamSlug: string,
-  siteSlug: string,
-  section?:
-    | "realtime"
-    | "pages"
-    | "referrers"
-    | "sessions"
-    | "campaigns"
-    | "events"
-    | "funnels"
-    | "visitors"
-    | "retention"
-    | "geo"
-    | "devices"
-    | "browsers"
-    | "performance"
-    | "settings",
-): string {
-  const base = `/${locale}/app/${teamSlug}/${siteSlug}`;
-  if (!section) return base;
-  return `${base}/${section}`;
-}

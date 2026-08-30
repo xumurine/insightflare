@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import process from "node:process";
 
 import { createScriptLogger } from "./shared/logger";
+import { readSkillsTemplate, renderSkillsManifest } from "./skills-manifest";
 
 const root = resolve(import.meta.dirname, "..");
 const openapiPath = resolve(root, "docs", "openapi.json");
@@ -15,6 +16,10 @@ const rlog = createScriptLogger();
 
 const openapi = JSON.parse(readFileSync(openapiPath, "utf8"));
 const skills = JSON.parse(readFileSync(skillsPath, "utf8"));
+const skillsTemplate = readSkillsTemplate();
+const packageVersion = JSON.parse(
+  readFileSync(resolve(root, "package.json"), "utf8"),
+).version;
 const issues = [];
 
 const httpMethods = new Set([
@@ -94,19 +99,6 @@ function hasExample(content) {
   );
 }
 
-function exampleValue(content) {
-  if (!content || typeof content !== "object") return undefined;
-  if (Object.prototype.hasOwnProperty.call(content, "example")) {
-    return content.example;
-  }
-  const examples = Object.values(content.examples ?? {});
-  const first = examples[0];
-  if (first && typeof first === "object" && "value" in first) {
-    return first.value;
-  }
-  return first;
-}
-
 function successJsonContent(path, method = "get", status = "200") {
   const operation = openapi.paths?.[path]?.[method];
   const response = dereference(operation?.responses?.[status]);
@@ -124,6 +116,24 @@ function schemaContainsPagination(schema, seen = new Set()) {
     );
   }
   if (schema.properties?.pagination) return true;
+  const page = schema.properties?.page;
+  if (page && typeof page === "object") {
+    const resolvedPage = page.$ref ? resolvePointer(page.$ref) : page;
+    const pageProperties = resolvedPage?.properties;
+    if (
+      pageProperties?.nextCursor &&
+      pageProperties?.hasMore &&
+      (pageProperties?.kind?.const === "keyset" ||
+        pageProperties?.kind?.enum?.includes("keyset"))
+    ) {
+      return true;
+    }
+  }
+  if (schema.properties) {
+    return Object.values(schema.properties).some((value) =>
+      schemaContainsPagination(value, new Set(seen)),
+    );
+  }
   if (Array.isArray(schema.allOf)) {
     return schema.allOf.some((item) => schemaContainsPagination(item, seen));
   }
@@ -134,15 +144,6 @@ function schemaContainsPagination(schema, seen = new Set()) {
     return schema.anyOf.some((item) => schemaContainsPagination(item, seen));
   }
   return false;
-}
-
-function templateToRegExp(template) {
-  const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^${escaped.replace(/\\\{[^/]+\\\}/g, "[^/]+")}$`);
-}
-
-function matchesPathTemplate(template, concretePath) {
-  return templateToRegExp(template).test(concretePath);
 }
 
 const operationIds = new Map();
@@ -179,6 +180,9 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
       if (parameter.name === "queryName") {
         issues.push(`${key} has forbidden queryName parameter`);
       }
+      if (parameter.name === "Idempotency-Key") {
+        issues.push(`${key} must not expose Idempotency-Key`);
+      }
     }
 
     const hasCursor = parameters.some(
@@ -200,6 +204,7 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
     }
 
     if (
+      path.startsWith("/api/v1") &&
       ["post", "patch"].includes(method) &&
       operation.requestBody &&
       !hasExample(jsonContent(operation.requestBody))
@@ -230,8 +235,8 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
       );
     }
 
-    if (operation.responses?.["429"]) {
-      issues.push(`${key} must not declare 429 as a stable origin response`);
+    if (path.startsWith("/api/v1") && !operation.responses?.["405"]) {
+      issues.push(`${key} must document the standard 405 error response`);
     }
 
     if (!Object.prototype.hasOwnProperty.call(operation, "x-required-scopes")) {
@@ -242,12 +247,7 @@ for (const [path, pathItem] of Object.entries(openapi.paths ?? {})) {
       !(operation.security && operation.security.length === 0) &&
       operation["x-required-scopes"].length === 0 &&
       path.startsWith("/api/v1") &&
-      ![
-        "/api/v1",
-        "/api/v1/token",
-        "/api/v1/token/check",
-        "/api/v1/capabilities",
-      ].includes(path)
+      !Array.isArray(operation["x-api-v1-scopes"])
     ) {
       issues.push(`${key} authenticated operation should declare a scope`);
     }
@@ -294,171 +294,217 @@ for (const forbidden of [
 if (!openapi.info?.description?.includes("ISO 8601 date-time strings")) {
   issues.push("Top-level description must describe ISO 8601 timestamps");
 }
+const typedEventTypeDetail =
+  openapi.paths?.["/api/v1/sites/{siteId}/analytics/event-types/detail"]?.post;
 if (
-  !openapi.info?.description?.includes(
-    "outside the standard API error envelope",
-  )
+  typedEventTypeDetail?.["x-api-v1-lifecycle"] !== "exposed" ||
+  !successJsonContent(
+    "/api/v1/sites/{siteId}/analytics/event-types/detail",
+    "post",
+  )?.schema
 ) {
+  issues.push("typed event type detail operation must expose a success schema");
+}
+
+const expectedSkills = renderSkillsManifest(packageVersion, skillsTemplate);
+if (JSON.stringify(skills) !== JSON.stringify(expectedSkills)) {
+  issues.push("docs/skills.json does not match the rendered skills template");
+}
+
+if (skills.manifestVersion !== 1) {
+  issues.push("skills.json must declare manifestVersion 1");
+}
+if (skills.version !== packageVersion) {
+  issues.push("skills.json version must match package.json");
+}
+if (skills.baseUrl !== "${baseUrl}") {
   issues.push(
-    "Top-level description must explain upstream 429 as non-contract",
+    "skills.json baseUrl must preserve the runtime baseUrl placeholder",
   );
 }
-if (!Array.isArray(openapi["x-possible-upstream-responses"])) {
-  issues.push("OpenAPI must expose x-possible-upstream-responses");
-}
-
-for (const [name, parameter] of Object.entries(
-  openapi.components?.parameters ?? {},
-)) {
-  if (["FromQueryParam", "ToQueryParam"].includes(name)) {
-    if (
-      parameter.schema?.type !== "string" ||
-      parameter.schema?.format !== "date-time"
-    ) {
-      issues.push(`${name} must be an ISO 8601 date-time string parameter`);
-    }
-    if (/unix|millisecond/i.test(parameter.description ?? "")) {
-      issues.push(`${name} description must not mention Unix milliseconds`);
-    }
-  }
-}
-
-for (const name of [
-  "SiteIdPathParam",
-  "FromQueryParam",
-  "ToQueryParam",
-  "PresetQueryParam",
-  "TimeZoneQueryParam",
-  "MetricsQueryParam",
-  "FilterQueryParam",
-  "LimitQueryParam",
-  "CursorQueryParam",
-]) {
-  if (!openapi.components?.parameters?.[name]) {
-    issues.push(`Missing reusable parameter ${name}`);
-  }
-}
-
-const visitorParam = openapi.components?.parameters?.VisitorIdPathParam;
-if (visitorParam?.schema?.format === "uuid") {
-  issues.push("VisitorIdPathParam must not require uuid format");
-}
-const sessionParam = openapi.components?.parameters?.SessionIdPathParam;
-if (sessionParam?.schema?.format === "uuid") {
-  issues.push("SessionIdPathParam must not require uuid format");
-}
-
-const complexFilterValue =
-  openapi.components?.schemas?.ComplexFilter?.properties?.value;
-if (!Array.isArray(complexFilterValue?.oneOf)) {
-  issues.push("ComplexFilter.value must define a constrained oneOf schema");
-}
-
-const collect = openapi.paths?.["/collect"]?.post;
-if (collect?.responses?.["429"]) {
-  issues.push("/collect must not declare a 429 response");
-}
-const collectBodyName = refName(
-  collect?.requestBody?.content?.["application/json"]?.schema,
-);
-if (collectBodyName === "GenericObjectResponse") {
-  issues.push("/collect requestBody must not use GenericObjectResponse");
-}
-const collectPayload = openapi.components?.schemas?.CollectPayload;
-if (
-  !collectPayload ||
-  collectPayload.additionalProperties === true ||
-  !collectPayload.properties?.siteId ||
-  !collectPayload.properties?.type
-) {
-  issues.push("CollectPayload must define explicit siteId/type properties");
-}
-
-const eventTypesExample = exampleValue(
-  successJsonContent("/api/v1/sites/{siteId}/event-types"),
-);
-const eventTypesExampleText = JSON.stringify(eventTypesExample);
-if (
-  eventTypesExampleText.includes("__direct__") ||
-  eventTypesExampleText.includes("__unknown__")
-) {
-  issues.push(
-    "/event-types example must use event names, not direct/unknown breakdown values",
-  );
-}
-
-const teamAnalyticsSitesExample = exampleValue(
-  successJsonContent("/api/v1/team/analytics/sites"),
-);
-const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-for (const row of teamAnalyticsSitesExample?.data ?? []) {
-  if (!uuidPattern.test(String(row.key))) {
-    issues.push("/team/analytics/sites example keys must be site UUIDs");
-    break;
-  }
-}
-
-const exploreRequest = openapi.components?.schemas?.AnalyticsExploreRequest;
-if (exploreRequest?.properties?.metrics?.items?.maxLength !== 80) {
-  issues.push("AnalyticsExploreRequest.metrics.items must set maxLength 80");
-}
-if (exploreRequest?.properties?.dimensions?.items?.maxLength !== 120) {
-  issues.push(
-    "AnalyticsExploreRequest.dimensions.items must set maxLength 120",
-  );
+if (skills.openapi?.url !== "/.well-known/openapi.json") {
+  issues.push("skills.json must expose the well-known OpenAPI URL");
 }
 if (
-  exploreRequest?.properties?.metrics?.minItems !== 1 ||
-  exploreRequest?.properties?.metrics?.maxItems !== 20
+  !skills.openapiGuidance ||
+  typeof skills.openapiGuidance.sourceOfTruth !== "string" ||
+  !Array.isArray(skills.openapiGuidance.readingRules)
 ) {
-  issues.push(
-    "AnalyticsExploreRequest.metrics must set minItems 1 and maxItems 20",
-  );
-}
-if (exploreRequest?.properties?.dimensions?.maxItems !== 5) {
-  issues.push("AnalyticsExploreRequest.dimensions must set maxItems 5");
+  issues.push("skills.json must define OpenAPI guidance for Agents");
 }
 
-const eventTypeResponseRef = successJsonContent(
-  "/api/v1/sites/{siteId}/event-types/{eventName}",
-)?.schema;
-if (refName(eventTypeResponseRef) === "EventTypeResponse") {
-  if (!openapi.components?.schemas?.EventType) {
-    issues.push("EventTypeResponse requires EventType schema");
-  }
-} else {
-  issues.push("/event-types/{eventName} must use EventTypeResponse");
-}
-
-const openapiOperations = operations.map(({ method, path }) => ({
-  method,
-  path,
-}));
-
-for (const recipe of skills.taskRecipes ?? []) {
-  for (const call of recipe.calls ?? []) {
-    const [method, rawPath] = String(call).split(/\s+/, 2);
-    const path = rawPath?.split("?")[0];
-    if (!method || !path) {
-      issues.push(`Malformed skills recipe call: ${call}`);
-      continue;
-    }
-    const exists = openapiOperations.some(
-      (operation) =>
-        operation.method === method.toUpperCase() &&
-        matchesPathTemplate(operation.path, path),
+const templateText = JSON.stringify(skillsTemplate);
+for (const placeholder of templateText.matchAll(/\$\{([^}]+)\}/g)) {
+  if (!["baseUrl", "version"].includes(placeholder[1])) {
+    issues.push(
+      `skills template contains an unknown placeholder: ${placeholder[0]}`,
     );
-    if (!exists) {
-      issues.push(`skills.json call does not match OpenAPI path: ${call}`);
+  }
+}
+
+for (const deprecated of [
+  "typedAnalyticsOperations",
+  "endpoints",
+  "openapiUrl",
+  "agentGuidance",
+  "errorHandling",
+  "common_query_parameters",
+  "typical_workflow",
+  "implementation_notes",
+]) {
+  if (Object.hasOwn(skills, deprecated)) {
+    issues.push(
+      `skills.json must not expose deprecated manifest field: ${deprecated}`,
+    );
+  }
+}
+
+const publicOperationIds = new Map(
+  operations
+    .filter(({ operation }) => typeof operation.operationId === "string")
+    .map(({ method, path, operation }) => [
+      operation.operationId,
+      { method, path, operation },
+    ]),
+);
+const referencedOperationIds = new Set();
+const referenceOperation = (operationId, location) => {
+  if (typeof operationId !== "string" || operationId.length === 0) {
+    issues.push(`${location} must contain a non-empty operationId`);
+    return;
+  }
+  if (!publicOperationIds.has(operationId)) {
+    issues.push(
+      `${location} references unknown OpenAPI operationId: ${operationId}`,
+    );
+    return;
+  }
+  referencedOperationIds.add(operationId);
+};
+const referenceOperationList = (value, location) => {
+  if (!Array.isArray(value)) {
+    issues.push(`${location} must be an operationId array`);
+    return;
+  }
+  value.forEach((operationId, index) =>
+    referenceOperation(operationId, `${location}[${index}]`),
+  );
+};
+
+referenceOperationList(
+  skills.discovery?.sessionInitialization,
+  "skills.discovery.sessionInitialization",
+);
+referenceOperation(
+  skills.discovery?.siteAnalyticsSchema,
+  "skills.discovery.siteAnalyticsSchema",
+);
+referenceOperation(
+  skills.discovery?.teamAnalyticsSchema,
+  "skills.discovery.teamAnalyticsSchema",
+);
+referenceOperation(skills.discovery?.health, "skills.discovery.health");
+
+const stateMutationIds = new Set(
+  [...publicOperationIds.entries()]
+    .filter(
+      ([, { method, operation }]) =>
+        ["patch", "delete"].includes(method) ||
+        Boolean(operation.responses?.["201"]),
+    )
+    .map(([operationId]) => operationId),
+);
+const recipes = skills.taskRecipes;
+if (!Array.isArray(recipes) || recipes.length === 0) {
+  issues.push("skills.json must define taskRecipes");
+} else {
+  const recipeIds = new Set();
+  for (const recipe of recipes) {
+    const location = `skills.taskRecipes.${recipe?.id ?? "unknown"}`;
+    for (const field of [
+      "id",
+      "intent",
+      "scope",
+      "requiredContext",
+      "preparation",
+      "operations",
+      "decisionBranches",
+      "result",
+    ]) {
+      if (!(field in (recipe ?? {}))) {
+        issues.push(`${location} is missing ${field}`);
+      }
+    }
+    if (typeof recipe?.id !== "string" || recipe.id.length === 0) {
+      issues.push(`${location} must have a non-empty id`);
+    } else if (recipeIds.has(recipe.id)) {
+      issues.push(
+        `skills.json contains duplicate task recipe id: ${recipe.id}`,
+      );
+    } else {
+      recipeIds.add(recipe.id);
+    }
+    if (!["site", "team", "integration"].includes(recipe?.scope)) {
+      issues.push(`${location} must use site, team, or integration scope`);
+    }
+    for (const field of ["requiredContext", "decisionBranches"]) {
+      if (!Array.isArray(recipe?.[field])) {
+        issues.push(`${location}.${field} must be an array`);
+      }
+    }
+    referenceOperationList(recipe?.preparation, `${location}.preparation`);
+    referenceOperationList(recipe?.operations, `${location}.operations`);
+
+    const operationIds = [
+      ...(recipe?.preparation ?? []),
+      ...(recipe?.operations ?? []),
+    ];
+    const rawRecipe = JSON.stringify(recipe);
+    if (
+      /\b(?:GET|POST|PUT|PATCH|DELETE)\s+\//.test(rawRecipe) ||
+      /\/api\/|\/collect|\/script\.js/.test(rawRecipe)
+    ) {
+      issues.push(
+        `${location} must reference operations by operationId, not method or path`,
+      );
+    }
+    if (
+      operationIds.some((operationId) =>
+        String(operationId).startsWith("site.analytics."),
+      ) &&
+      !recipe?.preparation?.includes("site.analytics.schema")
+    ) {
+      issues.push(
+        `${location} must prepare site.analytics.schema before site analytics`,
+      );
+    }
+    if (
+      operationIds.some((operationId) =>
+        String(operationId).startsWith("team.analytics."),
+      ) &&
+      !recipe?.preparation?.includes("team.analytics.schema")
+    ) {
+      issues.push(
+        `${location} must prepare team.analytics.schema before team analytics`,
+      );
+    }
+    if (
+      operationIds.some((operationId) => stateMutationIds.has(operationId)) &&
+      recipe?.requiresConfirmation !== true
+    ) {
+      issues.push(
+        `${location} contains a state mutation but does not require confirmation`,
+      );
     }
   }
 }
 
-if (skills.endpoints !== undefined) {
-  issues.push(
-    "skills.json must remain an agent manifest, not an endpoint catalog",
-  );
+for (const operationId of publicOperationIds.keys()) {
+  if (!referencedOperationIds.has(operationId)) {
+    issues.push(
+      `skills.json does not cover public OpenAPI operationId: ${operationId}`,
+    );
+  }
 }
 
 if (issues.length > 0) {

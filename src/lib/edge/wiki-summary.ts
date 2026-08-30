@@ -1,5 +1,11 @@
+import {
+  getInvocationLogger,
+  measureExternalFetch,
+} from "@/lib/edge/observability-bindings";
+import type { InvocationLogger } from "@/lib/edge/observability-logger";
+import type { Env } from "@/lib/edge/types";
 import { requireSameOrigin } from "@/lib/edge/utils";
-import { resolveLocale } from "@/lib/i18n/config";
+import { type Locale, resolveLocale } from "@/lib/i18n/config";
 import { jsonResponse } from "@/lib/response";
 
 const WIKIDATA_API_ENDPOINT = "https://www.wikidata.org/w/api.php";
@@ -8,6 +14,10 @@ const CACHE_CONTROL_HEADER =
   "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800";
 const WIKIMEDIA_USER_AGENT = "InsightFlare/0.1 (+https://insight.ravelloh.com)";
 const CACHE_HEADERS = { "cache-control": CACHE_CONTROL_HEADER };
+const WIKIPEDIA_ACCEPT_LANGUAGE: Partial<Record<Locale, string>> = {
+  zh: "zh-CN,zh;q=0.9,en;q=0.8",
+  ja: "ja-JP,ja;q=0.9,en;q=0.8",
+};
 
 interface WikidataTerm {
   value?: string;
@@ -71,7 +81,7 @@ function resolveWikipediaAcceptLanguage(request: Request): string | null {
   }
 
   const locale = resolveLocale(url.searchParams.get("locale"));
-  return locale === "zh" ? "zh-CN,zh;q=0.9,en;q=0.8" : null;
+  return WIKIPEDIA_ACCEPT_LANGUAGE[locale] ?? null;
 }
 
 function applyWikipediaVariantToUrl(
@@ -98,7 +108,7 @@ function resolveRequestedWikiLanguage(request: Request): string {
     return normalizeWikiLanguage(explicitLanguage);
   }
   const locale = resolveLocale(url.searchParams.get("locale"));
-  return locale === "zh" ? "zh" : DEFAULT_WIKI_LANGUAGE;
+  return locale === "zh" || locale === "ja" ? locale : DEFAULT_WIKI_LANGUAGE;
 }
 
 function pickPreferredValue(
@@ -141,6 +151,7 @@ function resolvePreferredSitelink(
 
 async function fetchWikidataEntity(
   wikidataId: string,
+  logger?: InvocationLogger,
 ): Promise<WikidataEntity | null> {
   const url = new URL(WIKIDATA_API_ENDPOINT);
   url.searchParams.set("action", "wbgetentities");
@@ -148,12 +159,17 @@ async function fetchWikidataEntity(
   url.searchParams.set("props", "labels|descriptions|sitelinks/urls");
   url.searchParams.set("format", "json");
 
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      "user-agent": WIKIMEDIA_USER_AGENT,
-    },
-  });
+  const response = await measureExternalFetch(
+    logger,
+    "external_fetch.wikidata",
+    () =>
+      fetch(url, {
+        headers: {
+          accept: "application/json",
+          "user-agent": WIKIMEDIA_USER_AGENT,
+        },
+      }),
+  );
 
   if (!response.ok) {
     throw new Error(`Wikidata upstream failed with ${response.status}`);
@@ -168,15 +184,21 @@ async function fetchWikipediaSummary(
   language: string,
   title: string,
   acceptLanguage: string | null,
+  logger?: InvocationLogger,
 ): Promise<WikipediaSummaryResponse | null> {
   const endpoint = `https://${language}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-  const response = await fetch(endpoint, {
-    headers: {
-      accept: "application/json",
-      "user-agent": WIKIMEDIA_USER_AGENT,
-      ...(acceptLanguage ? { "accept-language": acceptLanguage } : {}),
-    },
-  });
+  const response = await measureExternalFetch(
+    logger,
+    "external_fetch.wikipedia",
+    () =>
+      fetch(endpoint, {
+        headers: {
+          accept: "application/json",
+          "user-agent": WIKIMEDIA_USER_AGENT,
+          ...(acceptLanguage ? { "accept-language": acceptLanguage } : {}),
+        },
+      }),
+  );
 
   if (response.status === 404) {
     return null;
@@ -190,6 +212,7 @@ async function fetchWikipediaSummary(
 
 export async function handleWikiSummaryRequest(
   request: Request,
+  env?: Env,
 ): Promise<Response> {
   const sameOriginError = requireSameOrigin(request);
   if (sameOriginError) return sameOriginError;
@@ -217,7 +240,8 @@ export async function handleWikiSummaryRequest(
   );
 
   try {
-    const entity = await fetchWikidataEntity(wikidataId);
+    const logger = env ? getInvocationLogger(env) : undefined;
+    const entity = await fetchWikidataEntity(wikidataId, logger);
     if (!entity) {
       return jsonResponse(
         {
@@ -255,6 +279,7 @@ export async function handleWikiSummaryRequest(
         sitelink.language,
         sitelink.title,
         acceptLanguage,
+        logger,
       );
 
       const resolvedPageUrl =
@@ -295,7 +320,7 @@ export async function handleWikiSummaryRequest(
       CACHE_HEADERS,
     );
   } catch (error) {
-    console.error("[wiki-summary] upstream request failed", error);
+    void error;
     return jsonResponse(
       {
         ok: false,

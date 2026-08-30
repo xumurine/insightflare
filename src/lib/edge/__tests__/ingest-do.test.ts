@@ -19,6 +19,7 @@ type SqlRow = Record<string, unknown>;
 const VISIT_COLUMNS = [
   "visit_id",
   "site_id",
+  "site_pk",
   "visitor_id",
   "session_id",
   "status",
@@ -75,7 +76,9 @@ const VISIT_COLUMNS = [
 ] as const;
 
 const BUFFERED_VISIT_COLUMNS = [
-  ...VISIT_COLUMNS.filter((column) => column !== "ae_synced_at"),
+  ...VISIT_COLUMNS.filter(
+    (column) => column !== "ae_synced_at" && column !== "site_pk",
+  ),
   "hidden_at",
   "dirty",
   "flush_attempts",
@@ -193,9 +196,14 @@ class FakeD1Database {
 
   constructor() {
     this.db.exec(`
+      CREATE TABLE site_identities (
+        site_pk INTEGER PRIMARY KEY,
+        site_id TEXT NOT NULL UNIQUE
+      );
       CREATE TABLE visits (
         visit_id TEXT PRIMARY KEY,
         site_id TEXT NOT NULL,
+        site_pk INTEGER NOT NULL,
         visitor_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         status TEXT NOT NULL,
@@ -253,31 +261,35 @@ class FakeD1Database {
       CREATE TABLE custom_event_names (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         site_id TEXT NOT NULL,
+        site_pk INTEGER NOT NULL,
         name TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         last_seen_at INTEGER NOT NULL,
-        UNIQUE(site_id, name)
+        UNIQUE(site_pk, name)
       );
       CREATE TABLE custom_event_json_keys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         site_id TEXT NOT NULL,
+        site_pk INTEGER NOT NULL,
         "key" TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         last_seen_at INTEGER NOT NULL,
-        UNIQUE(site_id, "key")
+        UNIQUE(site_pk, "key")
       );
       CREATE TABLE custom_event_json_paths (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         site_id TEXT NOT NULL,
+        site_pk INTEGER NOT NULL,
         path TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         last_seen_at INTEGER NOT NULL,
-        UNIQUE(site_id, path)
+        UNIQUE(site_pk, path)
       );
       CREATE TABLE custom_events (
         event_pk INTEGER PRIMARY KEY AUTOINCREMENT,
         event_id TEXT NOT NULL UNIQUE,
         site_id TEXT NOT NULL,
+        site_pk INTEGER NOT NULL,
         visit_id TEXT NOT NULL,
         event_name_id INTEGER NOT NULL,
         occurred_at INTEGER NOT NULL,
@@ -305,6 +317,7 @@ class FakeD1Database {
         event_pk INTEGER NOT NULL,
         node_id INTEGER NOT NULL,
         site_id TEXT NOT NULL,
+        site_pk INTEGER NOT NULL,
         event_name_id INTEGER NOT NULL,
         path_id INTEGER NOT NULL,
         occurred_at INTEGER NOT NULL,
@@ -316,6 +329,9 @@ class FakeD1Database {
         boolean_value INTEGER,
         UNIQUE(event_pk, node_id, path_id)
       );
+
+      INSERT INTO site_identities (site_pk, site_id) VALUES (1, 'site-1');
+
     `);
   }
 
@@ -346,13 +362,17 @@ class FakeD1Database {
 }
 
 type FakeWebSocketEvent = "close" | "error";
+type FakeWebSocketEventPayload = { code?: number };
 
 class FakeWebSocket {
   accepted = false;
   closed = false;
   failSend = false;
   readonly sent: string[] = [];
-  private readonly listeners = new Map<FakeWebSocketEvent, Array<() => void>>();
+  private readonly listeners = new Map<
+    FakeWebSocketEvent,
+    Array<(event: FakeWebSocketEventPayload) => void>
+  >();
 
   accept(): void {
     this.accepted = true;
@@ -369,15 +389,21 @@ class FakeWebSocket {
     this.closed = true;
   }
 
-  addEventListener(event: FakeWebSocketEvent, listener: () => void): void {
+  addEventListener(
+    event: FakeWebSocketEvent,
+    listener: (event: FakeWebSocketEventPayload) => void,
+  ): void {
     const listeners = this.listeners.get(event) ?? [];
     listeners.push(listener);
     this.listeners.set(event, listeners);
   }
 
-  emit(event: FakeWebSocketEvent): void {
+  emit(
+    event: FakeWebSocketEvent,
+    payload: FakeWebSocketEventPayload = {},
+  ): void {
     for (const listener of this.listeners.get(event) ?? []) {
-      listener();
+      listener(payload);
     }
   }
 }
@@ -407,6 +433,7 @@ function visitRecord(overrides: Partial<VisitRecord> = {}): VisitRecord {
   return {
     visit_id: "visit-1",
     site_id: "site-1",
+    site_pk: 1,
     visitor_id: "visitor-1",
     session_id: "session-1",
     status: "open",
@@ -724,7 +751,7 @@ describe("IngestDurableObject", () => {
     await expect(snapshot.json()).resolves.toMatchObject({
       ok: true,
       buffered: 0,
-      data: [],
+      events: [],
     });
 
     const client = new FakeWebSocket();
@@ -751,6 +778,92 @@ describe("IngestDurableObject", () => {
       expect(upgrade.status).toBe(101);
       expect(server.accepted).toBe(true);
       expect(upgrade.webSocket).toBe(client);
+    } finally {
+      vi.stubGlobal("Response", RealResponse);
+    }
+  });
+
+  it("reports active visitors from the active endpoint", async () => {
+    const ctx = createTestDo();
+    await postIngest(ctx.object, envelope({ timestamp: NOW, startedAt: NOW }));
+
+    const response = await ctx.object.fetch(
+      new Request("https://ingest.internal/active"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ ok: true, activeNow: 1 });
+  });
+
+  it("records direct Durable Object SQL calls in the request invocation", async () => {
+    const ctx = createTestDo();
+
+    const response = await ctx.object.fetch(
+      new Request("https://ingest.internal/snapshot"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        source: "do",
+        request: expect.objectContaining({ route: "/snapshot", status: 200 }),
+        performance: expect.objectContaining({
+          doSqlStatements: expect.any(Number),
+        }),
+        logs: expect.arrayContaining([
+          expect.objectContaining({ message: "do_sql.all.started" }),
+          expect.objectContaining({ message: "do_sql.all.completed" }),
+        ]),
+      }),
+    );
+  });
+
+  it("emits a separate websocket lifecycle record after the upgrade response", async () => {
+    const ctx = createTestDo();
+    const client = new FakeWebSocket();
+    const server = new FakeWebSocket();
+    class LifecycleWebSocketPair {
+      constructor() {
+        return [client, server];
+      }
+    }
+    const RealResponse = globalThis.Response;
+    vi.stubGlobal("WebSocketPair", LifecycleWebSocketPair);
+    vi.stubGlobal("Response", FakeUpgradeResponse);
+
+    try {
+      const response = await ctx.object.fetch({
+        url: "https://ingest.internal/ws",
+        method: "GET",
+        headers: {
+          get: (name: string) =>
+            name.toLowerCase() === "upgrade" ? "websocket" : null,
+        },
+      } as unknown as Request);
+      expect(response.status).toBe(101);
+
+      server.emit("close", { code: 1000 });
+
+      expect(console.log).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          source: "do",
+          request: {
+            route: "/ws",
+            method: "WEBSOCKET",
+            status: 101,
+            outcome: "ok",
+          },
+          performance: expect.objectContaining({
+            webSocketDurationMs: expect.any(Number),
+          }),
+          logs: [
+            expect.objectContaining({
+              message: "do.websocket.closed",
+              data: { code: 1000 },
+            }),
+          ],
+        }),
+      );
     } finally {
       vi.stubGlobal("Response", RealResponse);
     }
@@ -850,7 +963,7 @@ describe("IngestDurableObject", () => {
     await expect(snapshot.json()).resolves.toMatchObject({
       ok: true,
       buffered: 0,
-      data: [
+      events: [
         {
           id: "visit-1",
           eventType: "visit",
@@ -859,7 +972,8 @@ describe("IngestDurableObject", () => {
           pathname: "/docs",
           hostname: "example.com",
           visitorId: "visitor-1",
-          screenSize: "1440x900",
+          screenWidth: 1440,
+          screenHeight: 900,
         },
       ],
     });
@@ -930,10 +1044,11 @@ describe("IngestDurableObject", () => {
       ctx.object,
       envelope({
         visitId: "visit-2",
-        previousVisitId: "visit-1",
+        navigation: "route",
         startedAt: NOW - 10_000,
         timestamp: NOW - 10_000,
         pathname: "/second",
+        referrerUrl: "https://example.com/first",
       }),
     );
     await postIngest(
@@ -987,8 +1102,8 @@ describe("IngestDurableObject", () => {
         visit_id: "visit-2",
         status: "complete",
         ended_at: NOW - 5_000,
-        duration_ms: 4567,
-        duration_source: "reported",
+        duration_ms: 5000,
+        duration_source: "server",
         perf_ttfb_ms: 1.235,
         perf_fcp_ms: null,
         perf_lcp_ms: 2500,
@@ -1039,6 +1154,71 @@ describe("IngestDurableObject", () => {
       {
         visit_id: "tab-a-visit",
         status: "open",
+      },
+      {
+        visit_id: "tab-b-visit",
+        status: "open",
+      },
+    ]);
+  });
+
+  it("closes the matching route referrer instead of another active tab", async () => {
+    const ctx = createTestDo();
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-a-visit",
+        startedAt: NOW - 30_000,
+        timestamp: NOW - 30_000,
+        pathname: "/tab-a",
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-b-visit",
+        startedAt: NOW - 10_000,
+        timestamp: NOW - 10_000,
+        pathname: "/tab-b",
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "tab-a-next",
+        navigation: "route",
+        startedAt: NOW - 5_000,
+        timestamp: NOW - 5_000,
+        pathname: "/tab-a/next",
+        referrerUrl: "https://example.com/tab-a",
+      }),
+    );
+
+    const rows = localRows<{
+      visit_id: string;
+      status: string;
+      ended_at: number | null;
+      duration_ms: number | null;
+    }>(
+      ctx.sql,
+      `
+        SELECT visit_id, status, ended_at, duration_ms
+        FROM buffered_visits
+        ORDER BY visit_id
+      `,
+    );
+
+    expect(rows).toMatchObject([
+      {
+        visit_id: "tab-a-next",
+        status: "open",
+      },
+      {
+        visit_id: "tab-a-visit",
+        status: "complete",
+        ended_at: NOW - 5_000,
+        duration_ms: 25_000,
       },
       {
         visit_id: "tab-b-visit",
@@ -1105,6 +1285,15 @@ describe("IngestDurableObject", () => {
         timestamp: NOW - 10_000,
       }),
     );
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "visibility",
+        visitId: "hidden-visit",
+        visibilityState: "hidden",
+        timestamp: NOW - 9_000,
+      }),
+    );
 
     expect(
       localRows<{ status: string; hidden_at: number | null }>(
@@ -1144,9 +1333,34 @@ describe("IngestDurableObject", () => {
       hidden_at: null,
       ended_at: NOW,
       duration_ms: 20_000,
-      duration_source: "reported",
+      duration_source: "server",
       exit_reason: "pagehide",
     });
+  });
+
+  it("skips visibility broadcasts when the visit context is unavailable", async () => {
+    const ctx = createTestDo();
+    const object = ctx.object as unknown as {
+      pushVisibilityRealtimeRecord(record: {
+        siteId: string;
+        visitId: string;
+        eventAt: number;
+        visibilityState: "hidden" | "visible";
+        traceId: string;
+        receivedAt: number;
+      }): Promise<void>;
+    };
+
+    await expect(
+      object.pushVisibilityRealtimeRecord({
+        siteId: "site-1",
+        visitId: "missing-visit",
+        eventAt: NOW,
+        visibilityState: "hidden",
+        traceId: "trace-missing",
+        receivedAt: NOW,
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("finalizes stale hidden visits at hidden_at during flush", async () => {
@@ -1833,7 +2047,8 @@ describe("IngestDurableObject", () => {
         visits: [
           {
             visitId: "socket-active",
-            screenSize: "",
+            screenWidth: null,
+            screenHeight: null,
             osVersion: "13",
           },
         ],
@@ -1868,6 +2083,24 @@ describe("IngestDurableObject", () => {
     await postIngest(
       ctx.object,
       envelope({
+        kind: "visibility",
+        visitId: "socket-visit",
+        visibilityState: "hidden",
+        timestamp: NOW - 500,
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "visibility",
+        visitId: "socket-visit",
+        visibilityState: "visible",
+        timestamp: NOW - 250,
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
         kind: "leave",
         visitId: "socket-visit",
         timestamp: NOW,
@@ -1880,8 +2113,30 @@ describe("IngestDurableObject", () => {
     expect(eventMessages.map((message) => message.data.eventType)).toEqual([
       "visit",
       "Socket Event",
+      "visibility",
+      "visibility",
       "__presence_leave",
     ]);
+    expect(eventMessages[2]?.data).toMatchObject({
+      eventKind: "visibility",
+      visibilityState: "hidden",
+      visitId: "socket-visit",
+      sessionId: expect.any(String),
+      visitorId: "socket-visitor",
+      pathname: "/socket",
+      hostname: "example.com",
+      title: "Docs",
+      browser: "Chrome",
+      os: "Windows",
+      country: "US",
+    });
+    expect(eventMessages[3]?.data).toMatchObject({
+      eventKind: "visibility",
+      visibilityState: "visible",
+      status: "open",
+      hiddenAt: null,
+      visitId: "socket-visit",
+    });
     expect(staleServer.closed).toBe(true);
 
     healthyServer.emit("close");
@@ -1891,14 +2146,14 @@ describe("IngestDurableObject", () => {
         visitId: "after-close",
       }),
     );
-    expect(healthyServer.sent).toHaveLength(4);
+    expect(healthyServer.sent).toHaveLength(6);
 
     const snapshot = await ctx.object.fetch(
       new Request("https://ingest.internal/snapshot?from=NaN&to=NaN&limit=NaN"),
     );
     await expect(snapshot.json()).resolves.toMatchObject({
       ok: true,
-      data: expect.arrayContaining([
+      events: expect.arrayContaining([
         expect.objectContaining({
           id: "leave:socket-visit",
           eventType: "__presence_leave",
@@ -2333,7 +2588,7 @@ describe("IngestDurableObject", () => {
     ).toBe(1);
   });
 
-  it("logs and ignores websocket initial snapshot send failures", async () => {
+  it("records websocket initial snapshot send failures in the invocation log", async () => {
     const ctx = createTestDo();
     const client = new FakeWebSocket();
     const server = new FakeWebSocket();
@@ -2360,7 +2615,14 @@ describe("IngestDurableObject", () => {
     expect(response.status).toBe(101);
     expect(server.accepted).toBe(true);
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("ws_snapshot_init_failed"),
+      expect.objectContaining({
+        source: "do",
+        trigger: "request",
+        request: expect.objectContaining({ route: "/ws", status: 101 }),
+        logs: expect.arrayContaining([
+          expect.objectContaining({ message: "do.websocket.snapshot_failed" }),
+        ]),
+      }),
     );
   });
 
@@ -2406,11 +2668,15 @@ describe("IngestDurableObject", () => {
     );
 
     expect(response.status).toBe(202);
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining('"event":"do_leave_no_rows_updated"'),
-    );
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining('"reason":"visit_not_open"'),
+    expect(console.log).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        source: "do",
+        traceId: "trace-1",
+        logs: expect.arrayContaining([
+          expect.objectContaining({ message: "do.ingest.leave_race_lost" }),
+          expect.objectContaining({ message: "do.ingest.leave_ignored" }),
+        ]),
+      }),
     );
     await expect(
       (
@@ -2421,7 +2687,7 @@ describe("IngestDurableObject", () => {
         )
       ).json(),
     ).resolves.toMatchObject({
-      data: expect.not.arrayContaining([
+      events: expect.not.arrayContaining([
         expect.objectContaining({ eventType: "__presence_leave" }),
       ]),
     });

@@ -1,9 +1,4 @@
-"use client";
-
 import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import { useTheme } from "next-themes";
-import NumberFlow, { continuous } from "@number-flow/react";
 
 import { RealtimeLogStreamCard } from "@/components/dashboard/realtime-log-stream-card";
 import {
@@ -16,17 +11,22 @@ import {
   parseRealtimeCardFilters,
   RealtimeSummaryCardsSection,
 } from "@/components/dashboard/site-pages/realtime-summary-cards-section";
+import { useTheme } from "@/components/theme-provider";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { AutoTransition } from "@/components/ui/auto-transition";
-import { useRealtimeChannel } from "@/hooks/use-realtime-channel";
+import { useRealtimeChannelSelector } from "@/hooks/use-realtime-channel";
 import { useLiveSearchParams } from "@/lib/client-history";
+import dynamic from "@/lib/dynamic";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import type { RealtimeChannelState } from "@/lib/realtime/types";
 
 interface RealtimeClientPageProps {
   locale: Locale;
   messages: AppMessages;
   siteId: string;
   siteDomain: string;
+  pathname: string;
 }
 
 type EffectiveMapTheme = "light" | "dark";
@@ -36,7 +36,31 @@ const NUMBER_FLOW_BASELINE_STYLE = {
   "--number-flow-mask-height": "0px",
   "--number-flow-mask-width": "0px",
 } as const;
-const CONTINUOUS_NUMBER_FLOW_PLUGINS = [continuous];
+const selectRealtimePageState = (state: RealtimeChannelState) => ({
+  status: state.status,
+  hasConnected: state.hasConnected,
+  activeNow: state.activeNow,
+  visitorsLast30m: state.visitorsLast30m,
+  viewsLast30m: state.viewsLast30m,
+  events: state.events,
+  points: state.points,
+  visits: state.visits,
+});
+type RealtimePageState = ReturnType<typeof selectRealtimePageState>;
+
+const areRealtimePageStatesEqual = (
+  left: RealtimePageState,
+  right: RealtimePageState,
+) =>
+  left.status === right.status &&
+  left.hasConnected === right.hasConnected &&
+  left.activeNow === right.activeNow &&
+  left.visitorsLast30m === right.visitorsLast30m &&
+  left.viewsLast30m === right.viewsLast30m &&
+  Object.is(left.events, right.events) &&
+  Object.is(left.points, right.points) &&
+  Object.is(left.visits, right.visits);
+
 const RealtimeMapStage = dynamic<RealtimeMapStageProps>(
   () =>
     import("@/components/dashboard/site-pages/realtime-map-stage").then(
@@ -53,17 +77,22 @@ export function RealtimeClientPage({
   messages,
   siteId,
   siteDomain,
+  pathname,
 }: RealtimeClientPageProps) {
   const searchParams = useLiveSearchParams();
-  const realtime = useRealtimeChannel(siteId, {
-    enabled: Boolean(siteId),
-  });
+  const realtime = useRealtimeChannelSelector(
+    siteId,
+    selectRealtimePageState,
+    areRealtimePageStatesEqual,
+    { enabled: Boolean(siteId) },
+  );
   const { resolvedTheme } = useTheme();
   const searchParamsKey = searchParams.toString();
 
   const effectiveTheme: EffectiveMapTheme =
     resolvedTheme === "dark" ? "dark" : "light";
-  const requestFilters = useMemo(
+  // Keep URL filters for existing link context; realtime data stays unfiltered.
+  const filters = useMemo(
     () => parseRealtimeCardFilters(new URLSearchParams(searchParamsKey)),
     [searchParamsKey],
   );
@@ -90,6 +119,7 @@ export function RealtimeClientPage({
     <div className="space-y-6 pb-6">
       <div className="relative h-[min(72svh,calc(100svh-10.5rem))] min-h-[18rem] sm:min-h-[22rem] overflow-hidden">
         <RealtimeMapStage
+          locale={locale}
           siteId={siteId}
           theme={effectiveTheme}
           points={realtime.points}
@@ -128,39 +158,27 @@ export function RealtimeClientPage({
                       key="realtime-metrics-value"
                       className="inline-flex max-w-full items-end gap-2 font-semibold text-foreground"
                     >
-                      <NumberFlow
+                      <AnimatedNumber
                         value={realtime.activeNow}
-                        plugins={
-                          enableRollingNumber
-                            ? CONTINUOUS_NUMBER_FLOW_PLUGINS
-                            : undefined
-                        }
+                        continuous={enableRollingNumber}
                         className="font-mono text-3xl leading-none tabular-nums md:text-4xl"
                         style={NUMBER_FLOW_BASELINE_STYLE}
                       />
                       <span className="pb-0.5 font-mono text-xl leading-none text-muted-foreground/70 md:text-2xl">
                         /
                       </span>
-                      <NumberFlow
+                      <AnimatedNumber
                         value={realtime.visitorsLast30m}
-                        plugins={
-                          enableRollingNumber
-                            ? CONTINUOUS_NUMBER_FLOW_PLUGINS
-                            : undefined
-                        }
+                        continuous={enableRollingNumber}
                         className="font-mono text-3xl leading-none tabular-nums md:text-4xl"
                         style={NUMBER_FLOW_BASELINE_STYLE}
                       />
                       <span className="pb-0.5 font-mono text-xl leading-none text-muted-foreground/70 md:text-2xl">
                         /
                       </span>
-                      <NumberFlow
+                      <AnimatedNumber
                         value={realtime.viewsLast30m}
-                        plugins={
-                          enableRollingNumber
-                            ? CONTINUOUS_NUMBER_FLOW_PLUGINS
-                            : undefined
-                        }
+                        continuous={enableRollingNumber}
                         className="font-mono text-3xl leading-none tabular-nums md:text-4xl"
                         style={NUMBER_FLOW_BASELINE_STYLE}
                       />
@@ -211,6 +229,8 @@ export function RealtimeClientPage({
             hasConnected={realtime.hasConnected}
             events={realtime.events}
             visits={realtime.visits}
+            siteId={siteId}
+            pathname={pathname}
           />
           <RealtimeSummaryCardsSection
             locale={locale}
@@ -218,7 +238,7 @@ export function RealtimeClientPage({
             siteId={siteId}
             siteDomain={siteDomain}
             visits={realtime.visits}
-            filters={requestFilters}
+            filters={filters}
           />
         </div>
       </div>

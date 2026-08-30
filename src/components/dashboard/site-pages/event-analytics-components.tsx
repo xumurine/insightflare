@@ -1,19 +1,14 @@
-"use client";
-
 import {
+  Fragment,
   type KeyboardEvent,
-  type MouseEvent,
-  type PointerEvent,
+  memo,
   type ReactNode,
+  useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
-import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import type { RemixiconComponentType } from "@remixicon/react";
 import {
   RiArrowDownSLine,
@@ -21,7 +16,6 @@ import {
   RiArrowUpSLine,
   RiCheckLine,
   RiDatabase2Line,
-  RiExternalLinkLine,
   RiFileList3Line,
   RiFilter3Line,
   RiFilterOffLine,
@@ -29,10 +23,25 @@ import {
   RiSearchLine,
   RiStackLine,
 } from "@remixicon/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { AnimatePresence, useReducedMotion } from "motion/react";
 
+import { AnalyticsDataTable } from "@/components/dashboard/analytics-data-table";
+import {
+  type AnalyticsTableColumnDefinition,
+  AnalyticsTableColumnSettings,
+  useAnalyticsTableColumns,
+} from "@/components/dashboard/analytics-table-column-settings";
+import {
+  AnalyticsDetailsTooltipTarget,
+  AnalyticsTimeTooltipTarget,
+} from "@/components/dashboard/analytics-time-tooltip";
 import { AnimatedDataTableRow } from "@/components/dashboard/animated-data-table-row";
+import {
+  createEventTrendChartData,
+  createEventTrendChartSeries,
+  EventTrendBarChart,
+} from "@/components/dashboard/charts/event-trend-bar-chart";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import {
   BrowserMeta,
@@ -40,124 +49,67 @@ import {
   DeviceMeta,
   formatPath,
   formatRelativeTime,
-  formatShortDateTime,
   OsMeta,
   ReferrerMeta,
   VisitorAvatar,
 } from "@/components/dashboard/journey-display";
-import { JsonTreePanel } from "@/components/dashboard/json-tree";
 import { PageHeading } from "@/components/dashboard/page-heading";
-import { DetailDrawer } from "@/components/dashboard/site-pages/detail-drawer";
-import {
-  EVENT_FILTER_DIALOG_Z_INDEX,
-  EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-  EVENT_RECORD_DRAWER_Z_INDEX,
-  FLOATING_LAYER_Z_ATTR,
-  NESTED_DETAIL_DRAWER_Z_INDEX,
-} from "@/components/dashboard/site-pages/floating-layer";
+import { EventDetailDrawer } from "@/components/dashboard/site-pages/event-detail-drawer";
+import { EVENT_FILTER_DIALOG_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Table,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { buildComplementaryOklchPalette } from "@/lib/dashboard/chart-colors";
+import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
   fetchEventRecordDetail,
   fetchEventsRecords,
-  fetchEventTypeDetail,
+  fetchEventTypeFields,
   fetchEventTypeFieldValues,
 } from "@/lib/dashboard/client-data";
-import {
-  intlLocale,
-  numberFormat,
-  percentFormat,
-} from "@/lib/dashboard/format";
-import type {
-  DashboardFilters,
-  EventPayloadFilterRule,
-  EventPayloadFilterValue,
-  TimeWindow,
-} from "@/lib/dashboard/query-state";
+import { appendEventPayloadFilter } from "@/lib/dashboard/filter-state";
+import { numberFormat, percentFormat } from "@/lib/dashboard/format";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   EventField,
   EventFieldValueStat,
   EventRecord,
-  EventRecordDetailData,
-  EventsRecordsMeta,
   EventsTrendData,
   EventTrendSeries,
 } from "@/lib/edge-client";
+import type { FilterDocument, FilterValue } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
-const EVENT_PAGE_SIZE = 80;
-const EVENT_SKELETON_ROWS = 8;
-const OTHER_SERIES_KEY = "other";
+const EVENT_PAGE_SIZE = 50;
+const EVENT_SKELETON_ROWS = 25;
+type EventPayloadFilterValue = FilterValue;
+interface EventPayloadFilterRule {
+  path: string;
+  operator: "eq" | "neq";
+  value: EventPayloadFilterValue;
+}
 const FIELD_TREE_CHILD_TRANSITION = {
   initial: { opacity: 0, y: -6 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -6 },
 };
-
-const VisitorDetailClientPage = dynamic(
-  () =>
-    import("@/components/dashboard/site-pages/visitor-detail-client-page").then(
-      (module) => module.VisitorDetailClientPage,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
-    ),
-  },
-);
-
-const SessionDetailClientPage = dynamic(
-  () =>
-    import("@/components/dashboard/site-pages/session-detail-client-page").then(
-      (module) => module.SessionDetailClientPage,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
-    ),
-  },
-);
 
 type SortDirection = "asc" | "desc";
 export type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
@@ -167,25 +119,30 @@ export interface EventRecordSortState {
   direction: SortDirection;
 }
 
+export const EVENT_RECORD_TABLE_COLUMN_IDS = [
+  "visitor",
+  "eventName",
+  "eventId",
+  "occurredAt",
+  "page",
+  "referrer",
+  "location",
+  "os",
+  "browser",
+  "device",
+  "payload",
+  "nodeCount",
+] as const;
+
+export type EventRecordTableColumnId =
+  (typeof EVENT_RECORD_TABLE_COLUMN_IDS)[number];
+
 export type EventPageCopy = AppMessages["events"];
 
 export const DEFAULT_EVENT_RECORD_SORT: EventRecordSortState = {
   key: "occurredAt",
   direction: "desc",
 };
-
-const INITIAL_EVENT_META: EventsRecordsMeta = {
-  page: 1,
-  pageSize: EVENT_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
-};
-
-function shortId(value: string): string {
-  if (value.length <= 12) return value;
-  return `${value.slice(0, 9)}...`;
-}
 
 function normalizeEventFieldPath(path: string): string {
   const normalized = String(path ?? "").trim();
@@ -262,7 +219,7 @@ function formatPayloadFilterRules(rules: EventPayloadFilterRule[]): string {
     .map(
       (rule) =>
         `${formatPayloadFilterPathForInput(rule.path)} ${
-          rule.operator === "ne" ? "!=" : "=="
+          rule.operator === "neq" ? "!=" : "=="
         } ${formatPayloadFilterValueForInput(rule.value)}`,
     )
     .join("\n");
@@ -310,7 +267,7 @@ function parsePayloadFilterInput(
       const value = parsePayloadFilterValue(match[3] ?? "");
       rules.push({
         path,
-        operator: match[2] === "!=" ? "ne" : "eq",
+        operator: match[2] === "!=" ? "neq" : "eq",
         value,
       });
     }
@@ -491,67 +448,40 @@ function collectEventFieldTreeExpansionKeys(
   return keys;
 }
 
+function EventFieldTreeSkeleton({ loadingLabel }: { loadingLabel: string }) {
+  const rows = [
+    { indent: "pl-0", width: "w-28", branch: true },
+    { indent: "pl-5", width: "w-24", branch: true },
+    { indent: "pl-10", width: "w-32", branch: false },
+    { indent: "pl-10", width: "w-20", branch: false },
+    { indent: "pl-5", width: "w-28", branch: true },
+    { indent: "pl-10", width: "w-24", branch: false },
+  ];
+
+  return (
+    <div
+      className="space-y-0.5 border border-border/50 bg-muted/10 px-2 py-2"
+      aria-busy="true"
+      aria-label={loadingLabel}
+    >
+      {rows.map((row, index) => (
+        <div
+          key={index}
+          className={`flex h-8 items-center gap-2 ${row.indent}`}
+        >
+          <Skeleton className="size-6 shrink-0 rounded-none" />
+          <Skeleton className={`h-3.5 ${row.width} rounded-none`} />
+          {row.branch ? (
+            <Skeleton className="ml-auto size-5 shrink-0 rounded-none" />
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function formatEventFieldKeySegment(segment: string): string {
   return segment.replace(/~1/g, "/").replace(/~0/g, "~");
-}
-
-function tickDateFormat(
-  localeCode: string,
-  interval: TimeWindow["interval"],
-  timeZone: string,
-): Intl.DateTimeFormat {
-  if (interval === "minute" || interval === "hour") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  if (interval === "month") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      year: "numeric",
-      month: "short",
-    });
-  }
-  return new Intl.DateTimeFormat(localeCode, {
-    timeZone,
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function tooltipDateFormat(
-  localeCode: string,
-  interval: TimeWindow["interval"],
-  timeZone: string,
-): Intl.DateTimeFormat {
-  if (interval === "minute" || interval === "hour") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-  if (interval === "month") {
-    return new Intl.DateTimeFormat(localeCode, {
-      timeZone,
-      year: "numeric",
-      month: "long",
-    });
-  }
-  return new Intl.DateTimeFormat(localeCode, {
-    timeZone,
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function eventSeriesLabel(series: EventTrendSeries, labels: EventPageCopy) {
-  return series.isOther ? labels.other : series.label || series.eventName;
 }
 
 function EventMetricCell({
@@ -579,8 +509,9 @@ function EventMetricCell({
           {label}
         </p>
       </div>
-      <AutoResizer initial className="mt-3">
+      <AutoResizer initial animateHeight={false} className="mt-3 h-7">
         <AutoTransition
+          className="h-7"
           transitionKey={contentKey}
           initial={false}
           duration={0.2}
@@ -594,21 +525,40 @@ function EventMetricCell({
           ) : (
             <p
               key={value}
-              className="min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground"
+              className="h-7 min-w-0 truncate font-mono text-xl leading-7 font-semibold text-foreground"
             >
               {value}
             </p>
           )}
         </AutoTransition>
       </AutoResizer>
-      <p className="mt-3 min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground">
-        {detail}
-      </p>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : detail}
+        className="mt-3 h-[14px]"
+        duration={0.2}
+        type="fade"
+        presenceMode="wait"
+      >
+        {loading ? (
+          <Skeleton
+            key="loading"
+            className="h-full w-[min(12rem,72%)] rounded-none"
+          />
+        ) : (
+          <p
+            key={detail}
+            className="h-[14px] min-w-0 truncate text-[11px] leading-[14px] text-muted-foreground"
+          >
+            {detail}
+          </p>
+        )}
+      </AutoTransition>
     </div>
   );
 }
 
-export function EventMetricGrid({
+export const EventMetricGrid = memo(function EventMetricGrid({
   locale,
   labels,
   summary,
@@ -677,15 +627,16 @@ export function EventMetricGrid({
       </CardContent>
     </Card>
   );
-}
+});
 
-export function EventTrendStackedBarCard({
+export const EventTrendStackedBarCard = memo(function EventTrendStackedBarCard({
   locale,
   labels,
   trend,
   window: timeWindow,
   title,
   loading,
+  cumulativeLabel,
   onSelectEvent,
 }: {
   locale: Locale;
@@ -696,75 +647,17 @@ export function EventTrendStackedBarCard({
   window: TimeWindow;
   title: string;
   loading?: boolean;
+  cumulativeLabel: string;
   onSelectEvent?: (eventName: string) => void;
 }) {
-  const localeCode = intlLocale(locale);
-  const axisTickFormatter = useMemo(
-    () => tickDateFormat(localeCode, timeWindow.interval, timeWindow.timeZone),
-    [localeCode, timeWindow.interval, timeWindow.timeZone],
-  );
-  const tooltipFormatter = useMemo(
-    () =>
-      tooltipDateFormat(localeCode, timeWindow.interval, timeWindow.timeZone),
-    [localeCode, timeWindow.interval, timeWindow.timeZone],
-  );
-  const series = useMemo(() => {
-    const palette = buildComplementaryOklchPalette(
-      trend.series.filter((item) => !item.isOther).length,
-    );
-    let paletteIndex = 0;
-
-    return trend.series.map((item) => {
-      if (item.isOther) {
-        return {
-          ...item,
-          displayLabel: eventSeriesLabel(item, labels),
-          color: "var(--muted-foreground)",
-        };
-      }
-
-      const color =
-        palette[paletteIndex] ?? palette[palette.length - 1] ?? "#2dd4bf";
-      paletteIndex += 1;
-
-      return {
-        ...item,
-        displayLabel: eventSeriesLabel(item, labels),
-        color,
-      };
-    });
-  }, [labels, trend.series]);
-  const chartConfig = useMemo(
-    () =>
-      series.reduce((config, item) => {
-        config[item.key] = {
-          label: item.displayLabel,
-          color: item.color,
-        };
-        return config;
-      }, {} as ChartConfig),
-    [series],
+  const series = useMemo(
+    () => createEventTrendChartSeries(trend.series, labels.other),
+    [labels.other, trend.series],
   );
   const chartData = useMemo(
-    () =>
-      trend.data.map((point) => {
-        const row: Record<string, number> = {
-          timestampMs: point.timestampMs,
-          totalEvents: point.totalEvents,
-        };
-        for (const item of series) {
-          row[item.key] = Number(point.eventsBySeries[item.key] ?? 0);
-        }
-        return row;
-      }),
+    () => createEventTrendChartData(trend.data, series),
     [series, trend.data],
   );
-  const hasContent = series.length > 0 && chartData.length > 0;
-
-  const selectSeries = (item: EventTrendSeries) => {
-    if (item.isOther || item.key === OTHER_SERIES_KEY) return;
-    onSelectEvent?.(item.eventName);
-  };
 
   return (
     <Card className="overflow-visible">
@@ -774,188 +667,27 @@ export function EventTrendStackedBarCard({
             <RiPulseLine className="size-4" />
             {title}
           </CardTitle>
-          <div className="flex flex-wrap gap-2">
-            {series.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                disabled={item.isOther || !onSelectEvent}
-                className={cn(
-                  "inline-flex h-6 max-w-48 items-center gap-1.5 border px-2 text-xs transition-colors",
-                  item.isOther || !onSelectEvent
-                    ? "cursor-default text-muted-foreground"
-                    : "hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-                )}
-                title={item.displayLabel}
-                onClick={() => selectSeries(item)}
-              >
-                <span
-                  className="size-2 shrink-0 rounded-[2px]"
-                  style={{ backgroundColor: item.color }}
-                />
-                <span className="truncate">{item.displayLabel}</span>
-              </button>
-            ))}
-          </div>
         </div>
       </CardHeader>
       <CardContent>
-        <div className="relative min-h-[320px]">
-          <AutoResizer initial>
-            <AutoTransition
-              transitionKey={
-                loading && !hasContent
-                  ? "loading"
-                  : hasContent
-                    ? "chart"
-                    : "empty"
-              }
-              initial={false}
-              duration={0.2}
-              type="fade"
-            >
-              {loading && !hasContent ? (
-                <div key="loading" className="space-y-4">
-                  <Skeleton className="h-[280px] w-full" />
-                  <div className="flex flex-wrap justify-center gap-2">
-                    {Array.from({ length: 5 }, (_, index) => (
-                      <Skeleton key={index} className="h-5 w-20" />
-                    ))}
-                  </div>
-                </div>
-              ) : !hasContent ? (
-                <div
-                  key="empty"
-                  className="flex h-[320px] items-center justify-center text-muted-foreground"
-                >
-                  {labels.empty}
-                </div>
-              ) : (
-                <ChartContainer
-                  key="chart"
-                  className="h-[320px] w-full aspect-auto"
-                  config={chartConfig}
-                >
-                  <BarChart
-                    accessibilityLayer
-                    data={chartData}
-                    margin={{ left: 12, right: 12, top: 12 }}
-                  >
-                    <CartesianGrid vertical={false} />
-                    <XAxis
-                      dataKey="timestampMs"
-                      tickFormatter={(value) =>
-                        axisTickFormatter.format(new Date(Number(value ?? 0)))
-                      }
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                      minTickGap={12}
-                    />
-                    <YAxis
-                      tickFormatter={(value) =>
-                        numberFormat(locale, Number(value ?? 0))
-                      }
-                      tickLine={false}
-                      axisLine={false}
-                      width={48}
-                    />
-                    <ChartTooltip
-                      cursor={false}
-                      content={
-                        <ChartTooltipContent
-                          className="min-w-[16rem]"
-                          indicator="line"
-                          labelFormatter={(value, payload) => {
-                            const timestamp = Number(
-                              payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                            );
-                            return tooltipFormatter.format(new Date(timestamp));
-                          }}
-                          formatter={(value, name, _item, _index, payload) => {
-                            const row = payload as unknown as Record<
-                              string,
-                              number
-                            >;
-                            const seriesKey = String(name ?? "");
-                            const numeric = Math.max(
-                              0,
-                              Number(row[seriesKey] ?? value ?? 0),
-                            );
-                            const currentSeries = series.find(
-                              (item) => item.key === seriesKey,
-                            );
-                            return (
-                              <div className="flex w-full items-center gap-3">
-                                <span className="inline-flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-                                  <span
-                                    className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
-                                    style={{
-                                      backgroundColor: currentSeries?.color,
-                                    }}
-                                  />
-                                  <span
-                                    className="truncate text-muted-foreground"
-                                    title={
-                                      currentSeries?.displayLabel ?? seriesKey
-                                    }
-                                  >
-                                    {currentSeries?.displayLabel ?? seriesKey}
-                                  </span>
-                                </span>
-                                <span className="ml-auto shrink-0 whitespace-nowrap text-right font-mono text-foreground tabular-nums">
-                                  {numberFormat(locale, numeric)}
-                                </span>
-                              </div>
-                            );
-                          }}
-                        />
-                      }
-                    />
-                    {series.map((item) => (
-                      <Bar
-                        key={item.key}
-                        dataKey={item.key}
-                        stackId="events"
-                        fill={`var(--color-${item.key})`}
-                        radius={0}
-                        isAnimationActive
-                        onClick={() => selectSeries(item)}
-                        className={cn(
-                          item.isOther || !onSelectEvent
-                            ? ""
-                            : "cursor-pointer",
-                        )}
-                      />
-                    ))}
-                  </BarChart>
-                </ChartContainer>
-              )}
-            </AutoTransition>
-          </AutoResizer>
-
-          <AutoTransition
-            type="fade"
-            duration={0.2}
-            className="pointer-events-none absolute right-2 top-2"
-          >
-            {loading && hasContent ? (
-              <span
-                key="event-trend-loading"
-                className="inline-flex items-center gap-2 border border-border/50 bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm"
-              >
-                <Spinner className="size-3.5" />
-                {labels.loading}
-              </span>
-            ) : (
-              <div key="event-trend-idle" className="h-0 w-0 overflow-hidden" />
-            )}
-          </AutoTransition>
-        </div>
+        <EventTrendBarChart
+          data={chartData}
+          series={series}
+          locale={locale}
+          from={timeWindow.from}
+          to={timeWindow.to}
+          interval={timeWindow.interval}
+          timeZone={timeWindow.timeZone}
+          loading={loading}
+          emptyLabel={labels.empty}
+          cumulativeLabel={cumulativeLabel}
+          totalLabel={labels.totalEvents}
+          onSelectEvent={onSelectEvent}
+        />
       </CardContent>
     </Card>
   );
-}
+});
 
 function SortIndicator({
   active,
@@ -984,64 +716,92 @@ function SortHeader({
   active,
   direction,
   onClick,
+  align = "left",
+  className,
 }: {
   label: string;
   active: boolean;
   direction: SortDirection;
   onClick: () => void;
+  align?: "left" | "center" | "right";
+  className?: string;
 }) {
   return (
     <TableHead
       aria-sort={
         active ? (direction === "asc" ? "ascending" : "descending") : "none"
       }
+      className={className}
     >
-      <button
-        type="button"
+      <div
         className={cn(
-          "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
-          active ? "text-foreground" : "text-muted-foreground",
+          "flex",
+          align === "center" && "justify-center",
+          align === "right" && "justify-end",
         )}
-        onClick={onClick}
       >
-        {label}
-        <SortIndicator active={active} direction={direction} />
-      </button>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+            active ? "text-foreground" : "text-muted-foreground",
+          )}
+          onClick={onClick}
+        >
+          {label}
+          <SortIndicator active={active} direction={direction} />
+        </button>
+      </div>
     </TableHead>
   );
 }
 
-function EventRowSkeleton({
+function EventRowSkeletonContent({
   index,
-  sentinelRef,
+  columns,
 }: {
   index: number;
-  sentinelRef?: (node: HTMLTableRowElement | null) => void;
+  columns: readonly EventRecordTableColumnId[];
 }) {
-  const widths = [
-    "w-24",
-    "w-28",
-    "w-24",
-    "w-28",
-    "w-32",
-    "w-40",
-    "w-24",
-    "w-28",
-    "w-24",
-    "w-24",
-    "w-20",
-  ];
+  const widths: Record<EventRecordTableColumnId, string> = {
+    visitor: "w-24",
+    eventName: "w-28",
+    eventId: "w-24",
+    occurredAt: "w-28",
+    page: "w-32",
+    referrer: "w-40",
+    location: "w-24",
+    os: "w-28",
+    browser: "w-24",
+    device: "w-24",
+    payload: "w-20",
+    nodeCount: "w-16",
+  };
   return (
-    <TableRow ref={sentinelRef} aria-hidden="true">
-      {widths.map((width, cellIndex) => (
+    <>
+      {columns.map((columnId) => (
         <TableCell
-          key={`${index}-${cellIndex}`}
-          className={cellIndex === 0 ? "pl-4" : undefined}
+          key={`${index}-${columnId}`}
+          className={columnId === "visitor" ? "pl-4" : undefined}
         >
-          <Skeleton className={cn("h-4", width)} />
+          {columnId === "visitor" ? (
+            <div className="flex items-center gap-2">
+              <Skeleton className="size-6 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ) : (
+            <Skeleton
+              className={cn(
+                "h-4",
+                widths[columnId],
+                ["payload", "nodeCount"].includes(columnId) && "ml-auto",
+                columnId === "occurredAt" && "mx-auto",
+              )}
+            />
+          )}
         </TableCell>
       ))}
-    </TableRow>
+    </>
   );
 }
 
@@ -1055,7 +815,247 @@ function appendUniqueEvents(
   return nextRows.length > 0 ? [...current, ...nextRows] : current;
 }
 
-function EventRecordsTable({
+const EventRecordTableRowContent = memo(function EventRecordTableRowContent({
+  locale,
+  messages,
+  labels,
+  row,
+  now,
+  columns,
+}: {
+  locale: Locale;
+  messages: AppMessages;
+  labels: EventPageCopy;
+  row: EventRecord;
+  now: number;
+  columns: readonly EventRecordTableColumnId[];
+}) {
+  const visitorDisplayId = row.visitorId || row.sessionId || row.visitId;
+  const visitorIdentifier = row.visitorId.trim()
+    ? { label: messages.realtime.visitorId, value: row.visitorId.trim() }
+    : row.sessionId.trim()
+      ? { label: messages.sessionDetail.sessionId, value: row.sessionId.trim() }
+      : { label: labels.visit, value: row.visitId.trim() };
+  const referrerHost = row.referrerHost.trim();
+  const cells: Record<EventRecordTableColumnId, ReactNode> = {
+    visitor: (
+      <TableCell className="max-w-36 pl-4">
+        <div className="flex w-28 min-w-0 items-center gap-2">
+          <VisitorAvatar
+            seed={visitorDisplayId || row.eventId}
+            className="size-6"
+          />
+          <AnalyticsDetailsTooltipTarget
+            className="min-w-0 truncate"
+            locale={locale}
+            request={{
+              key: `event-visitor:${row.eventId}:${visitorIdentifier.label}:${visitorIdentifier.value}`,
+              items: [
+                {
+                  label: visitorIdentifier.label,
+                  value: visitorIdentifier.value || messages.common.unknown,
+                  copyValue: visitorIdentifier.value || undefined,
+                },
+              ],
+            }}
+          >
+            <span className="min-w-0 truncate font-mono">
+              {visitorDisplayId}
+            </span>
+          </AnalyticsDetailsTooltipTarget>
+        </div>
+      </TableCell>
+    ),
+    eventName: (
+      <TableCell className="max-w-48">
+        <AnalyticsDetailsTooltipTarget
+          className="block truncate"
+          locale={locale}
+          request={{
+            key: `event-name:${row.eventId}:${row.eventName}`,
+            items: [
+              {
+                label: labels.eventName,
+                value: row.eventName || messages.common.unknown,
+                copyValue: row.eventName || undefined,
+              },
+            ],
+          }}
+        >
+          <span className="block truncate font-medium">{row.eventName}</span>
+        </AnalyticsDetailsTooltipTarget>
+      </TableCell>
+    ),
+    eventId: (
+      <TableCell className="max-w-32">
+        <AnalyticsDetailsTooltipTarget
+          className="block truncate"
+          locale={locale}
+          request={{
+            key: `event-id:${row.eventId}`,
+            items: [
+              {
+                label: labels.eventId,
+                value: row.eventId || messages.common.unknown,
+                copyValue: row.eventId || undefined,
+              },
+            ],
+          }}
+        >
+          <span className="block truncate font-mono text-muted-foreground">
+            {row.eventId}
+          </span>
+        </AnalyticsDetailsTooltipTarget>
+      </TableCell>
+    ),
+    occurredAt: (
+      <TableCell className="max-w-36 text-center font-mono text-muted-foreground">
+        <AnalyticsTimeTooltipTarget
+          className="block truncate"
+          locale={locale}
+          timestamp={row.occurredAt}
+        >
+          {formatRelativeTime(locale, row.occurredAt, now)}
+        </AnalyticsTimeTooltipTarget>
+      </TableCell>
+    ),
+    page: (
+      <TableCell className="max-w-64">
+        <AnalyticsDetailsTooltipTarget
+          className="block truncate"
+          locale={locale}
+          request={{
+            key: `event-page:${row.eventId}:${row.pathname}`,
+            items: [
+              {
+                label: labels.page,
+                value: formatPath(row.pathname),
+                copyValue: formatPath(row.pathname),
+              },
+            ],
+          }}
+        >
+          <span className="block truncate font-mono">
+            {formatPath(row.pathname)}
+          </span>
+        </AnalyticsDetailsTooltipTarget>
+      </TableCell>
+    ),
+    referrer: (
+      <TableCell className="max-w-44">
+        <AnalyticsDetailsTooltipTarget
+          className="block"
+          locale={locale}
+          request={{
+            key: `event-referrer:${row.eventId}:${referrerHost}`,
+            items: [
+              referrerHost
+                ? {
+                    label: messages.common.referrerHost,
+                    value: referrerHost,
+                    copyValue: referrerHost,
+                  }
+                : {
+                    label: messages.common.referrer,
+                    value: messages.overview.direct,
+                  },
+            ],
+          }}
+        >
+          <ReferrerMeta
+            referrerHost={row.referrerHost || ""}
+            directLabel={messages.overview.direct}
+            className="w-full"
+          />
+        </AnalyticsDetailsTooltipTarget>
+      </TableCell>
+    ),
+    location: (
+      <TableCell className="max-w-52">
+        <AnalyticsDetailsTooltipTarget
+          className="block"
+          locale={locale}
+          request={{
+            key: `event-location:${row.eventId}:${row.country}:${row.region}:${row.city}`,
+            items: [
+              {
+                label: messages.common.location,
+                value: (
+                  <CountryRegionMeta
+                    locale={locale}
+                    messages={messages}
+                    country={row.country || ""}
+                    region={row.region}
+                    city={row.city}
+                    className="max-w-none text-background [&_.text-foreground]:text-background"
+                  />
+                ),
+              },
+            ],
+          }}
+        >
+          <CountryRegionMeta
+            locale={locale}
+            messages={messages}
+            country={row.country || ""}
+            region={row.region}
+            className="w-full"
+          />
+        </AnalyticsDetailsTooltipTarget>
+      </TableCell>
+    ),
+    os: (
+      <TableCell className="max-w-40">
+        <OsMeta
+          os={row.os || ""}
+          version={row.osVersion}
+          unknownLabel={messages.common.unknown}
+          className="w-full"
+        />
+      </TableCell>
+    ),
+    browser: (
+      <TableCell className="max-w-40">
+        <BrowserMeta
+          browser={row.browser || ""}
+          version={row.browserVersion}
+          unknownLabel={messages.common.unknown}
+          className="w-full"
+        />
+      </TableCell>
+    ),
+    device: (
+      <TableCell className="max-w-36">
+        <DeviceMeta
+          deviceType={row.deviceType || ""}
+          deviceLabels={messages.common.deviceLabels}
+          unknownLabel={messages.common.unknown}
+          className="w-full"
+        />
+      </TableCell>
+    ),
+    payload: (
+      <TableCell className="pr-4 text-right font-mono tabular-nums">
+        {numberFormat(locale, row.valueCount)}
+      </TableCell>
+    ),
+    nodeCount: (
+      <TableCell className="pr-4 text-right font-mono tabular-nums">
+        {numberFormat(locale, row.nodeCount)}
+      </TableCell>
+    ),
+  };
+
+  return (
+    <>
+      {columns.map((columnId) => (
+        <Fragment key={columnId}>{cells[columnId]}</Fragment>
+      ))}
+    </>
+  );
+});
+
+const EventRecordsTable = memo(function EventRecordsTable({
   locale,
   messages,
   labels,
@@ -1068,7 +1068,8 @@ function EventRecordsTable({
   error,
   appendError,
   hasMore,
-  sentinelRef,
+  onLoadMore,
+  visibleColumnIds,
 }: {
   locale: Locale;
   messages: AppMessages;
@@ -1082,7 +1083,8 @@ function EventRecordsTable({
   error: boolean;
   appendError: boolean;
   hasMore: boolean;
-  sentinelRef?: (node: HTMLTableRowElement | null) => void;
+  onLoadMore: () => void;
+  visibleColumnIds: readonly EventRecordTableColumnId[];
 }) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -1091,593 +1093,122 @@ function EventRecordsTable({
     return () => window.clearInterval(interval);
   }, []);
 
-  const handleKeyDown = (
-    event: KeyboardEvent<HTMLTableRowElement>,
-    eventId: string,
-  ) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onOpenRecord(eventId);
-  };
-
-  const bodyState = loadingRows
-    ? "loading"
-    : error
-      ? "error"
-      : rows.length === 0 && !hasMore
-        ? "empty"
-        : "rows";
-
-  return (
-    <Card className="py-0">
-      <CardContent className="px-0">
-        <Table className="min-w-[92rem]">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-4">{labels.visitor}</TableHead>
-              <SortHeader
-                label={labels.eventName}
-                active={sort.key === "eventName"}
-                direction={sort.direction}
-                onClick={() => onSort("eventName")}
-              />
-              <TableHead>{labels.eventId}</TableHead>
-              <SortHeader
-                label={labels.occurredAt}
-                active={sort.key === "occurredAt"}
-                direction={sort.direction}
-                onClick={() => onSort("occurredAt")}
-              />
-              <SortHeader
-                label={labels.page}
-                active={sort.key === "pathname"}
-                direction={sort.direction}
-                onClick={() => onSort("pathname")}
-              />
-              <TableHead>{labels.referrer}</TableHead>
-              <TableHead>{labels.location}</TableHead>
-              <TableHead>{labels.os}</TableHead>
-              <TableHead>{labels.browser}</TableHead>
-              <TableHead>{labels.device}</TableHead>
-              <TableHead className="pr-4 text-right">
-                {labels.payload}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <AutoTransition
-            as="tbody"
-            transitionKey={bodyState}
-            initial={false}
-            duration={0.18}
-            type="fade"
-            presenceMode="wait"
-            aria-busy={loadingRows || loadingMore}
-            data-slot="table-body"
-            className="[&_tr:last-child]:border-0"
-          >
-            {loadingRows ? (
-              Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
-                <EventRowSkeleton key={index} index={index} />
-              ))
-            ) : error ? (
-              <TableRow>
-                <TableCell
-                  colSpan={11}
-                  className="h-28 text-center text-muted-foreground"
-                >
-                  {labels.loadError}
-                </TableCell>
-              </TableRow>
-            ) : rows.length === 0 && !hasMore ? (
-              <TableRow>
-                <TableCell
-                  colSpan={11}
-                  className="h-28 text-center text-muted-foreground"
-                >
-                  {labels.empty}
-                </TableCell>
-              </TableRow>
-            ) : (
-              <>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.eventId}
-                    role="button"
-                    tabIndex={0}
-                    className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-                    onClick={() => onOpenRecord(row.eventId)}
-                    onKeyDown={(event) => handleKeyDown(event, row.eventId)}
-                  >
-                    <TableCell className="max-w-36 pl-4">
-                      <div className="flex w-28 min-w-0 items-center gap-2">
-                        <VisitorAvatar
-                          seed={row.visitorId || row.eventId}
-                          className="size-6"
-                        />
-                        <span className="min-w-0 truncate font-mono">
-                          {shortId(
-                            row.visitorId || row.sessionId || row.visitId,
-                          )}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-48">
-                      <span
-                        className="block truncate font-medium"
-                        title={row.eventName}
-                      >
-                        {row.eventName}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-32">
-                      <span className="block truncate font-mono text-muted-foreground">
-                        {shortId(row.eventId)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-36 font-mono text-muted-foreground">
-                      <span className="block truncate">
-                        {formatRelativeTime(locale, row.occurredAt, now)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-64">
-                      <span
-                        className="block truncate font-mono"
-                        title={formatPath(row.pathname)}
-                      >
-                        {formatPath(row.pathname)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-44">
-                      <ReferrerMeta
-                        referrerHost={row.referrerHost || ""}
-                        directLabel={messages.overview.direct}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-52">
-                      <CountryRegionMeta
-                        locale={locale}
-                        messages={messages}
-                        country={row.country || ""}
-                        region={row.region}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-40">
-                      <OsMeta
-                        os={row.os || ""}
-                        version={row.osVersion}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-40">
-                      <BrowserMeta
-                        browser={row.browser || ""}
-                        version={row.browserVersion}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="max-w-36">
-                      <DeviceMeta
-                        deviceType={row.deviceType || ""}
-                        deviceLabels={messages.common.deviceLabels}
-                        unknownLabel={messages.common.unknown}
-                        className="w-full"
-                      />
-                    </TableCell>
-                    <TableCell className="pr-4 text-right font-mono tabular-nums">
-                      {numberFormat(locale, row.valueCount)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {appendError ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={11}
-                      className="h-16 text-center text-muted-foreground"
-                    >
-                      {labels.loadError}
-                    </TableCell>
-                  </TableRow>
-                ) : hasMore ? (
-                  Array.from({ length: EVENT_SKELETON_ROWS }, (_, index) => (
-                    <EventRowSkeleton
-                      key={`append-${rows.length}-${index}`}
-                      index={index}
-                      sentinelRef={index === 0 ? sentinelRef : undefined}
-                    />
-                  ))
-                ) : null}
-              </>
-            )}
-          </AutoTransition>
-        </Table>
-      </CardContent>
-    </Card>
+  const headers = useMemo<Record<EventRecordTableColumnId, ReactNode>>(
+    () => ({
+      visitor: <TableHead className="pl-4">{labels.visitor}</TableHead>,
+      eventName: (
+        <SortHeader
+          label={labels.eventName}
+          active={sort.key === "eventName"}
+          direction={sort.direction}
+          onClick={() => onSort("eventName")}
+        />
+      ),
+      eventId: <TableHead>{labels.eventId}</TableHead>,
+      occurredAt: (
+        <SortHeader
+          label={labels.occurredAt}
+          active={sort.key === "occurredAt"}
+          direction={sort.direction}
+          onClick={() => onSort("occurredAt")}
+          align="center"
+          className="text-center"
+        />
+      ),
+      page: (
+        <SortHeader
+          label={labels.page}
+          active={sort.key === "pathname"}
+          direction={sort.direction}
+          onClick={() => onSort("pathname")}
+        />
+      ),
+      referrer: <TableHead>{labels.referrer}</TableHead>,
+      location: <TableHead>{labels.location}</TableHead>,
+      os: <TableHead>{labels.os}</TableHead>,
+      browser: <TableHead>{labels.browser}</TableHead>,
+      device: <TableHead>{labels.device}</TableHead>,
+      payload: (
+        <TableHead className="pr-4 text-right">{labels.payload}</TableHead>
+      ),
+      nodeCount: (
+        <TableHead className="pr-4 text-right">{labels.nodeCount}</TableHead>
+      ),
+    }),
+    [labels, onSort, sort],
   );
-}
-
-function DetailItem({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{value}</dd>
-    </div>
+  const header = useMemo(
+    () => (
+      <TableRow>
+        {visibleColumnIds.map((columnId) => (
+          <Fragment key={columnId}>{headers[columnId]}</Fragment>
+        ))}
+      </TableRow>
+    ),
+    [headers, visibleColumnIds],
   );
-}
-
-function isInsideDetailDrawer(target: EventTarget | null) {
-  return (
-    target instanceof Element &&
-    target.closest("[data-detail-drawer-root]") !== null
-  );
-}
-
-type EventRecordNestedDetail = {
-  kind: "visitor" | "session";
-  id: string;
-  stackKey: string;
-};
-
-export function EventRecordDetailDrawer({
-  locale,
-  messages,
-  labels,
-  siteId,
-  pathname,
-  open,
-  onOpenChange,
-  detail,
-  loading,
-}: {
-  locale: Locale;
-  messages: AppMessages;
-  labels: EventPageCopy;
-  siteId: string;
-  pathname: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  detail: EventRecordDetailData["data"] | null;
-  loading: boolean;
-}) {
-  const [nestedDetails, setNestedDetails] = useState<EventRecordNestedDetail[]>(
-    [],
-  );
-  const nestedDetailKeyRef = useRef(0);
-  const basePath = pathname.replace(/\/events(?:\/detail)?$/, "");
-  const visitorId = detail?.context.visitorId?.trim() || "";
-  const sessionId = detail?.context.sessionId?.trim() || "";
-  const visitorPathname = `${basePath}/visitors`;
-  const sessionPathname = `${basePath}/sessions`;
-  const nestedDetailOpen = nestedDetails.length > 0;
-
-  useEffect(() => {
-    if (!open) setNestedDetails([]);
-  }, [open]);
-
-  const openNestedDetail = (kind: "visitor" | "session", id: string) => {
-    const normalizedId = id.trim();
-    if (!normalizedId) return;
-
-    setNestedDetails((current) => {
-      const topDetail = current.at(-1);
-      if (topDetail?.kind === kind && topDetail.id === normalizedId) {
-        return current;
-      }
-
-      nestedDetailKeyRef.current += 1;
-      return [
-        ...current,
-        {
-          kind,
-          id: normalizedId,
-          stackKey: `${kind}:${normalizedId}:${nestedDetailKeyRef.current}`,
+  const renderRow = useCallback(
+    (row: EventRecord) => ({
+      children: (
+        <EventRecordTableRowContent
+          locale={locale}
+          messages={messages}
+          labels={labels}
+          row={row}
+          now={now}
+          columns={visibleColumnIds}
+        />
+      ),
+      props: {
+        role: "button" as const,
+        tabIndex: 0,
+        className:
+          "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",
+        onClick: () => onOpenRecord(row.eventId),
+        onKeyDown: (event: KeyboardEvent) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          onOpenRecord(row.eventId);
         },
-      ];
-    });
-  };
-
-  const closeNestedDetail = (stackKey: string) => {
-    setNestedDetails((current) => {
-      const index = current.findIndex((item) => item.stackKey === stackKey);
-      if (index < 0) return current;
-      return current.slice(0, index);
-    });
-  };
-
-  const openVisitorDetail = (nextVisitorId: string) => {
-    openNestedDetail("visitor", nextVisitorId);
-  };
-
-  const openSessionDetail = (nextSessionId: string) => {
-    openNestedDetail("session", nextSessionId);
-  };
-
-  const stopSideDrawerOverlayEvent = (
-    event: PointerEvent<HTMLDivElement> | MouseEvent<HTMLDivElement>,
-  ) => {
-    event.stopPropagation();
-    event.nativeEvent.stopImmediatePropagation();
-  };
-
-  const closeSideDrawerFromOverlay = (event: MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    stopSideDrawerOverlayEvent(event);
-    if (!nestedDetailOpen) onOpenChange(false);
-  };
-
-  const sideDrawerOverlay =
-    typeof document !== "undefined"
-      ? createPortal(
-          <AnimatePresence>
-            {open ? (
-              <motion.div
-                aria-hidden="true"
-                data-dashboard-floating-layer="event-record-drawer-overlay"
-                data-event-record-drawer-overlay=""
-                className="pointer-events-auto fixed inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
-                style={{ zIndex: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX }}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.16, ease: "easeOut" }}
-                {...{
-                  [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_OVERLAY_Z_INDEX,
-                }}
-                onPointerDown={stopSideDrawerOverlayEvent}
-                onPointerUp={stopSideDrawerOverlayEvent}
-                onClick={closeSideDrawerFromOverlay}
-              />
-            ) : null}
-          </AnimatePresence>,
-          document.body,
-        )
-      : null;
+      },
+    }),
+    [labels, locale, messages, now, onOpenRecord, visibleColumnIds],
+  );
+  const renderSkeletonRow = useCallback(
+    (index: number) => (
+      <EventRowSkeletonContent index={index} columns={visibleColumnIds} />
+    ),
+    [visibleColumnIds],
+  );
+  const getRowKey = useCallback((row: EventRecord) => row.eventId, []);
 
   return (
-    <>
-      {sideDrawerOverlay}
-      <Drawer
-        open={open}
-        onOpenChange={onOpenChange}
-        direction="right"
-        modal={false}
-      >
-        <DrawerContent
-          data-dashboard-floating-layer="event-record-drawer"
-          className="!w-full !max-w-none sm:!w-[min(58vw,34rem)]"
-          overlayClassName="hidden"
-          style={{ zIndex: EVENT_RECORD_DRAWER_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_RECORD_DRAWER_Z_INDEX,
-          }}
-          onEscapeKeyDown={(event) => {
-            if (nestedDetailOpen) event.preventDefault();
-          }}
-          onFocusOutside={(event) => {
-            if (isInsideDetailDrawer(event.detail.originalEvent.target)) {
-              event.preventDefault();
-            }
-          }}
-          onInteractOutside={(event) => {
-            if (isInsideDetailDrawer(event.detail.originalEvent.target)) {
-              event.preventDefault();
-            }
-          }}
-          onPointerDownOutside={(event) => {
-            if (isInsideDetailDrawer(event.detail.originalEvent.target)) {
-              event.preventDefault();
-            }
-          }}
-        >
-          <DrawerHeader className="border-b">
-            <DrawerTitle>{labels.detailTitle}</DrawerTitle>
-            <DrawerDescription>
-              {detail?.event.eventName || labels.detailSubtitle}
-            </DrawerDescription>
-          </DrawerHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {loading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-28 w-full" />
-                <Skeleton className="h-64 w-full" />
-              </div>
-            ) : !detail ? (
-              <div className="flex h-64 items-center justify-center text-muted-foreground">
-                {labels.empty}
-              </div>
-            ) : (
-              <div className="space-y-5">
-                <section className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="outline">{detail.event.eventName}</Badge>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {detail.event.eventId}
-                    </span>
-                  </div>
-                  <dl className="grid gap-3 sm:grid-cols-2">
-                    <DetailItem
-                      label={labels.occurredAt}
-                      value={formatShortDateTime(
-                        locale,
-                        detail.event.occurredAt,
-                        undefined,
-                      )}
-                    />
-                    <DetailItem
-                      label={labels.receivedAt}
-                      value={formatShortDateTime(
-                        locale,
-                        detail.event.receivedAt,
-                        undefined,
-                      )}
-                    />
-                    <DetailItem
-                      label={labels.visit}
-                      value={
-                        <span className="font-mono">
-                          {shortId(detail.context.visitId)}
-                        </span>
-                      }
-                    />
-                    <DetailItem
-                      label={labels.payloadFields}
-                      value={`${numberFormat(locale, detail.event.nodeCount)} ${labels.nodes} / ${numberFormat(locale, detail.event.valueCount)} ${labels.values}`}
-                    />
-                  </dl>
-                </section>
-
-                <Separator />
-
-                <section className="space-y-3">
-                  <h3 className="text-sm font-medium">{labels.context}</h3>
-                  <dl className="grid gap-3 sm:grid-cols-2">
-                    <DetailItem
-                      label={labels.page}
-                      value={
-                        <div className="min-w-0">
-                          <div className="truncate font-mono">
-                            {formatPath(detail.context.pathname)}
-                          </div>
-                          {detail.context.title ? (
-                            <div className="truncate text-muted-foreground">
-                              {detail.context.title}
-                            </div>
-                          ) : null}
-                        </div>
-                      }
-                    />
-                    <DetailItem
-                      label={labels.referrer}
-                      value={
-                        <ReferrerMeta
-                          referrerHost={detail.context.referrerHost || ""}
-                          directLabel={messages.overview.direct}
-                        />
-                      }
-                    />
-                    <DetailItem
-                      label={labels.location}
-                      value={
-                        <CountryRegionMeta
-                          locale={locale}
-                          messages={messages}
-                          country={detail.context.country || ""}
-                          region={detail.context.region}
-                        />
-                      }
-                    />
-                    <DetailItem
-                      label={labels.browser}
-                      value={
-                        <BrowserMeta
-                          browser={detail.context.browser || ""}
-                          version={detail.context.browserVersion}
-                          unknownLabel={messages.common.unknown}
-                        />
-                      }
-                    />
-                    <DetailItem
-                      label={labels.os}
-                      value={
-                        <OsMeta
-                          os={detail.context.os || ""}
-                          version={detail.context.osVersion}
-                          unknownLabel={messages.common.unknown}
-                        />
-                      }
-                    />
-                    <DetailItem
-                      label={labels.device}
-                      value={
-                        <DeviceMeta
-                          deviceType={detail.context.deviceType || ""}
-                          deviceLabels={messages.common.deviceLabels}
-                          unknownLabel={messages.common.unknown}
-                        />
-                      }
-                    />
-                  </dl>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={!visitorId}
-                      onClick={() => openVisitorDetail(visitorId)}
-                    >
-                      <RiExternalLinkLine data-icon="inline-start" />
-                      {labels.openVisitor}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={!sessionId}
-                      onClick={() => openSessionDetail(sessionId)}
-                    >
-                      <RiExternalLinkLine data-icon="inline-start" />
-                      {labels.openSession}
-                    </Button>
-                  </div>
-                </section>
-
-                <Separator />
-
-                <section className="space-y-3">
-                  <h3 className="text-sm font-medium">{labels.payload}</h3>
-                  <JsonTreePanel value={detail.eventData} labels={labels} />
-                </section>
-              </div>
-            )}
-          </div>
-        </DrawerContent>
-      </Drawer>
-
-      {nestedDetails.map((nestedDetail) => (
-        <DetailDrawer
-          key={nestedDetail.stackKey}
-          ariaLabel={
-            nestedDetail.kind === "visitor"
-              ? messages.visitors.title
-              : messages.sessionDetail.visitDetailsTitle
-          }
-          drawerKey={nestedDetail.stackKey}
-          open
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) closeNestedDetail(nestedDetail.stackKey);
-          }}
-          zIndex={NESTED_DETAIL_DRAWER_Z_INDEX}
-        >
-          {nestedDetail.kind === "visitor" ? (
-            <VisitorDetailClientPage
-              locale={locale}
-              messages={messages}
-              siteId={siteId}
-              pathname={visitorPathname}
-              visitorId={nestedDetail.id}
-              onOpenSession={openSessionDetail}
-            />
-          ) : (
-            <SessionDetailClientPage
-              locale={locale}
-              messages={messages}
-              siteId={siteId}
-              pathname={sessionPathname}
-              sessionId={nestedDetail.id}
-              onOpenVisitor={openVisitorDetail}
-            />
-          )}
-        </DetailDrawer>
-      ))}
-    </>
+    <AnalyticsDataTable
+      minTableWidth="92rem"
+      tableClassName="min-w-[92rem]"
+      header={header}
+      rows={rows}
+      renderRow={renderRow}
+      renderSkeletonRow={renderSkeletonRow}
+      getRowKey={getRowKey}
+      skeletonRows={EVENT_SKELETON_ROWS}
+      columnCount={visibleColumnIds.length}
+      loading={loadingRows}
+      loadingMore={loadingMore}
+      error={error}
+      errorContent={labels.loadError}
+      emptyContent={labels.empty}
+      appendError={appendError}
+      appendErrorContent={labels.loadError}
+      hasMore={hasMore}
+      onLoadMore={onLoadMore}
+      enableTimeTooltips
+      messages={messages}
+    />
   );
-}
+});
 
-export function EventRecordsSection({
+export const EventRecordsSection = memo(function EventRecordsSection({
   locale,
   messages,
   labels,
@@ -1693,60 +1224,40 @@ export function EventRecordsSection({
   siteId: string;
   pathname: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
   eventName?: string;
 }) {
-  const [rows, setRows] = useState<EventRecord[]>([]);
-  const [meta, setMeta] = useState<EventsRecordsMeta>(INITIAL_EVENT_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<EventRecordSortState>(
     DEFAULT_EVENT_RECORD_SORT,
   );
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState("");
-  const [detail, setDetail] = useState<EventRecordDetailData["data"] | null>(
-    null,
-  );
-  const [detailLoading, setDetailLoading] = useState(false);
-  const latestRequestKeyRef = useRef("");
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [
-        siteId,
-        timeWindow.from,
-        timeWindow.to,
-        timeWindow.interval,
-        timeWindow.timeZone,
-        filtersKey,
-        debouncedQuery,
-        sort.key,
-        sort.direction,
-        eventName ?? "",
-      ].join(":"),
-    [
-      debouncedQuery,
-      eventName,
-      filtersKey,
-      siteId,
-      sort.direction,
-      sort.key,
-      timeWindow.from,
-      timeWindow.interval,
-      timeWindow.timeZone,
-      timeWindow.to,
+  const eventColumnDefinitions = useMemo<
+    readonly AnalyticsTableColumnDefinition<EventRecordTableColumnId>[]
+  >(
+    () => [
+      { id: "visitor", label: labels.visitor, required: true },
+      { id: "eventName", label: labels.eventName, required: true },
+      { id: "eventId", label: labels.eventId },
+      { id: "occurredAt", label: labels.occurredAt },
+      { id: "page", label: labels.page },
+      { id: "referrer", label: labels.referrer },
+      { id: "location", label: labels.location },
+      { id: "os", label: labels.os },
+      { id: "browser", label: labels.browser },
+      { id: "device", label: labels.device },
+      { id: "payload", label: labels.payload },
+      { id: "nodeCount", label: labels.nodeCount },
     ],
+    [labels],
   );
-  const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
+  const eventColumns = useAnalyticsTableColumns({
+    storageKey: "insightflare:analytics-table-columns:events",
+    columns: eventColumnDefinitions,
+  });
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -1755,148 +1266,86 @@ export function EventRecordsSection({
     return () => window.clearTimeout(timeoutId);
   }, [query]);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchEventsRecords(siteId, timeWindow, filters, {
-          page,
-          pageSize: EVENT_PAGE_SIZE,
-          sortBy: sort.key,
-          sortDir: sort.direction,
-          search: debouncedQuery,
-          eventName,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        setRows((current) =>
-          mode === "append"
-            ? appendUniqueEvents(current, payload.data)
-            : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(false);
-        setAppendError(false);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setRows([]);
-          setMeta(INITIAL_EVENT_META);
-          setError(true);
-          setAppendError(false);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
-
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetching,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "event-records",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      filtersKey,
+      debouncedQuery,
+      sort.key,
+      sort.direction,
+      eventName ?? "",
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchEventsRecords(siteId, timeWindow, filters, {
+        cursor: pageParam,
+        pageSize: EVENT_PAGE_SIZE,
+        sortBy: sort.key,
+        sortDir: sort.direction,
+        search: debouncedQuery,
+        eventName,
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextCursor : undefined,
+    enabled: typeof window !== "undefined",
   });
+  const rows = useMemo(
+    () =>
+      data?.pages.reduce<EventRecord[]>(
+        (current, page) => appendUniqueEvents(current, page.data),
+        [],
+      ) ?? [],
+    [data?.pages],
+  );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error = Boolean(queryError) && rows.length === 0;
+  const appendError = isFetchNextPageError;
+  const replacingRows = isPending || (isFetching && !isFetchingNextPage);
+  const hasMore = hasNextPage ?? false;
+  const loadNextPage = useCallback(() => {
+    if (loadingInitial || loadingMore || appendError || !hasMore) return;
+    void fetchNextPage();
+  }, [appendError, fetchNextPage, hasMore, loadingInitial, loadingMore]);
 
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRows([]);
-    setMeta(INITIAL_EVENT_META);
-    setError(false);
-    setAppendError(false);
-    void loadPage(1, "replace");
-  }, [requestKey]);
+  const detailQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-record-detail",
+      siteId,
+      selectedEventId,
+      timeWindow.from,
+      timeWindow.to,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventRecordDetail(siteId, selectedEventId, timeWindow, {
+        signal,
+        preserveErrors: true,
+      }),
+    enabled:
+      typeof window !== "undefined" && drawerOpen && Boolean(selectedEventId),
+  });
+  const detail = detailQuery.data?.data ?? null;
+  const detailLoading = detailQuery.isPending && !detail;
+  const detailError = detailQuery.isError && !detail;
 
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !meta.hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    loadingInitial,
-    loadingMore,
-    meta.hasMore,
-    meta.nextPage,
-    sentinelNode,
-  ]);
-
-  useEffect(() => {
-    if (!drawerOpen || !selectedEventId) return;
-    let active = true;
-    setDetailLoading(true);
-    fetchEventRecordDetail(siteId, selectedEventId, timeWindow)
-      .then((payload) => {
-        if (!active) return;
-        setDetail(payload.data);
-      })
-      .finally(() => {
-        if (active) setDetailLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [drawerOpen, selectedEventId, siteId, timeWindow]);
-
-  const toggleSort = (key: EventRecordSortKey) => {
+  const toggleSort = useCallback((key: EventRecordSortKey) => {
     setSort((current) =>
       current.key === key
         ? {
@@ -1905,13 +1354,12 @@ export function EventRecordsSection({
           }
         : { key, direction: "desc" },
     );
-  };
+  }, []);
 
-  const openRecord = (eventId: string) => {
+  const openRecord = useCallback((eventId: string) => {
     setSelectedEventId(eventId);
-    setDetail(null);
     setDrawerOpen(true);
-  };
+  }, []);
 
   return (
     <section className="space-y-3">
@@ -1922,13 +1370,24 @@ export function EventRecordsSection({
             {labels.recordsTitle}
           </h2>
         </div>
-        <div className="relative w-full sm:max-w-xs">
-          <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={labels.search}
-            className="pl-8"
+        <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
+          <div className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
+            <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={labels.search}
+              className="pl-8"
+            />
+          </div>
+          <AnalyticsTableColumnSettings
+            columns={eventColumnDefinitions}
+            orderedIds={eventColumns.orderedIds}
+            visibleIds={eventColumns.visibleIds}
+            onOrderChange={eventColumns.setOrder}
+            onVisibilityChange={eventColumns.setVisible}
+            onReset={eventColumns.reset}
+            labels={messages.common.tableColumns}
           />
         </div>
       </div>
@@ -1945,11 +1404,12 @@ export function EventRecordsSection({
         loadingMore={loadingMore}
         error={error}
         appendError={appendError}
-        hasMore={meta.hasMore}
-        sentinelRef={setSentinelNode}
+        hasMore={hasMore}
+        onLoadMore={loadNextPage}
+        visibleColumnIds={eventColumns.visibleIds}
       />
 
-      <EventRecordDetailDrawer
+      <EventDetailDrawer
         locale={locale}
         messages={messages}
         labels={labels}
@@ -1959,12 +1419,14 @@ export function EventRecordsSection({
         onOpenChange={setDrawerOpen}
         detail={detail}
         loading={detailLoading}
+        error={detailError}
+        eventKind="custom"
       />
     </section>
   );
-}
+});
 
-export function EventFieldsCard({
+export const EventFieldsCard = memo(function EventFieldsCard({
   locale,
   labels,
   siteId,
@@ -1978,11 +1440,13 @@ export function EventFieldsCard({
   labels: EventPageCopy;
   siteId: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
   eventName: string;
   loading: boolean;
   fields: EventField[];
 }) {
+  const fieldsSectionRef = useRef<HTMLElement | null>(null);
+  const [fieldsVisible, setFieldsVisible] = useState(false);
   const reduceDataRowMotion = useReducedMotion() ?? false;
   const [payloadFilters, setPayloadFilters] = useState<
     EventPayloadFilterRule[]
@@ -1995,29 +1459,103 @@ export function EventFieldsCard({
     [payloadFilters],
   );
   const activePayloadFilterCount = payloadFilters.length;
-  const effectiveFilters = useMemo<DashboardFilters>(() => {
+  const effectiveFilters = useMemo<FilterDocument>(() => {
     if (payloadFilters.length === 0) return filters;
-    return {
-      ...filters,
-      eventPayloadFilters: payloadFilters,
-    };
+    return payloadFilters.reduce(
+      (document, rule) =>
+        appendEventPayloadFilter(
+          document,
+          rule.path,
+          rule.operator,
+          rule.value,
+        ),
+      filters,
+    );
   }, [filters, payloadFilters, payloadFiltersKey]);
   const effectiveFiltersKey = useMemo(
     () => JSON.stringify(effectiveFilters ?? {}),
     [effectiveFilters],
   );
-  const [filteredFields, setFilteredFields] = useState<EventField[]>([]);
-  const [filteredFieldsLoading, setFilteredFieldsLoading] = useState(false);
-  const [filteredFieldsError, setFilteredFieldsError] = useState(false);
+  const baseFiltersKey = useMemo(
+    () => JSON.stringify(filters ?? {}),
+    [filters],
+  );
+  useEffect(() => {
+    const section = fieldsSectionRef.current;
+    if (!section) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setFieldsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setFieldsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "320px 0px", threshold: 0.01 },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+  const fieldsQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-type-fields",
+      siteId,
+      eventName,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      baseFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeFields(siteId, timeWindow, eventName, filters, {
+        signal,
+      }),
+    enabled: typeof window !== "undefined" && fieldsVisible && !loading,
+  });
+  const filteredFieldsQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-filtered-fields",
+      siteId,
+      eventName,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      effectiveFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeFields(siteId, timeWindow, eventName, effectiveFilters, {
+        signal,
+      }),
+    enabled:
+      typeof window !== "undefined" &&
+      fieldsVisible &&
+      activePayloadFilterCount > 0 &&
+      !loading,
+  });
+  const baseFields = fieldsQuery.data?.fields ?? fields;
+  const filteredFields = filteredFieldsQuery.data?.fields ?? [];
+  const filteredFieldsLoading = filteredFieldsQuery.isPending;
+  const filteredFieldsError = filteredFieldsQuery.isError;
   const activeFields =
     activePayloadFilterCount > 0
       ? filteredFieldsLoading && filteredFields.length === 0
-        ? fields
+        ? baseFields
         : filteredFields
-      : fields;
+      : baseFields;
   const fieldListLoading =
-    loading || (activePayloadFilterCount > 0 && filteredFieldsLoading);
-  const fieldListError = activePayloadFilterCount > 0 && filteredFieldsError;
+    loading ||
+    (fieldsVisible && fieldsQuery.isPending) ||
+    (activePayloadFilterCount > 0 && filteredFieldsLoading);
+  const fieldListError =
+    fieldsQuery.isError ||
+    (activePayloadFilterCount > 0 && filteredFieldsError);
   const fieldTree = useMemo(
     () => buildEventFieldTree(activeFields),
     [activeFields],
@@ -2067,9 +1605,6 @@ export function EventFieldsCard({
   const [expandedFieldKeys, setExpandedFieldKeys] = useState<Set<string>>(
     () => new Set(defaultExpandedFieldKeys),
   );
-  const [fieldValues, setFieldValues] = useState<EventFieldValueStat[]>([]);
-  const [fieldValuesLoading, setFieldValuesLoading] = useState(false);
-  const [fieldValuesError, setFieldValuesError] = useState(false);
 
   const selectedField = useMemo(() => {
     if (activeFields.length === 0) return null;
@@ -2090,99 +1625,38 @@ export function EventFieldsCard({
     setExpandedFieldKeys(new Set(defaultExpandedFieldKeys));
   }, [defaultExpandedFieldKeys, fieldRequestKey]);
 
-  useEffect(() => {
-    if (activePayloadFilterCount === 0) {
-      setFilteredFields([]);
-      setFilteredFieldsLoading(false);
-      setFilteredFieldsError(false);
-      return;
-    }
-    if (loading) return;
-
-    let active = true;
-    setFilteredFieldsLoading(true);
-    setFilteredFieldsError(false);
-
-    fetchEventTypeDetail(siteId, timeWindow, eventName, effectiveFilters)
-      .then((payload) => {
-        if (!active) return;
-        setFilteredFields(payload.fields);
-      })
-      .catch(() => {
-        if (!active) return;
-        setFilteredFields([]);
-        setFilteredFieldsError(true);
-      })
-      .finally(() => {
-        if (active) setFilteredFieldsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activePayloadFilterCount,
-    effectiveFilters,
-    effectiveFiltersKey,
-    eventName,
-    loading,
-    siteId,
-    timeWindow,
-  ]);
-
-  useEffect(() => {
-    if (fieldListLoading) return;
-    if (!selectedField) {
-      setFieldValues([]);
-      setFieldValuesLoading(false);
-      setFieldValuesError(false);
-      return;
-    }
-
-    let active = true;
-    setFieldValuesLoading(true);
-    setFieldValuesError(false);
-
-    fetchEventTypeFieldValues(
+  const fieldValuesQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "event-field-values",
       siteId,
-      timeWindow,
       eventName,
-      selectedField.path,
-      selectedField.valueType,
-      effectiveFilters,
-      {
-        limit: 25,
-      },
-    )
-      .then((payload) => {
-        if (!active) return;
-        setFieldValues(payload.data);
-      })
-      .catch(() => {
-        if (!active) return;
-        setFieldValues([]);
-        setFieldValuesError(true);
-      })
-      .finally(() => {
-        if (active) setFieldValuesLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    effectiveFilters,
-    effectiveFiltersKey,
-    eventName,
-    fieldListLoading,
-    selectedField?.path,
-    selectedField?.valueType,
-    siteId,
-    timeWindow.from,
-    timeWindow.interval,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+      selectedField?.path ?? "",
+      selectedField?.valueType ?? "",
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.interval,
+      timeWindow.timeZone,
+      effectiveFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchEventTypeFieldValues(
+        siteId,
+        timeWindow,
+        eventName,
+        selectedField?.path ?? "",
+        selectedField?.valueType ?? "string",
+        effectiveFilters,
+        { limit: 25, signal },
+      ),
+    enabled:
+      typeof window !== "undefined" &&
+      !fieldListLoading &&
+      Boolean(selectedField),
+  });
+  const fieldValues = fieldValuesQuery.data?.data ?? [];
+  const fieldValuesLoading = fieldValuesQuery.isPending;
+  const fieldValuesError = fieldValuesQuery.isError;
 
   const fieldValueTotal = useMemo(
     () =>
@@ -2473,7 +1947,7 @@ export function EventFieldsCard({
 
   return (
     <>
-      <section className="space-y-3">
+      <section ref={fieldsSectionRef} className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="inline-flex items-center gap-2 text-sm font-medium">
@@ -2506,7 +1980,9 @@ export function EventFieldsCard({
             </CardHeader>
             <CardContent className="space-y-2 pb-5">
               <div className="max-h-[38rem] overflow-auto pr-1 font-mono text-[13px] leading-6">
-                {fieldListError ? (
+                {fieldListLoading ? (
+                  <EventFieldTreeSkeleton loadingLabel={labels.loading} />
+                ) : fieldListError ? (
                   <div className="rounded-none border border-border/50 bg-muted/20 px-4 py-6 font-sans text-sm text-muted-foreground">
                     {labels.loadError}
                   </div>
@@ -2567,8 +2043,8 @@ export function EventFieldsCard({
             <CardContent className="p-0">
               <DataTableSwitch
                 loading={
-                  Boolean(selectedField) &&
-                  (fieldListLoading || fieldValuesLoading)
+                  fieldListLoading ||
+                  (Boolean(selectedField) && fieldValuesLoading)
                 }
                 hasContent={
                   Boolean(selectedField) &&
@@ -2589,28 +2065,24 @@ export function EventFieldsCard({
         </div>
       </section>
 
-      <Dialog
+      <ResponsiveDialog
         open={payloadFilterDialogOpen}
         onOpenChange={setPayloadFilterDialogOpen}
       >
-        <DialogContent
+        <ResponsiveDialogContent
           data-dashboard-floating-layer="event-filter-dialog"
-          className="max-w-xl"
-          overlayClassName="z-[999]"
+          desktopClassName="max-w-xl"
           style={{ zIndex: EVENT_FILTER_DIALOG_Z_INDEX }}
-          {...{
-            [FLOATING_LAYER_Z_ATTR]: EVENT_FILTER_DIALOG_Z_INDEX,
-          }}
         >
-          <DialogHeader>
-            <DialogTitle icon={RiFilter3Line}>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle icon={RiFilter3Line}>
               {labels.payloadFilterTitle}
-            </DialogTitle>
-            <DialogDescription>
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               {labels.payloadFilterSubtitle}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody className="space-y-2">
             <textarea
               value={payloadFilterDraft}
               onChange={(event) => {
@@ -2623,8 +2095,8 @@ export function EventFieldsCard({
             {payloadFilterError ? (
               <p className="text-xs text-destructive">{payloadFilterError}</p>
             ) : null}
-          </div>
-          <DialogFooter>
+          </ResponsiveDialogBody>
+          <ResponsiveDialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -2637,14 +2109,14 @@ export function EventFieldsCard({
               <RiCheckLine className="size-4" />
               <span>{labels.payloadFilterApply}</span>
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </>
   );
-}
+});
 
-export function EventPageHeader({
+export const EventPageHeader = memo(function EventPageHeader({
   messages,
   title,
   subtitle,
@@ -2685,4 +2157,4 @@ export function EventPageHeader({
       }
     />
   );
-}
+});

@@ -4,8 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleUsersAdmin } from "@/lib/edge/admin-users";
 import { handleAdminWs } from "@/lib/edge/admin-ws";
+import { handleOverviewContract } from "@/lib/edge/analytics/composition/protocol/overview-contract-adapter";
+import type * as QueryCoreModule from "@/lib/edge/analytics/providers/d1/internal/core";
+import {
+  fetchPublicSite,
+  resolvePrivateSiteForSession,
+} from "@/lib/edge/analytics/providers/d1/internal/core";
+import type * as QueryRouterModule from "@/lib/edge/analytics/providers/d1/internal/router";
 import { authenticateApiKey } from "@/lib/edge/api-key-auth";
-import { handleApiV1, handleCapabilities, handleRoot } from "@/lib/edge/api-v1";
 import {
   handlePrivateArchive,
   handlePrivateArchiveFile,
@@ -19,12 +25,7 @@ import {
   handleLegacyAuthLogin,
   handleLegacyAuthLogout,
 } from "@/lib/edge/legacy-auth";
-import { handleMapTileRequest } from "@/lib/edge/map-tiles";
-import { handlePrivateQuery, handlePublicQuery } from "@/lib/edge/query";
-import type * as QueryCoreModule from "@/lib/edge/query/core";
-import { fetchPublicSite, resolvePrivateSite } from "@/lib/edge/query/core";
-import type * as QueryRouterModule from "@/lib/edge/query/router";
-import { dispatchQueryRoute } from "@/lib/edge/query/router";
+import { handleMapRelayRequest } from "@/lib/edge/map-relay";
 import { handleReleasesCompareRequest } from "@/lib/edge/releases-compare";
 import { handleTrackerScriptRequest } from "@/lib/edge/script-endpoint";
 import { handleWikiSummaryRequest } from "@/lib/edge/wiki-summary";
@@ -58,62 +59,47 @@ vi.mock("@/lib/edge/legacy-auth", () => ({
   handleLegacyAuthLogout: vi.fn(),
 }));
 
-vi.mock("@/lib/edge/map-tiles", () => ({
-  handleMapTileRequest: vi.fn(),
-}));
-
 vi.mock("@/lib/edge/releases-compare", () => ({
   handleReleasesCompareRequest: vi.fn(),
 }));
 
-vi.mock("@/lib/edge/query", () => ({
-  handlePrivateQuery: vi.fn(),
-  handlePublicQuery: vi.fn(),
-}));
+vi.mock(
+  "@/lib/edge/analytics/providers/d1/internal/core",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof QueryCoreModule>();
+    return {
+      ...actual,
+      fetchPublicSite: vi.fn(),
+      resolvePrivateSiteForSession: vi.fn(),
+    };
+  },
+);
 
-vi.mock("@/lib/edge/query/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof QueryCoreModule>();
-  return {
-    ...actual,
-    fetchPublicSite: vi.fn(),
-    resolvePrivateSite: vi.fn(),
-  };
-});
+vi.mock(
+  "@/lib/edge/analytics/providers/d1/internal/router",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof QueryRouterModule>();
+    return {
+      ...actual,
+    };
+  },
+);
 
-vi.mock("@/lib/edge/query/router", async (importOriginal) => {
-  const actual = await importOriginal<typeof QueryRouterModule>();
-  return {
-    ...actual,
-    dispatchQueryRoute: vi.fn(),
-  };
-});
+vi.mock(
+  "@/lib/edge/analytics/composition/protocol/overview-contract-adapter",
+  () => ({
+    handleOverviewContract: vi.fn(),
+    handleTrendContract: vi.fn(),
+  }),
+);
 
-vi.mock("@/lib/edge/api-v1", () => ({
-  apiV1Segments: (url: URL) =>
-    url.pathname
-      .replace(/^\/api\/v1\/?/, "")
-      .split("/")
-      .filter(Boolean),
-  handleAnalytics: vi.fn(),
-  handleApiV1: vi.fn(),
-  handleBatch: vi.fn(),
-  handleCapabilities: vi.fn(),
-  handleEvents: vi.fn(),
-  handleFunnels: vi.fn(),
-  handleJourneys: vi.fn(),
-  handlePerformance: vi.fn(),
-  handlePrivacy: vi.fn(),
-  handleRealtime: vi.fn(),
-  handleRoot: vi.fn(),
-  handleSharing: vi.fn(),
-  handleSiteResource: vi.fn(),
-  handleSitesCollection: vi.fn(),
-  handleTeam: vi.fn(),
-  handleToken: vi.fn(),
-  handleTokenCheck: vi.fn(),
-  handleTracking: vi.fn(),
-  handleTrackingScript: vi.fn(),
-}));
+vi.mock(
+  "@/lib/edge/analytics/composition/protocol/pages-contract-adapter",
+  () => ({
+    handlePagesContract: vi.fn(),
+    handleReferrersContract: vi.fn(),
+  }),
+);
 
 vi.mock("@/lib/edge/api-key-auth", () => ({
   authenticateApiKey: vi.fn(),
@@ -127,6 +113,10 @@ vi.mock("@/lib/edge/world-countries", () => ({
   handleWorldCountriesRequest: vi.fn(),
 }));
 
+vi.mock("@/lib/edge/map-relay", () => ({
+  handleMapRelayRequest: vi.fn(),
+}));
+
 vi.mock("@/lib/edge/wiki-summary", () => ({
   handleWikiSummaryRequest: vi.fn(),
 }));
@@ -138,8 +128,16 @@ vi.mock("@/lib/edge/session-auth", () => ({
 const { requireSession } = await import("@/lib/edge/session-auth");
 
 const env = { DB: {}, INGEST_DO: {}, ARCHIVE_BUCKET: {} };
+const dispatchQueryRoute = vi.fn();
 const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() };
 const executionCtx = ctx as unknown as ExecutionContext;
+const session = {
+  userId: "user-1",
+  username: "user",
+  displayName: "User",
+  systemRole: "admin" as const,
+  exp: 9999999999,
+};
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://app.test${path}`, init);
@@ -172,18 +170,13 @@ describe("Hono API app routing", () => {
     vi.mocked(handleWorldCountriesRequest).mockResolvedValue(
       new Response("countries"),
     );
+    vi.mocked(handleMapRelayRequest).mockResolvedValue(new Response("map"));
     vi.mocked(handleWikiSummaryRequest).mockResolvedValue(new Response("wiki"));
     vi.mocked(handleReleasesCompareRequest).mockResolvedValue(
       new Response("compare"),
     );
     vi.mocked(handleUsersAdmin).mockResolvedValue(new Response("admin"));
-    vi.mocked(requireSession).mockResolvedValue({
-      userId: "user-1",
-      username: "user",
-      displayName: "User",
-      systemRole: "admin",
-      exp: 9999999999,
-    });
+    vi.mocked(requireSession).mockResolvedValue(session);
     vi.mocked(handlePrivateArchive).mockResolvedValue(new Response("archive"));
     vi.mocked(handlePrivateArchiveFile).mockResolvedValue(
       new Response("archive-file"),
@@ -191,10 +184,7 @@ describe("Hono API app routing", () => {
     vi.mocked(handlePrivateArchiveManifest).mockResolvedValue(
       new Response("archive"),
     );
-    vi.mocked(handlePrivateQuery).mockResolvedValue(
-      new Response("private-query"),
-    );
-    vi.mocked(resolvePrivateSite).mockResolvedValue({
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValue({
       id: "site-1",
       name: "Site",
       domain: "app.test",
@@ -207,11 +197,9 @@ describe("Hono API app routing", () => {
     vi.mocked(dispatchQueryRoute).mockResolvedValue(
       new Response("private-query"),
     );
-    vi.mocked(handlePublicQuery).mockResolvedValue(
-      new Response("public-query"),
+    vi.mocked(handleOverviewContract).mockResolvedValue(
+      new Response("private-query"),
     );
-    vi.mocked(handleApiV1).mockResolvedValue(new Response("v1"));
-    vi.mocked(handleRoot).mockResolvedValue(new Response("root"));
     vi.mocked(authenticateApiKey).mockResolvedValue({
       keyId: "key-1",
       teamId: "team-1",
@@ -219,14 +207,12 @@ describe("Hono API app routing", () => {
       scopes: ["analytics:read"],
       siteIds: ["site-1"],
     });
-    vi.mocked(handleCapabilities).mockResolvedValue(new Response("v1"));
     vi.mocked(handleLegacyAuthLogin).mockResolvedValue(
       new Response("legacy-login"),
     );
     vi.mocked(handleLegacyAuthLogout).mockResolvedValue(
       new Response("legacy-logout"),
     );
-    vi.mocked(handleMapTileRequest).mockResolvedValue(new Response("tile"));
     vi.mocked(handleAdminWs).mockResolvedValue(new Response("ws"));
   });
 
@@ -299,6 +285,9 @@ describe("Hono API app routing", () => {
 
     expect(openapiHead.status).toBe(200);
     expect(await openapiHead.text()).toBe("");
+    expect(skills.headers.get("content-type")).toContain("application/json");
+    expect(skills.headers.get("access-control-allow-origin")).toBe("*");
+    expect(skills.headers.get("cache-control")).toContain("max-age=3600");
     expect(await skills.text()).toContain("http://skills.example.test");
     expect(skillsHead.status).toBe(200);
     expect(security.status).toBe(200);
@@ -360,6 +349,7 @@ describe("Hono API app routing", () => {
       env,
       executionCtx,
       new URL("https://app.test/collect"),
+      expect.anything(),
     );
     expect(handleTrackerScriptRequest).toHaveBeenCalledWith(
       expect.any(Request),
@@ -398,20 +388,59 @@ describe("Hono API app routing", () => {
     expect(handleUsersAdmin).toHaveBeenCalled();
     expect(handlePrivateArchiveManifest).toHaveBeenCalled();
     expect(handlePrivateArchive).not.toHaveBeenCalled();
-    expect(resolvePrivateSite).toHaveBeenCalled();
-    expect(dispatchQueryRoute).toHaveBeenCalledWith(
+    expect(resolvePrivateSiteForSession).toHaveBeenCalled();
+    expect(handleOverviewContract).toHaveBeenCalledWith(
       env,
       "site-1",
-      "overview",
       new URL("https://app.test/api/private/overview"),
-      { publicMode: false },
-      expect.any(Request),
+      expect.objectContaining({ requestId: expect.any(String) }),
+      expect.objectContaining({ subject: { kind: "site", siteId: "site-1" } }),
     );
-    expect(handlePrivateQuery).not.toHaveBeenCalled();
     expect(fetchPublicSite).toHaveBeenCalled();
-    expect(handlePublicQuery).not.toHaveBeenCalled();
-    expect(handleCapabilities).toHaveBeenCalled();
-    expect(handleApiV1).not.toHaveBeenCalled();
+  });
+
+  it("emits one aggregate Worker record with route and query diagnostics", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(handleOverviewContract).mockResolvedValueOnce(
+      new Response("overview", {
+        headers: {
+          "x-insightflare-cache": "MISS",
+          "x-insightflare-data-source": "raw",
+          "x-insightflare-d1-rows-read": "42",
+        },
+      }),
+    );
+
+    await apiApp.fetch(
+      request("/api/private/overview"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "worker",
+        trigger: "request",
+        request: expect.objectContaining({
+          method: "GET",
+          status: 200,
+          outcome: "ok",
+        }),
+        performance: expect.objectContaining({
+          cache: "MISS",
+          dataSource: "raw",
+          handlerD1RowsRead: 42,
+        }),
+        logs: expect.arrayContaining([
+          expect.objectContaining({ message: "request.started" }),
+          expect.objectContaining({ message: "route.handler.started" }),
+          expect.objectContaining({ message: "route.handler.completed" }),
+          expect.objectContaining({ message: "request.completed" }),
+        ]),
+      }),
+    );
+    logSpy.mockRestore();
   });
 
   it("redirects the bare API root to API v1 without applying API no-cache defaults", async () => {
@@ -462,19 +491,8 @@ describe("Hono API app routing", () => {
       env as any,
       executionCtx,
     );
-    await apiApp.fetch(
-      publicBrowserRequest("/api/public/resources/map-tiles/1/0/0.png"),
-      env as any,
-      executionCtx,
-    );
-
     expect(handleLegacyAuthLogin).toHaveBeenCalled();
     expect(handleLegacyAuthLogout).toHaveBeenCalled();
-    expect(handleMapTileRequest).toHaveBeenCalledWith(expect.any(Request), {
-      z: "1",
-      x: "0",
-      y: "0.png",
-    });
   });
 
   it("routes private endpoints only after session authentication", async () => {
@@ -492,6 +510,24 @@ describe("Hono API app routing", () => {
     expect(requireSession).toHaveBeenCalled();
     expect(handlePrivateArchiveFile).toHaveBeenCalled();
     expect(handleAdminWs).toHaveBeenCalled();
+  });
+
+  it("reuses the authenticated session for private site resolution", async () => {
+    vi.mocked(requireSession).mockClear();
+
+    await apiApp.fetch(
+      request("/api/private/overview?siteId=site-1"),
+      env as any,
+      executionCtx,
+    );
+
+    expect(requireSession).toHaveBeenCalledTimes(1);
+    expect(resolvePrivateSiteForSession).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+      new URL("https://app.test/api/private/overview?siteId=site-1"),
+      session,
+    );
   });
 
   it("returns 401 for private endpoints without a session", async () => {
@@ -518,11 +554,6 @@ describe("Hono API app routing", () => {
       env as any,
       executionCtx,
     );
-    const legacyMap = await apiApp.fetch(
-      request("/api" + "/map-tiles/1/0/0.png"),
-      env as any,
-      executionCtx,
-    );
     const legacyWs = await apiApp.fetch(
       request("/admin" + "/ws?siteId=site-1"),
       env as any,
@@ -531,7 +562,6 @@ describe("Hono API app routing", () => {
 
     expect(legacyAdmin.status).toBe(404);
     expect(legacyArchive.status).toBe(404);
-    expect(legacyMap.status).toBe(404);
     expect(legacyWs.status).toBe(404);
   });
 
@@ -543,7 +573,24 @@ describe("Hono API app routing", () => {
     const response = await apiApp.fetch(original, env as any, executionCtx);
 
     expect(await response.text()).toBe("countries");
-    expect(handleWorldCountriesRequest).toHaveBeenCalledWith(original);
+    expect(handleWorldCountriesRequest).toHaveBeenCalledWith(
+      original,
+      expect.anything(),
+    );
+  });
+
+  it("routes map resources through the backend relay handler", async () => {
+    const original = publicBrowserRequest(
+      "/api/public/resources/map/v1/styles/dark/style.json",
+    );
+
+    const response = await apiApp.fetch(original, env as any, executionCtx);
+
+    expect(await response.text()).toBe("map");
+    expect(handleMapRelayRequest).toHaveBeenCalledWith(
+      original,
+      expect.anything(),
+    );
   });
 
   it("routes wiki summary through Hono", async () => {
@@ -554,7 +601,10 @@ describe("Hono API app routing", () => {
     const response = await apiApp.fetch(original, env as any, executionCtx);
 
     expect(await response.text()).toBe("wiki");
-    expect(handleWikiSummaryRequest).toHaveBeenCalledWith(original);
+    expect(handleWikiSummaryRequest).toHaveBeenCalledWith(
+      original,
+      expect.anything(),
+    );
   });
 
   it("routes release comparison through Hono", async () => {

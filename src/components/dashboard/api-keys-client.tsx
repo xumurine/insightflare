@@ -1,6 +1,4 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { type SetStateAction, useEffect, useMemo, useState } from "react";
 import {
   RiAddLine,
   RiCheckboxBlankCircleLine,
@@ -11,8 +9,10 @@ import {
   RiKey2Line,
   RiRefreshLine,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { PageHeading } from "@/components/dashboard/page-heading";
 import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
@@ -42,6 +42,15 @@ import {
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -57,6 +66,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { requestAdminService } from "@/lib/admin-service-client";
+import type { ApiKeysInitialData } from "@/lib/dashboard/management-data";
 import type { ApiKeyData, ApiKeyScope } from "@/lib/edge-client-types";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -66,6 +77,7 @@ interface ApiKeysClientProps {
   messages: AppMessages;
   teamId: string;
   sites: Array<{ id: string; name: string; domain: string }>;
+  initialData?: ApiKeysInitialData | null;
 }
 
 interface ApiKeyCreateResponse {
@@ -86,6 +98,8 @@ function scopeLabel(
   scope: ApiKeyScope,
 ) {
   if (scope === "analytics:read") return copy.scopes.analyticsRead;
+  if (scope === "analysis:read") return copy.scopes.analysisRead;
+  if (scope === "analysis:write") return copy.scopes.analysisWrite;
   if (scope === "site:read") return copy.scopes.siteRead;
   if (scope === "site:write") return copy.scopes.siteWrite;
   if (scope === "site_config:read") return copy.scopes.siteConfigRead;
@@ -97,6 +111,8 @@ function scopeDescription(
   scope: ApiKeyScope,
 ) {
   if (scope === "analytics:read") return copy.scopeDescriptions.analyticsRead;
+  if (scope === "analysis:read") return copy.scopeDescriptions.analysisRead;
+  if (scope === "analysis:write") return copy.scopeDescriptions.analysisWrite;
   if (scope === "site:read") return copy.scopeDescriptions.siteRead;
   if (scope === "site:write") return copy.scopeDescriptions.siteWrite;
   if (scope === "site_config:read")
@@ -112,6 +128,11 @@ function getScopeGroups(
       key: "analytics",
       label: copy.scopeGroups.analytics,
       scopes: ["analytics:read"],
+    },
+    {
+      key: "analysis",
+      label: copy.scopeGroups.analysis,
+      scopes: ["analysis:read", "analysis:write"],
     },
     {
       key: "site",
@@ -134,122 +155,35 @@ function dateTime(locale: Locale, value: number | null): string {
   }).format(new Date(value * 1000));
 }
 
-async function readPayload<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as {
-    ok?: boolean;
-    data?: T;
-    error?: string;
-  };
-  if (!response.ok || !payload.ok || payload.data === undefined) {
-    throw new Error(payload.error || "request_failed");
-  }
-  return payload.data;
-}
-
-const DEMO_KEY_SCOPES: ApiKeyScope[][] = [
-  ["analytics:read", "site:read"],
-  ["analytics:read", "site_config:read"],
-  ["site:read", "site:write", "site_config:read"],
-];
-
-function demoKeyPrefix(index: number): string {
-  return `if_demo_${String(index + 1).padStart(2, "0")}_${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
-}
-
-function createDemoApiKey(input: {
-  teamId: string;
-  name: string;
-  scopes: ApiKeyScope[];
-  siteIds: string[];
-  expiresInDays?: number | "never";
-  index?: number;
-  status?: ApiKeyData["status"];
-  lastUsedOffsetSeconds?: number | null;
-}): ApiKeyData {
-  const now = Math.floor(Date.now() / 1000);
-  const index = input.index ?? 0;
-  const expiresAt =
-    input.expiresInDays === "never"
-      ? null
-      : now + (input.expiresInDays ?? 180) * 24 * 60 * 60;
-  return {
-    id: `demo-api-key-${index}-${now}`,
-    teamId: input.teamId,
-    name: input.name,
-    prefix: demoKeyPrefix(index),
-    scopes: input.scopes,
-    siteIds: input.siteIds,
-    createdByUserId: "demo-user-001",
-    expiresAt,
-    revokedAt: input.status === "revoked" ? now - 2 * 24 * 60 * 60 : null,
-    revokedByUserId: input.status === "revoked" ? "demo-user-001" : "",
-    rotatedFromKeyId: "",
-    lastUsedAt:
-      input.lastUsedOffsetSeconds === null
-        ? null
-        : now - (input.lastUsedOffsetSeconds ?? (index + 1) * 3600),
-    createdAt: now - (index + 4) * 24 * 60 * 60,
-    updatedAt: now - (index + 1) * 3600,
-    status: input.status ?? "active",
-  };
-}
-
-function buildDemoApiKeys(
-  teamId: string,
-  sites: ApiKeysClientProps["sites"],
-): ApiKeyData[] {
-  return [
-    createDemoApiKey({
-      teamId,
-      name: "Dashboard reporting",
-      scopes: DEMO_KEY_SCOPES[0] ?? ["analytics:read"],
-      siteIds: [],
-      expiresInDays: 180,
-      index: 0,
-      lastUsedOffsetSeconds: 18 * 60,
-    }),
-    createDemoApiKey({
-      teamId,
-      name: "Site config automation",
-      scopes: DEMO_KEY_SCOPES[1] ?? ["site_config:read"],
-      siteIds: sites.slice(0, 2).map((site) => site.id),
-      expiresInDays: 365,
-      index: 1,
-      lastUsedOffsetSeconds: 6 * 3600,
-    }),
-    createDemoApiKey({
-      teamId,
-      name: "Legacy importer",
-      scopes: DEMO_KEY_SCOPES[2] ?? ["site:read"],
-      siteIds: sites.slice(0, 1).map((site) => site.id),
-      expiresInDays: "never",
-      index: 2,
-      status: "revoked",
-      lastUsedOffsetSeconds: null,
-    }),
-  ];
-}
-
-function demoSecret(): string {
-  const values = new Uint8Array(18);
-  crypto.getRandomValues(values);
-  return `if_demo_${Array.from(values, (value) =>
-    value.toString(16).padStart(2, "0"),
-  ).join("")}`;
-}
-
 export function ApiKeysClient({
   locale,
   messages,
   teamId,
   sites,
+  initialData = null,
 }: ApiKeysClientProps) {
   const copy = messages.teamManagement.apiKeys;
   const cancelLabel = messages.teamSelect.cancel;
-  const [keys, setKeys] = useState<ApiKeyData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const keysQueryKey = ["dashboard", "api-keys", teamId] as const;
+  const keysQuery = useQuery({
+    queryKey: keysQueryKey,
+    queryFn: ({ signal }) =>
+      requestAdminService<ApiKeyData[]>("api-keys", {
+        params: { teamId },
+        signal,
+      }),
+    initialData: initialData?.keys,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const keys = keysQuery.data ?? [];
+  const loading = keysQuery.isPending;
+  const setKeys = (updater: SetStateAction<ApiKeyData[]>) => {
+    queryClient.setQueryData<ApiKeyData[]>(keysQueryKey, (current = []) =>
+      typeof updater === "function" ? updater(current) : updater,
+    );
+  };
   const [createOpen, setCreateOpen] = useState(false);
   const [secretOpen, setSecretOpen] = useState(false);
   const [revealedSecret, setRevealedSecret] = useState("");
@@ -268,32 +202,9 @@ export function ApiKeysClient({
     [sites],
   );
 
-  async function loadKeys() {
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-      setKeys(buildDemoApiKeys(teamId, sites));
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `/api/private/admin/api-keys?teamId=${encodeURIComponent(teamId)}`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        },
-      );
-      setKeys(await readPayload<ApiKeyData[]>(response));
-    } catch {
-      toast.error(copy.loadFailed);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void loadKeys();
-  }, [teamId]);
+    if (keysQuery.isError) toast.error(copy.loadFailed);
+  }, [copy.loadFailed, keysQuery.errorUpdatedAt, keysQuery.isError]);
 
   function toggleScope(scope: ApiKeyScope) {
     setScopes((current) =>
@@ -318,39 +229,20 @@ export function ApiKeysClient({
     }
     setSubmitting(true);
     try {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-        const created = createDemoApiKey({
-          teamId,
-          name: name.trim(),
-          scopes,
-          siteIds,
-          expiresInDays: expiration === "never" ? "never" : Number(expiration),
-          index: keys.length,
-          lastUsedOffsetSeconds: null,
-        });
-        setKeys((current) => [created, ...current]);
-        setRevealedSecret(demoSecret());
-        setSecretOpen(true);
-        setCreateOpen(false);
-        setName("");
-        setScopes(["analytics:read", "site:read"]);
-        setSiteIds([]);
-        setExpiration("180");
-        return;
-      }
-      const response = await fetch("/api/private/admin/api-keys", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          teamId,
-          name,
-          scopes,
-          siteIds,
-          expiresInDays: expiration === "never" ? "never" : Number(expiration),
-        }),
-      });
-      const created = await readPayload<ApiKeyCreateResponse>(response);
+      const created = await requestAdminService<ApiKeyCreateResponse>(
+        "api-keys",
+        {
+          method: "POST",
+          body: {
+            teamId,
+            name,
+            scopes,
+            siteIds,
+            expiresInDays:
+              expiration === "never" ? "never" : Number(expiration),
+          },
+        },
+      );
       setKeys((current) => [created.key, ...current]);
       setRevealedSecret(created.secret);
       setSecretOpen(true);
@@ -369,29 +261,10 @@ export function ApiKeysClient({
   async function revokeKey(keyId: string) {
     setBusyKeyId(keyId);
     try {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-        setKeys((current) =>
-          current.map((key) =>
-            key.id === keyId
-              ? {
-                  ...key,
-                  status: "revoked",
-                  revokedAt: Math.floor(Date.now() / 1000),
-                  revokedByUserId: "demo-user-001",
-                  updatedAt: Math.floor(Date.now() / 1000),
-                }
-              : key,
-          ),
-        );
-        return;
-      }
-      const response = await fetch("/api/private/admin/api-keys", {
+      const revoked = await requestAdminService<ApiKeyData | null>("api-keys", {
         method: "PATCH",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ teamId, keyId, intent: "revoke" }),
+        body: { teamId, keyId, intent: "revoke" },
       });
-      const revoked = await readPayload<ApiKeyData | null>(response);
       if (revoked) {
         setKeys((current) =>
           current.map((key) => (key.id === revoked.id ? revoked : key)),
@@ -407,42 +280,13 @@ export function ApiKeysClient({
   async function rotateKey(keyId: string) {
     setBusyKeyId(keyId);
     try {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-        const source = keys.find((key) => key.id === keyId);
-        if (!source) return;
-        const rotated = createDemoApiKey({
-          teamId,
-          name: `${source.name} rotated`,
-          scopes: source.scopes,
-          siteIds: source.siteIds,
-          expiresInDays: source.expiresAt ? 180 : "never",
-          index: keys.length,
-          lastUsedOffsetSeconds: null,
-        });
-        setKeys((current) => [
-          { ...rotated, rotatedFromKeyId: keyId },
-          ...current.map((key) =>
-            key.id === keyId
-              ? {
-                  ...key,
-                  status: "revoked" as const,
-                  revokedAt: Math.floor(Date.now() / 1000),
-                  revokedByUserId: "demo-user-001",
-                }
-              : key,
-          ),
-        ]);
-        setRevealedSecret(demoSecret());
-        setSecretOpen(true);
-        return;
-      }
-      const response = await fetch("/api/private/admin/api-keys", {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ teamId, keyId, intent: "rotate" }),
-      });
-      const rotated = await readPayload<ApiKeyCreateResponse>(response);
+      const rotated = await requestAdminService<ApiKeyCreateResponse>(
+        "api-keys",
+        {
+          method: "PATCH",
+          body: { teamId, keyId, intent: "rotate" },
+        },
+      );
       setKeys((current) => [
         rotated.key,
         ...current.map((key) =>
@@ -477,14 +321,17 @@ export function ApiKeysClient({
   }
 
   return (
-    <>
-      <div className="flex justify-end">
-        <Button onClick={() => setCreateOpen(true)}>
-          <RiAddLine />
-          {copy.create}
-        </Button>
-      </div>
-
+    <div className="space-y-4">
+      <PageHeading
+        title={copy.title}
+        subtitle={copy.subtitle}
+        actions={
+          <Button type="button" onClick={() => setCreateOpen(true)}>
+            <RiAddLine />
+            <span>{copy.create}</span>
+          </Button>
+        }
+      />
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -676,13 +523,17 @@ export function ApiKeysClient({
         </CardContent>
       </Card>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle icon={RiKey2Line}>{copy.createTitle}</DialogTitle>
-            <DialogDescription>{copy.createSubtitle}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
+      <ResponsiveDialog open={createOpen} onOpenChange={setCreateOpen}>
+        <ResponsiveDialogContent desktopClassName="max-w-2xl">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle icon={RiKey2Line}>
+              {copy.createTitle}
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              {copy.createSubtitle}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody className="grid gap-4">
             <Field>
               <FieldLabel htmlFor="api-key-name">{copy.nameLabel}</FieldLabel>
               <Input
@@ -782,8 +633,8 @@ export function ApiKeysClient({
                 </SelectContent>
               </Select>
             </Field>
-          </div>
-          <DialogFooter>
+          </ResponsiveDialogBody>
+          <ResponsiveDialogFooter>
             <Button onClick={createKey} disabled={submitting}>
               <AutoTransition className="inline-flex items-center gap-2">
                 {submitting ? (
@@ -802,9 +653,9 @@ export function ApiKeysClient({
                 )}
               </AutoTransition>
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       <Dialog open={secretOpen} onOpenChange={setSecretOpen}>
         <DialogContent className="max-w-xl">
@@ -827,6 +678,6 @@ export function ApiKeysClient({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }

@@ -1,7 +1,4 @@
-"use client";
-
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { RiLogoutBoxLine } from "@remixicon/react";
 import { toast } from "sonner";
 
@@ -10,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { Locale } from "@/lib/i18n/config";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface LogoutActionButtonProps {
   locale: Locale;

@@ -1,4 +1,5 @@
 import { isAnalyticsEngineDisabled } from "./analytics-engine";
+import type { InvocationLogger } from "./observability-logger";
 import type { Env, TrackerClientPayload } from "./types";
 import { clampString, coerceNumber, coerceString } from "./utils";
 
@@ -104,6 +105,8 @@ function payloadEventAt(
 export function writeNormalAnalyticsEvent(
   env: Env,
   input: NormalAnalyticsInput,
+  logger?: Pick<InvocationLogger, "warn" | "error"> &
+    Partial<Pick<InvocationLogger, "info">>,
 ): void {
   if (isAnalyticsEngineDisabled(env)) {
     return;
@@ -111,6 +114,7 @@ export function writeNormalAnalyticsEvent(
 
   const dataset = env.NORMAL_ANALYTICS;
   if (!dataset) {
+    logger?.warn("collect.normal_analytics_missing_binding");
     return;
   }
 
@@ -120,7 +124,6 @@ export function writeNormalAnalyticsEvent(
   const asn = coerceNumber(cf.asn, 0) ?? 0;
   const rayId = requestHeader(request, "cf-ray", 120);
   const eventAt = payloadEventAt(input.payload, input.receivedAt);
-  const edgeLatencyMs = Math.max(0, input.receivedAt - eventAt);
   const metadata = {
     eventId: clampString(coerceString(input.payload.eventId || ""), 128),
     visitId: clampString(coerceString(input.payload.visitId || ""), 128),
@@ -140,6 +143,10 @@ export function writeNormalAnalyticsEvent(
     secFetchDest: requestHeader(request, "sec-fetch-dest", 40),
     httpProtocol: clampString(coerceString(cf.httpProtocol || ""), 40),
   };
+  // Client event timestamps use the browser clock, which may be ahead of the
+  // worker clock. Measure the collector's server-side processing time instead
+  // so clock skew cannot turn every latency value into zero.
+  const edgeLatencyMs = Math.max(0, Date.now() - input.receivedAt);
 
   try {
     dataset.writeDataPoint({
@@ -172,14 +179,9 @@ export function writeNormalAnalyticsEvent(
         userAgent.length,
       ],
     });
+    logger?.info?.("collect.normal_analytics_written");
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "normal_analytics_write_failed",
-        traceId: input.traceId,
-        siteId: input.siteId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    void error;
+    logger?.error("collect.normal_analytics_write_failed");
   }
 }

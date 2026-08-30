@@ -1,5 +1,3 @@
-"use client";
-
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { forwardRef } from "react";
 import { type HTMLMotionProps, motion } from "motion/react";

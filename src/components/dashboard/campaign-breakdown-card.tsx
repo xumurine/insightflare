@@ -1,17 +1,15 @@
-"use client";
-
-import { useMemo } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { RiPriceTag3Line } from "@remixicon/react";
 
 import {
-  CAMPAIGN_TABS,
   type CampaignBreakdownRow,
-  type CampaignRowsByTab,
   type CampaignTab,
 } from "@/components/dashboard/campaign-utils";
 import {
   TabbedDataTableCard,
   type TabbedDataTableColumn,
+  type TabbedDataTableRowAdapter,
+  type TabbedDataTableSortState,
   type TabbedDataTableTab,
 } from "@/components/dashboard/tabbed-data-table-card";
 import { numberFormat } from "@/lib/dashboard/format";
@@ -26,8 +24,11 @@ type CampaignBreakdownGroupKey = "acquisition" | "signals";
 interface CampaignBreakdownCardProps {
   locale: Locale;
   messages: AppMessages;
-  rowsByTab: CampaignRowsByTab;
-  loading: boolean;
+  loadRows: (
+    tab: CampaignTab,
+    signal: AbortSignal,
+  ) => Promise<CampaignBreakdownRow[]>;
+  requestKey: string;
 }
 
 const CAMPAIGN_BREAKDOWN_GROUPS: Array<{
@@ -44,11 +45,11 @@ const CAMPAIGN_BREAKDOWN_GROUPS: Array<{
   },
 ];
 
-export function CampaignBreakdownCard({
+export const CampaignBreakdownCard = memo(function CampaignBreakdownCard({
   locale,
   messages,
-  rowsByTab,
-  loading,
+  loadRows,
+  requestKey,
 }: CampaignBreakdownCardProps) {
   const tabMeta = useMemo<Record<CampaignTab, TabbedDataTableTab<CampaignTab>>>(
     () => ({
@@ -109,18 +110,79 @@ export function CampaignBreakdownCard({
     ],
     [locale, messages.common.sessions, messages.common.views],
   );
-  const loadingByTab = useMemo(
+  const groupTabsByKey = useMemo(
     () =>
-      CAMPAIGN_TABS.reduce(
-        (acc, tab) => {
-          acc[tab] = loading;
-          return acc;
-        },
-        {} as Record<CampaignTab, boolean>,
-      ),
-    [loading],
+      Object.fromEntries(
+        CAMPAIGN_BREAKDOWN_GROUPS.map((group) => [
+          group.key,
+          group.tabs.map((tab) => tabMeta[tab]) as [
+            TabbedDataTableTab<CampaignTab>,
+            ...TabbedDataTableTab<CampaignTab>[],
+          ],
+        ]),
+      ) as Record<
+        CampaignBreakdownGroupKey,
+        [TabbedDataTableTab<CampaignTab>, ...TabbedDataTableTab<CampaignTab>[]]
+      >,
+    [tabMeta],
   );
-
+  const rowAdapter = useMemo<
+    TabbedDataTableRowAdapter<
+      CampaignBreakdownRow,
+      CampaignTab,
+      CampaignSortKey
+    >
+  >(
+    () => ({
+      renderLabel: (row) => (
+        <span className={cn("break-words", row.mono && "font-mono")}>
+          {row.label}
+        </span>
+      ),
+      getSearchText: (row) => row.label,
+      getExportLabel: (row) => row.label,
+      getClassName: () => "hover:brightness-95",
+    }),
+    [],
+  );
+  const compareRows = useCallback(
+    (
+      left: CampaignBreakdownRow,
+      right: CampaignBreakdownRow,
+      { sort }: { sort: TabbedDataTableSortState<CampaignSortKey> },
+    ) => {
+      const primary =
+        (left[sort.key] - right[sort.key]) *
+        (sort.direction === "asc" ? 1 : -1);
+      if (primary !== 0) return primary;
+      if (right.views !== left.views) return right.views - left.views;
+      if (right.sessions !== left.sessions) {
+        return right.sessions - left.sessions;
+      }
+      return left.label.localeCompare(right.label);
+    },
+    [],
+  );
+  const labelColumnLabel = useCallback(
+    (tab: TabbedDataTableTab<CampaignTab>) => tab.columnLabel ?? tab.label,
+    [],
+  );
+  const search = useMemo(
+    () => ({
+      actionLabel: messages.common.search,
+      placeholder: (tab: TabbedDataTableTab<CampaignTab>) =>
+        formatI18nTemplate(messages.overview.searchInTab, {
+          tab: tab.label,
+        }),
+    }),
+    [messages.common.search, messages.overview.searchInTab],
+  );
+  const exportConfig = useMemo(
+    () => ({
+      labels: messages.common.tableExport,
+    }),
+    [messages.common.tableExport],
+  );
   return (
     <section className="space-y-3">
       <div className="space-y-1">
@@ -132,11 +194,6 @@ export function CampaignBreakdownCard({
 
       <div className="grid items-stretch gap-6 lg:grid-cols-2">
         {CAMPAIGN_BREAKDOWN_GROUPS.map((group) => {
-          const groupTabs = group.tabs.map((tab) => tabMeta[tab]) as [
-            TabbedDataTableTab<CampaignTab>,
-            ...TabbedDataTableTab<CampaignTab>[],
-          ];
-
           return (
             <div key={group.key} className="h-full min-w-0">
               <TabbedDataTableCard<
@@ -144,39 +201,18 @@ export function CampaignBreakdownCard({
                 CampaignBreakdownRow,
                 CampaignSortKey
               >
-                tabs={groupTabs}
-                rowsByTab={rowsByTab}
-                loadingByTab={loadingByTab}
+                tabs={groupTabsByKey[group.key]}
+                loadRows={loadRows}
+                requestKey={`${requestKey}:${group.key}`}
                 columns={columns}
-                renderLabel={(row) => (
-                  <span className={cn("break-words", row.mono && "font-mono")}>
-                    {row.label}
-                  </span>
-                )}
-                getRowSearchText={(row) => row.label}
-                compareRows={(left, right, { sort }) => {
-                  const primary =
-                    (left[sort.key] - right[sort.key]) *
-                    (sort.direction === "asc" ? 1 : -1);
-                  if (primary !== 0) return primary;
-                  if (right.views !== left.views)
-                    return right.views - left.views;
-                  if (right.sessions !== left.sessions) {
-                    return right.sessions - left.sessions;
-                  }
-                  return left.label.localeCompare(right.label);
-                }}
+                rowAdapter={rowAdapter}
+                compareRows={compareRows}
+                labelColumnLabel={labelColumnLabel}
                 loadingLabel={messages.common.loading}
                 emptyLabel={messages.campaigns.noTaggedTraffic}
                 className="h-full min-h-[420px]"
-                search={{
-                  actionLabel: messages.common.search,
-                  placeholder: (tab) =>
-                    formatI18nTemplate(messages.overview.searchInTab, {
-                      tab: tab.label,
-                    }),
-                }}
-                getRowClassName={() => "hover:brightness-95"}
+                search={search}
+                export={exportConfig}
               />
             </div>
           );
@@ -184,4 +220,4 @@ export function CampaignBreakdownCard({
       </div>
     </section>
   );
-}
+});

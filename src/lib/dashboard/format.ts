@@ -3,6 +3,7 @@ import type { Locale } from "@/lib/i18n/config";
 const INTL_LOCALE: Record<Locale, string> = {
   en: "en-US",
   zh: "zh-CN",
+  ja: "ja-JP",
 };
 
 const DURATION_UNITS: Record<
@@ -26,21 +27,72 @@ const DURATION_UNITS: Record<
     hour: "小时",
     join: "",
   },
+  ja: {
+    second: "秒",
+    minute: "分",
+    hour: "時間",
+    join: "",
+  },
 };
+
+const NUMBER_FORMATTERS = new Map<string, Intl.NumberFormat>();
+const PERCENT_FORMATTERS = new Map<string, Intl.NumberFormat>();
+const PERCENT_ONE_DECIMAL_FORMATTERS = new Map<string, Intl.NumberFormat>();
+
+function getNumberFormatter(locale: Locale): Intl.NumberFormat {
+  const key = intlLocale(locale);
+  const cached = NUMBER_FORMATTERS.get(key);
+  if (cached) return cached;
+
+  const formatter = new Intl.NumberFormat(key);
+  NUMBER_FORMATTERS.set(key, formatter);
+  return formatter;
+}
+
+function getPercentFormatter(locale: Locale): Intl.NumberFormat {
+  const key = intlLocale(locale);
+  const cached = PERCENT_FORMATTERS.get(key);
+  if (cached) return cached;
+
+  const formatter = new Intl.NumberFormat(key, {
+    style: "percent",
+    maximumFractionDigits: 1,
+  });
+  PERCENT_FORMATTERS.set(key, formatter);
+  return formatter;
+}
+
+function getPercentOneDecimalFormatter(locale: Locale): Intl.NumberFormat {
+  const key = intlLocale(locale);
+  const cached = PERCENT_ONE_DECIMAL_FORMATTERS.get(key);
+  if (cached) return cached;
+
+  const formatter = new Intl.NumberFormat(key, {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  PERCENT_ONE_DECIMAL_FORMATTERS.set(key, formatter);
+  return formatter;
+}
 
 export function intlLocale(locale: Locale): string {
   return INTL_LOCALE[locale];
 }
 
 export function numberFormat(locale: Locale, value: number): string {
-  return new Intl.NumberFormat(intlLocale(locale)).format(value);
+  return getNumberFormatter(locale).format(value);
 }
 
 export function percentFormat(locale: Locale, value: number): string {
-  return new Intl.NumberFormat(intlLocale(locale), {
-    style: "percent",
-    maximumFractionDigits: 1,
-  }).format(value);
+  return getPercentFormatter(locale).format(value);
+}
+
+export function percentFormatWithOneDecimal(
+  locale: Locale,
+  value: number,
+): string {
+  return getPercentOneDecimalFormatter(locale).format(value);
 }
 
 type DateValue = number | string | Date | null | undefined;
@@ -111,11 +163,13 @@ export function shortDateTimeWithSeconds(
   locale: Locale,
   value: DateValue,
   timeZone?: string,
+  options: Pick<Intl.DateTimeFormatOptions, "year"> = {},
 ): string {
   return formatDate(
     locale,
     value,
     {
+      ...options,
       month: "short",
       day: "numeric",
       hour: "2-digit",

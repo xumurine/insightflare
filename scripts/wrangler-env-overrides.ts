@@ -14,7 +14,7 @@ const KNOWN_VAR_KEYS = [
   "SESSION_WINDOW_MINUTES",
   "SCRIPT_CACHE_TTL_SECONDS",
   "PARQUET_WASM_URL",
-  "NEXT_PUBLIC_DEMO_MODE",
+  "DEMO_MODE",
   "DISABLE_CRON_TASKS",
 ] as const;
 
@@ -74,7 +74,7 @@ function replaceKeyLine(
 ): string | null {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = line.match(
-    new RegExp(`^(\\s*${escapedKey}\\s*=\\s*)([^#\\r\\n]*)(.*)$`),
+    new RegExp(`^(\\s*${escapedKey}\\s*=\\s*)([^#\\r\\n]*)([\\s\\S]*)$`),
   );
   if (!match) return null;
   const suffix = match[3] ?? "";

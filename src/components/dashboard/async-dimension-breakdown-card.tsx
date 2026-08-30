@@ -1,6 +1,4 @@
-"use client";
-
-import { useMemo } from "react";
+import { memo, type ReactNode, useCallback, useMemo } from "react";
 import { Icon } from "@iconify/react";
 
 import {
@@ -11,7 +9,9 @@ import { LabelWithOptionalIcon } from "@/components/dashboard/referrer-utils";
 import {
   TabbedDataTableCard,
   type TabbedDataTableColumn,
+  type TabbedDataTableRowAdapter,
   type TabbedDataTableRowBase,
+  type TabbedDataTableSortState,
   type TabbedDataTableTab,
 } from "@/components/dashboard/tabbed-data-table-card";
 import { numberFormat } from "@/lib/dashboard/format";
@@ -72,7 +72,10 @@ interface AsyncDimensionBreakdownCardProps<T extends string> {
   locale: Locale;
   messages: AppMessages;
   tabs: NonEmptyArray<AsyncDimensionBreakdownTab<T>>;
-  loadRows?: (tab: T) => Promise<AsyncDimensionBreakdownRow[]>;
+  loadRows?: (
+    tab: T,
+    signal?: AbortSignal,
+  ) => Promise<AsyncDimensionBreakdownRow[]>;
   rowsByTab?: Partial<Record<T, readonly AsyncDimensionBreakdownRow[] | null>>;
   loadingByTab?: Partial<Record<T, boolean>>;
   requestKey: string;
@@ -96,7 +99,7 @@ function normalizeRows(
   }));
 }
 
-function LabelWithLeadingIcon({
+const LabelWithLeadingIcon = memo(function LabelWithLeadingIcon({
   label,
   iconName,
 }: {
@@ -126,9 +129,9 @@ function LabelWithLeadingIcon({
       <span className="break-words">{label}</span>
     </span>
   );
-}
+});
 
-function AsyncDimensionRowLabel({
+const AsyncDimensionRowLabel = memo(function AsyncDimensionRowLabel({
   locale,
   row,
   emptyLabel,
@@ -200,80 +203,48 @@ function AsyncDimensionRowLabel({
   }
 
   return <span className={cn("break-words", className)}>{row.label}</span>;
-}
+});
 
-export function AsyncDimensionBreakdownCard<T extends string>({
-  locale,
-  messages,
-  tabs,
-  loadRows,
-  rowsByTab,
-  loadingByTab,
-  requestKey,
-  className,
-  showVisitors = true,
-  secondaryMetricLabel,
-  emptyLabel,
-}: AsyncDimensionBreakdownCardProps<T>) {
-  const resolvedEmptyLabel = emptyLabel ?? messages.common.noData;
-  const resolvedSecondaryMetricLabel =
-    secondaryMetricLabel ?? messages.common.visitors;
-  const columns = useMemo<
-    (
-      tab: T,
-    ) => readonly TabbedDataTableColumn<
-      AsyncDimensionBreakdownRow,
-      SortKey,
-      T
-    >[]
-  >(
-    () => (tab) => [
-      {
-        key: "views",
-        label:
-          tabs.find((item) => item.value === tab)?.primaryMetricLabel ??
-          messages.common.views,
-        getValue: (row) => row.views,
-        format: (value) => numberFormat(locale, value),
-      },
-      ...(showVisitors
-        ? [
-            {
-              key: "visitors" as const,
-              label: resolvedSecondaryMetricLabel,
-              getValue: (row: AsyncDimensionBreakdownRow) => row.visitors,
-              format: (value: number) => numberFormat(locale, value),
-            },
-          ]
-        : []),
-    ],
-    [
-      locale,
-      messages.common.views,
-      resolvedSecondaryMetricLabel,
-      showVisitors,
-      tabs,
-    ],
-  );
-
-  return (
-    <TabbedDataTableCard<T, AsyncDimensionBreakdownRow, SortKey>
-      tabs={tabs}
-      columns={columns}
-      requestKey={requestKey}
-      rowsByTab={rowsByTab}
-      loadingByTab={loadingByTab}
-      loadRows={loadRows ? (tab) => loadRows(tab) : undefined}
-      normalizeRows={normalizeRows}
-      renderLabel={(row) => (
-        <AsyncDimensionRowLabel
-          locale={locale}
-          row={row}
-          emptyLabel={resolvedEmptyLabel}
-        />
-      )}
-      getRowSearchText={(row) => row.label}
-      compareRows={(left, right, { sort }) => {
+export const AsyncDimensionBreakdownCard = memo(
+  function AsyncDimensionBreakdownCard<T extends string>({
+    locale,
+    messages,
+    tabs,
+    loadRows,
+    rowsByTab,
+    loadingByTab,
+    requestKey,
+    className,
+    showVisitors = true,
+    secondaryMetricLabel,
+    emptyLabel,
+  }: AsyncDimensionBreakdownCardProps<T>) {
+    const resolvedEmptyLabel = emptyLabel ?? messages.common.noData;
+    const resolvedSecondaryMetricLabel =
+      secondaryMetricLabel ?? messages.common.visitors;
+    const rowAdapter = useMemo<
+      TabbedDataTableRowAdapter<AsyncDimensionBreakdownRow, T, SortKey>
+    >(
+      () => ({
+        renderLabel: (row) => (
+          <AsyncDimensionRowLabel
+            locale={locale}
+            row={row}
+            emptyLabel={resolvedEmptyLabel}
+          />
+        ),
+        getSearchText: (row) => row.label,
+        getExportLabel: (row) => row.label,
+        getClassName: () => "hover:brightness-95",
+      }),
+      [locale, resolvedEmptyLabel],
+    );
+    const compareRows = useCallback(
+      (
+        left: AsyncDimensionBreakdownRow,
+        right: AsyncDimensionBreakdownRow,
+        { sort }: { sort: TabbedDataTableSortState<SortKey> },
+      ) => {
         const primary =
           (left[sort.key] - right[sort.key]) *
           (sort.direction === "asc" ? 1 : -1);
@@ -283,19 +254,87 @@ export function AsyncDimensionBreakdownCard<T extends string>({
           return right.visitors - left.visitors;
         }
         return left.label.localeCompare(right.label);
-      }}
-      labelColumnLabel={(tab) => tab.columnLabel ?? tab.label}
-      loadingLabel={messages.common.loading}
-      emptyLabel={resolvedEmptyLabel}
-      className={className}
-      search={{
+      },
+      [],
+    );
+    const labelColumnLabel = useCallback(
+      (tab: TabbedDataTableTab<T>) => tab.columnLabel ?? tab.label,
+      [],
+    );
+    const search = useMemo(
+      () => ({
         actionLabel: messages.common.search,
-        placeholder: (tab) =>
+        placeholder: (tab: TabbedDataTableTab<T>) =>
           formatI18nTemplate(messages.overview.searchInTab, {
             tab: tab.label,
           }),
-      }}
-      getRowClassName={() => "hover:brightness-95"}
-    />
-  );
-}
+      }),
+      [messages.common.search, messages.overview.searchInTab],
+    );
+    const exportConfig = useMemo(
+      () => ({
+        labels: messages.common.tableExport,
+      }),
+      [messages.common.tableExport],
+    );
+    const columns = useMemo<
+      (
+        tab: T,
+      ) => readonly TabbedDataTableColumn<
+        AsyncDimensionBreakdownRow,
+        SortKey,
+        T
+      >[]
+    >(
+      () => (tab) => [
+        {
+          key: "views",
+          label:
+            tabs.find((item) => item.value === tab)?.primaryMetricLabel ??
+            messages.common.views,
+          getValue: (row) => row.views,
+          format: (value) => numberFormat(locale, value),
+        },
+        ...(showVisitors
+          ? [
+              {
+                key: "visitors" as const,
+                label: resolvedSecondaryMetricLabel,
+                getValue: (row: AsyncDimensionBreakdownRow) => row.visitors,
+                format: (value: number) => numberFormat(locale, value),
+              },
+            ]
+          : []),
+      ],
+      [
+        locale,
+        messages.common.views,
+        resolvedSecondaryMetricLabel,
+        showVisitors,
+        tabs,
+      ],
+    );
+
+    return (
+      <TabbedDataTableCard<T, AsyncDimensionBreakdownRow, SortKey>
+        tabs={tabs}
+        columns={columns}
+        requestKey={requestKey}
+        rowsByTab={rowsByTab}
+        loadingByTab={loadingByTab}
+        loadRows={loadRows}
+        normalizeRows={normalizeRows}
+        rowAdapter={rowAdapter}
+        compareRows={compareRows}
+        labelColumnLabel={labelColumnLabel}
+        loadingLabel={messages.common.loading}
+        emptyLabel={resolvedEmptyLabel}
+        className={className}
+        search={search}
+        export={exportConfig}
+      />
+    );
+  },
+) as <T extends string>(
+  props: AsyncDimensionBreakdownCardProps<T>,
+) => ReactNode;

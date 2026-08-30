@@ -1,6 +1,4 @@
-"use client";
-
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { RiShareForwardLine } from "@remixicon/react";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
@@ -30,7 +28,7 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ReferrerSummarySection({
+export const ReferrerSummarySection = memo(function ReferrerSummarySection({
   locale,
   messages,
   rowsByTab,
@@ -42,6 +40,7 @@ export function ReferrerSummarySection({
     [rowsByTab.domain],
   );
   const hasContent = rowsByTab.domain.length > 0 || rowsByTab.link.length > 0;
+  const showInitialLoading = loading && !hasContent;
   const totalViews = useMemo(
     () => rowsByTab.domain.reduce((sum, row) => sum + row.views, 0),
     [rowsByTab.domain],
@@ -80,41 +79,60 @@ export function ReferrerSummarySection({
     0,
     externalViews - (topSource?.views ?? 0) - nextFourViews,
   );
-  const splitItems = [
-    {
-      key: "direct",
-      label: messages.overview.direct,
-      value: directViews,
-      color: "var(--color-chart-1)",
-    },
-    {
-      key: "external",
-      label: messages.referrers.externalLabel,
-      value: externalViews,
-      color: "var(--color-chart-3)",
-    },
-  ];
-  const mixItems = [
-    {
-      key: "top",
-      label: topSource?.label ?? messages.referrers.topSource,
-      value: topSource?.views ?? 0,
-      color: "var(--color-chart-1)",
-    },
-    {
-      key: "next",
-      label: messages.referrers.nextSources,
-      value: nextFourViews,
-      color: "var(--color-chart-3)",
-    },
-    {
-      key: "tail",
-      label: messages.referrers.longTail,
-      value: longTailViews,
-      color: "var(--muted-foreground)",
-      isOther: true,
-    },
-  ];
+  const splitItems = useMemo(
+    () => [
+      {
+        key: "direct",
+        label: messages.overview.direct,
+        value: directViews,
+        color: "var(--color-chart-1)",
+      },
+      {
+        key: "external",
+        label: messages.referrers.externalLabel,
+        value: externalViews,
+        color: "var(--color-chart-3)",
+      },
+    ],
+    [
+      directViews,
+      externalViews,
+      messages.overview.direct,
+      messages.referrers.externalLabel,
+    ],
+  );
+  const mixItems = useMemo(
+    () => [
+      {
+        key: "top",
+        label: topSource?.label ?? messages.referrers.topSource,
+        value: topSource?.views ?? 0,
+        color: "var(--color-chart-1)",
+      },
+      {
+        key: "next",
+        label: messages.referrers.nextSources,
+        value: nextFourViews,
+        color: "var(--color-chart-3)",
+      },
+      {
+        key: "tail",
+        label: messages.referrers.longTail,
+        value: longTailViews,
+        color: "var(--muted-foreground)",
+        isOther: true,
+      },
+    ],
+    [
+      longTailViews,
+      messages.referrers.longTail,
+      messages.referrers.nextSources,
+      messages.referrers.topSource,
+      nextFourViews,
+      topSource?.label,
+      topSource?.views,
+    ],
+  );
 
   return (
     <section className="space-y-6">
@@ -185,27 +203,32 @@ export function ReferrerSummarySection({
       )}
 
       <ContentSwitch
-        loading={loading}
-        hasContent={hasContent}
+        loading={false}
+        hasContent={hasContent || showInitialLoading}
         loadingLabel={messages.common.loading}
         emptyContent={<p>{messages.common.noData}</p>}
         minHeightClassName="min-h-[280px]"
+        initial={false}
       >
         <div className="grid gap-4 md:grid-cols-2">
           <ShareRadialCard
             title={messages.referrers.splitTitle}
             items={splitItems}
+            maxItems={2}
             locale={locale}
+            loading={showInitialLoading}
             valueLabel={messages.common.views}
           />
           <ShareRadialCard
             title={messages.referrers.chartTitle}
             items={mixItems}
+            maxItems={3}
             locale={locale}
+            loading={showInitialLoading}
             valueLabel={messages.common.views}
           />
         </div>
       </ContentSwitch>
     </section>
   );
-}
+});

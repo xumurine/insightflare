@@ -2,16 +2,30 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { describe, expect, it } from "vitest";
 
+import { buildApiV1OpenApiPaths } from "../../../../scripts/api-v1-openapi";
+import {
+  readSkillsTemplate,
+  renderSkillsManifest,
+  serializeSkillsManifest,
+} from "../../../../scripts/skills-manifest";
+
 const root = process.cwd();
 
 type JsonContent = {
-  schema?: { $ref?: string };
+  schema?: JsonSchemaObject;
   example?: unknown;
   examples?: Record<string, unknown>;
 };
 
 type OperationObject = {
   operationId?: string;
+  description?: string;
+  "x-api-v1-batch-eligible"?: boolean;
+  security?: Array<Record<string, unknown>>;
+  tags?: string[];
+  "x-api-v1-lifecycle"?: string;
+  "x-api-v1-scopes"?: string[];
+  "x-internal"?: boolean;
   requestBody?: { content?: { "application/json"?: JsonContent } };
   responses?: Record<
     string,
@@ -21,8 +35,14 @@ type OperationObject = {
 };
 
 type OpenApiSpec = {
+  tags?: Array<{ name: string }>;
   paths: Record<string, Record<string, OperationObject>>;
-  components: { schemas: Record<string, JsonSchemaObject> };
+  components: {
+    schemas: Record<string, JsonSchemaObject>;
+    responses?: Record<string, unknown>;
+    parameters?: Record<string, JsonSchemaObject>;
+    securitySchemes?: Record<string, unknown>;
+  };
 };
 
 type JsonSchemaObject = {
@@ -64,15 +84,6 @@ function walk(value: unknown, visit: (value: unknown) => void) {
   }
 }
 
-function pathMatchesTemplate(template: string, path: string): boolean {
-  const regex = new RegExp(
-    `^${template
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/\\\{[^/]+\\\}/g, "[^/]+")}$`,
-  );
-  return regex.test(path);
-}
-
 describe("api v1 public docs", () => {
   it("generates an OpenAPI contract without deprecated public API shapes", () => {
     const spec = readJson<OpenApiSpec>("docs/openapi.json");
@@ -88,12 +99,14 @@ describe("api v1 public docs", () => {
     expect(raw).not.toContain("sortDir");
     expect(raw).not.toContain("ifk_live_");
     expect(raw).not.toContain("RateLimit");
+    expect(raw).not.toContain("ComplexFilter");
+    expect(raw).not.toContain("EventPayloadFilter");
+    expect(raw).not.toContain("Idempotency-Key");
 
     expect(
       Object.keys(spec.components.schemas).some((name) => name.includes("___")),
     ).toBe(false);
     expect(spec.components.schemas.ErrorResponse).toBeDefined();
-    expect(spec.components.schemas.PaginatedEnvelope).toBeDefined();
     expect(spec.paths["/api/v1/sites/{siteId}/analytics/schema"]).toBeDefined();
     expect(spec.paths["/api/v1/batch"]).toBeDefined();
     expect(spec.paths["/api/v1/sites/{siteId}/config"]).toBeUndefined();
@@ -114,83 +127,73 @@ describe("api v1 public docs", () => {
     expect(new Set(operationIds).size).toBe(operationIds.length);
 
     let errorResponseRefs = 0;
-    let paginatedRefs = 0;
     walk(spec, (value) => {
       if (!value || typeof value !== "object" || !("$ref" in value)) return;
       const ref = String((value as { $ref: string }).$ref);
       if (ref.endsWith("/ErrorResponse")) errorResponseRefs += 1;
-      if (ref.endsWith("/PaginatedEnvelope")) paginatedRefs += 1;
     });
     expect(errorResponseRefs).toBeGreaterThan(0);
-    expect(paginatedRefs).toBeGreaterThan(0);
   });
 
-  it("generates a skills manifest for agents rather than an endpoint catalog", () => {
-    const manifest = readJson<{
-      openapiUrl?: string;
-      discovery?: Record<string, string>;
-      taskRecipes?: unknown[];
-      endpoints?: unknown;
-    }>("docs/skills.json");
+  it("renders the Agent manifest from its canonical template", () => {
+    const manifest = readJson<Record<string, unknown>>("docs/skills.json");
+    const template = readSkillsTemplate();
+    const version = readJson<{ version: string }>("package.json").version;
     const raw = JSON.stringify(manifest);
 
-    expect(manifest.openapiUrl).toBe("/.well-known/openapi.json");
-    expect(manifest.discovery).toMatchObject({
-      root: "/api/v1",
-      token: "/api/v1/token",
-      capabilities: "/api/v1/capabilities",
-      analyticsSchema: "/api/v1/sites/{siteId}/analytics/schema",
+    expect(manifest).toEqual(renderSkillsManifest(version, template));
+    expect(serializeSkillsManifest(manifest)).toBe(
+      readFileSync(resolve(root, "docs/skills.json"), "utf8"),
+    );
+    expect(manifest.manifestVersion).toBe(1);
+    expect(manifest.version).toBe(version);
+    expect(manifest.baseUrl).toBe("${baseUrl}");
+    expect(manifest.openapi).toMatchObject({
+      url: "/.well-known/openapi.json",
+    });
+    expect(manifest.openapiGuidance).toMatchObject({
+      sourceOfTruth: expect.any(String),
+      readingRules: expect.any(Array),
     });
     expect(Array.isArray(manifest.taskRecipes)).toBe(true);
-    expect(manifest.endpoints).toBeUndefined();
+    expect(() =>
+      renderSkillsManifest(version, { version: "${unsupported}" }),
+    ).toThrow("Unknown skills template placeholder");
     expect(raw).not.toContain("queryName");
     expect(raw).not.toContain("Unix milliseconds");
     expect(raw).not.toContain('"ok"');
-    expect(raw).not.toContain("overview?compare=previous_period");
+    expect(raw).not.toContain("typedAnalyticsOperations");
+    expect(raw).not.toContain('"$ref"');
+    expect(raw).not.toContain('"requestBody"');
   });
 
-  it("keeps OpenAPI request bodies and key responses concrete", () => {
+  it("publishes the registry-owned typed API v1 operations in the main contract", () => {
     const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const typedPaths = buildApiV1OpenApiPaths();
 
-    const bodySchema = (method: string, path: string) =>
-      spec.paths[path]?.[method]?.requestBody?.content?.["application/json"]
-        ?.schema?.$ref;
-    const responseSchema = (method: string, path: string, status = "200") =>
-      spec.paths[path]?.[method]?.responses?.[status]?.content?.[
-        "application/json"
-      ]?.schema?.$ref;
+    for (const [path, typedPathItem] of Object.entries(typedPaths)) {
+      for (const method of ["get", "post", "patch", "delete"] as const) {
+        const typedOperation = typedPathItem[method];
+        if (!typedOperation) continue;
+        const operation = spec.paths[path]?.[method];
+        expect(operation, `${method.toUpperCase()} ${path}`).toBeDefined();
+        expect(operation?.operationId).toBe(typedOperation.operationId);
+        expect(operation?.["x-api-v1-lifecycle"]).toBe("exposed");
+        expect(operation?.["x-api-v1-scopes"]).toEqual(
+          typedOperation["x-api-v1-scopes"],
+        );
+      }
+    }
 
-    expect(bodySchema("post", "/api/v1/sites/{siteId}/funnels")).toBe(
-      "#/components/schemas/FunnelCreateInput",
-    );
-    expect(bodySchema("post", "/api/v1/sites/{siteId}/funnels/analysis")).toBe(
-      "#/components/schemas/FunnelAnalysisRequest",
-    );
+    const overview =
+      spec.paths["/api/v1/sites/{siteId}/analytics/overview"]?.post;
     expect(
-      bodySchema("patch", "/api/v1/sites/{siteId}/funnels/{funnelId}"),
-    ).toBe("#/components/schemas/FunnelUpdateInput");
-    expect(bodySchema("post", "/api/v1/sites/{siteId}/events/search")).toBe(
-      "#/components/schemas/EventSearchRequest",
-    );
-
+      overview?.requestBody?.content?.["application/json"]?.schema,
+    ).toBeDefined();
     expect(
-      spec.components.schemas.SiteCreateInput.properties?.sharing,
-    ).toBeUndefined();
-    expect(
-      spec.components.schemas.SiteUpdateInput.properties?.sharing,
-    ).toBeUndefined();
-    expect(spec.components.schemas.SiteCreateInput.properties).toEqual(
-      expect.objectContaining({
-        publicEnabled: expect.objectContaining({ type: "boolean" }),
-        publicSlug: expect.objectContaining({ type: "string" }),
-      }),
-    );
-    expect(spec.components.schemas.SiteUpdateInput.properties).toEqual(
-      expect.objectContaining({
-        publicEnabled: expect.objectContaining({ type: "boolean" }),
-        publicSlug: expect.objectContaining({ type: "string" }),
-      }),
-    );
+      overview?.responses?.["200"]?.content?.["application/json"]?.schema,
+    ).toBeDefined();
+    expect(overview?.["x-api-v1-scopes"]).toEqual(["analytics:read"]);
 
     walk(spec.paths, (value) => {
       if (!value || typeof value !== "object" || !("requestBody" in value)) {
@@ -207,92 +210,21 @@ describe("api v1 public docs", () => {
       ).not.toBe("#/components/schemas/GenericObjectResponse");
     });
 
-    expect(
-      responseSchema("post", "/api/v1/sites/{siteId}/funnels", "201"),
-    ).toBe("#/components/schemas/FunnelResponse");
-    expect(
-      spec.paths["/api/v1/sites/{siteId}/funnels"]?.post?.parameters,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "Idempotency-Key",
-          in: "header",
-        }),
-      ]),
-    );
-    expect(responseSchema("get", "/api/v1/team/usage")).toBe(
-      "#/components/schemas/TeamUsageResponse",
-    );
-    expect(
-      responseSchema("get", "/api/v1/sites/{siteId}/analytics/compare"),
-    ).toBe("#/components/schemas/AnalyticsCompareResponse");
-    expect(
-      responseSchema("post", "/api/v1/sites/{siteId}/analytics/explore"),
-    ).toBe("#/components/schemas/AnalyticsExploreResponse");
-    expect(
-      responseSchema("get", "/api/v1/sites/{siteId}/funnels/{funnelId}"),
-    ).toBe("#/components/schemas/FunnelResponse");
-    expect(
-      responseSchema("get", "/api/v1/sites/{siteId}/event-types/{eventName}"),
-    ).toBe("#/components/schemas/EventTypeResponse");
-
-    expect(spec.components.schemas.CapabilitiesFeatures).toBeDefined();
-    expect(spec.components.schemas.CapabilitiesLimits).toBeDefined();
-    expect(spec.components.schemas.EventType).toBeDefined();
-    expect(spec.components.schemas.EventFieldDefinition).toBeDefined();
-    expect(
-      JSON.stringify(spec.components.schemas.CapabilitiesResponse),
-    ).toContain("Capabilities");
-    expect(JSON.stringify(spec.components.schemas.TimeRangeInput)).toContain(
-      "last 7 days",
-    );
+    expect(spec.components.securitySchemes?.BearerAuth).toBeDefined();
+    expect(spec.components.securitySchemes?.DashboardSession).toBeUndefined();
   });
 
-  it("documents collect payloads with concrete schemas and examples", () => {
+  it("publishes only supported external non-v1 integrations", () => {
     const spec = readJson<OpenApiSpec>("docs/openapi.json");
-    const collect = spec.paths["/collect"]?.post;
-    const collectPayload = spec.components.schemas.CollectPayload;
 
-    expect(collect?.responses).toBeDefined();
-    expect(Object.keys(collect?.responses ?? {}).sort()).toEqual([
-      "204",
-      "400",
-      "413",
-    ]);
-    expect(collect?.responses?.["429"]).toBeUndefined();
-    expect(
-      collect?.requestBody?.content?.["application/json"]?.schema?.$ref,
-    ).toBe("#/components/schemas/CollectPayload");
-
-    expect(collectPayload.required).toEqual(["siteId", "type"]);
-    expect(collectPayload.additionalProperties).toBe(false);
-    expect(collectPayload.properties).toEqual(
-      expect.objectContaining({
-        siteId: expect.objectContaining({ format: "uuid" }),
-        type: expect.objectContaining({
-          enum: ["pageview", "event", "engagement", "performance"],
-        }),
-        timestamp: expect.objectContaining({ format: "date-time" }),
-        anonymousId: expect.objectContaining({ maxLength: 120 }),
-        sessionId: expect.objectContaining({ maxLength: 120 }),
-        page: { $ref: "#/components/schemas/CollectPage" },
-        client: { $ref: "#/components/schemas/CollectClient" },
-        event: { $ref: "#/components/schemas/CollectEvent" },
-        engagement: { $ref: "#/components/schemas/CollectEngagement" },
-        performance: { $ref: "#/components/schemas/CollectPerformance" },
-      }),
-    );
-    expect(
-      spec.components.schemas.CollectEvent.properties?.data
-        ?.additionalProperties,
-    ).toBe(true);
-
-    const examples =
-      collect?.requestBody?.content?.["application/json"]?.examples ?? {};
-    expect(Object.keys(examples).sort()).toEqual(["event", "pageview"]);
-    const rawExamples = JSON.stringify(examples);
-    expect(rawExamples).not.toContain('"ok"');
-    expect(/\b\d{13}\b/.test(rawExamples)).toBe(false);
+    expect(spec.paths["/collect"]?.post?.security).toEqual([]);
+    expect(spec.paths["/collect"]?.post?.tags).toContain("Ingestion");
+    expect(spec.paths["/api/private/session"]).toBeUndefined();
+    expect(spec.paths["/api/private/admin/api-keys"]).toBeUndefined();
+    expect(spec.paths["/api/public/session"]).toBeUndefined();
+    expect(spec.paths["/api/public/share/{slug}/site"]).toBeUndefined();
+    expect(spec.paths["/__e2e__/clock"]).toBeUndefined();
+    expect(spec.components.securitySchemes?.DashboardSession).toBeUndefined();
   });
 
   it("adds examples for core responses and mutating request bodies", () => {
@@ -330,130 +262,200 @@ describe("api v1 public docs", () => {
   it("uses concrete schemas for cross-breakdowns and events summary", () => {
     const spec = readJson<OpenApiSpec>("docs/openapi.json");
     const responseSchema = (path: string) =>
-      spec.paths[path]?.get?.responses?.["200"]?.content?.["application/json"]
-        ?.schema?.$ref;
+      spec.paths[path]?.post?.responses?.["200"]?.content?.["application/json"]
+        ?.schema;
 
     expect(
       responseSchema("/api/v1/sites/{siteId}/analytics/cross-breakdowns"),
-    ).toBe("#/components/schemas/AnalyticsCrossBreakdownResponse");
-    expect(responseSchema("/api/v1/sites/{siteId}/events/summary")).toBe(
-      "#/components/schemas/EventsSummaryResponse",
-    );
+    ).toEqual(expect.any(Object));
+    expect(
+      responseSchema("/api/v1/sites/{siteId}/analytics/events/summary"),
+    ).toEqual(expect.any(Object));
     expect(JSON.stringify(spec.paths)).not.toContain(
       "#/components/schemas/GenericObjectResponse",
     );
   });
 
-  it("keeps final API examples semantically aligned with endpoints", () => {
+  it("uses examples from the active typed API v1 contract", () => {
     const spec = readJson<OpenApiSpec>("docs/openapi.json");
-    const eventTypesExample = defaultExampleValue(
-      spec.paths["/api/v1/sites/{siteId}/event-types"].get,
-    ) as { data?: Array<{ key?: string; events?: number }> };
-    const teamSitesExample = defaultExampleValue(
-      spec.paths["/api/v1/team/analytics/sites"].get,
-    ) as { data?: Array<{ key?: string; label?: string; views?: number }> };
-    const eventTypeExample = defaultExampleValue(
-      spec.paths["/api/v1/sites/{siteId}/event-types/{eventName}"].get,
-    ) as { data?: { name?: string; fields?: unknown[]; links?: unknown } };
+    const overview =
+      spec.paths["/api/v1/sites/{siteId}/analytics/overview"]?.post;
+    const overviewRequest =
+      overview?.requestBody?.content?.["application/json"]?.example;
+    const overviewResponse = defaultExampleValue(overview) as {
+      data?: { service?: string };
+      meta?: { requestId?: string };
+    };
 
-    expect(eventTypesExample.data?.map((row) => row.key)).toEqual([
-      "signup",
-      "purchase",
-    ]);
-    expect(JSON.stringify(eventTypesExample)).not.toContain("__direct__");
-    expect(JSON.stringify(eventTypesExample)).not.toContain("__unknown__");
-    expect(eventTypesExample.data?.[0]).toEqual(
-      expect.objectContaining({ events: 450, sessions: 210, visitors: 190 }),
+    expect(overviewRequest).toEqual(
+      expect.objectContaining({ timeRange: expect.any(Object) }),
     );
-
-    expect(teamSitesExample.data?.[0]).toEqual(
-      expect.objectContaining({
-        key: "550e8400-e29b-41d4-a716-446655440000",
-        label: "Example Blog",
-        views: 5200,
-      }),
-    );
-    expect(JSON.stringify(teamSitesExample)).not.toContain("__direct__");
-    expect(JSON.stringify(teamSitesExample)).not.toContain("__unknown__");
-
-    expect(eventTypeExample.data).toEqual(
-      expect.objectContaining({
-        name: "signup",
-        events: 450,
-        fields: expect.arrayContaining([
-          expect.objectContaining({ path: "plan", valueTypes: ["string"] }),
-        ]),
-        links: expect.any(Object),
-      }),
-    );
+    expect(overviewResponse.meta?.requestId).toBeTruthy();
+    expect(JSON.stringify(overviewRequest)).not.toContain("__direct__");
+    expect(JSON.stringify(overviewResponse)).not.toContain("__unknown__");
   });
 
-  it("constrains analytics explore metrics and dimensions", () => {
+  it("constrains typed analytics request bodies", () => {
     const spec = readJson<OpenApiSpec>("docs/openapi.json");
-    const explore = spec.components.schemas.AnalyticsExploreRequest;
+    const overview =
+      spec.paths["/api/v1/sites/{siteId}/analytics/overview"]?.post?.requestBody
+        ?.content?.["application/json"]?.schema;
+    const search =
+      spec.paths["/api/v1/sites/{siteId}/analytics/events/search"]?.post
+        ?.requestBody?.content?.["application/json"]?.schema;
 
-    expect(explore.description).toContain("multidimensional");
-    expect(explore.properties?.metrics).toEqual(
+    expect(overview?.properties?.metrics).toEqual(
       expect.objectContaining({
         minItems: 1,
         maxItems: 20,
-        description: expect.stringContaining("analytics/schema"),
       }),
     );
-    expect(explore.properties?.metrics?.items).toEqual(
-      expect.objectContaining({ type: "string", maxLength: 80 }),
+    expect(overview?.properties?.metrics?.items).toEqual(
+      expect.objectContaining({ type: "string" }),
     );
-    expect(explore.properties?.dimensions).toEqual(
+    expect(search?.properties?.page).toEqual(
       expect.objectContaining({
-        maxItems: 5,
-        description: expect.stringContaining("analytics/schema"),
+        properties: expect.objectContaining({
+          limit: expect.objectContaining({ minimum: 1, maximum: 200 }),
+        }),
       }),
-    );
-    expect(explore.properties?.dimensions?.items).toEqual(
-      expect.objectContaining({ type: "string", maxLength: 120 }),
     );
   });
 
-  it("keeps skills calls aligned with OpenAPI path templates", () => {
-    const spec = readJson<{
-      paths: Record<string, Record<string, unknown>>;
-    }>("docs/openapi.json");
-    const manifest = readJson<{
-      discovery?: Record<string, string>;
-      taskRecipes?: Array<{ calls?: string[] }>;
-      endpoints?: unknown;
-    }>("docs/skills.json");
+  it("documents batch eligibility and the supported performance dimensions", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const performanceBreakdown =
+      spec.paths[
+        "/api/v1/sites/{siteId}/analytics/performance/breakdowns/{dimension}"
+      ]?.post;
+    const eventsSearch =
+      spec.paths["/api/v1/sites/{siteId}/analytics/events/search"]?.post;
+    const eventsTimeseries =
+      spec.paths["/api/v1/sites/{siteId}/analytics/events/timeseries"]?.post;
 
-    const operations = Object.entries(spec.paths).flatMap(([path, item]) =>
-      Object.keys(item)
-        .filter((method) =>
-          ["get", "post", "patch", "delete", "put"].includes(method),
-        )
-        .map((method) => ({ method: method.toUpperCase(), path })),
+    expect(performanceBreakdown?.["x-api-v1-batch-eligible"]).toBe(true);
+    expect(
+      performanceBreakdown?.parameters?.find(
+        (parameter) =>
+          typeof parameter === "object" &&
+          parameter !== null &&
+          "name" in parameter &&
+          parameter.name === "dimension",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        schema: expect.objectContaining({
+          enum: ["page.path", "geo.country"],
+        }),
+      }),
     );
-    const hasOperation = (method: string, path: string) =>
-      operations.some(
-        (operation) =>
-          operation.method === method &&
-          pathMatchesTemplate(operation.path, path),
-      );
+    expect(eventsSearch?.description).toContain("1 through 200");
+    expect(eventsTimeseries?.description).toContain("points");
+  });
 
-    expect(hasOperation("GET", manifest.discovery?.root ?? "")).toBe(true);
-    expect(hasOperation("GET", manifest.discovery?.token ?? "")).toBe(true);
-    expect(hasOperation("GET", manifest.discovery?.capabilities ?? "")).toBe(
-      true,
-    );
-    expect(hasOperation("GET", manifest.discovery?.analyticsSchema ?? "")).toBe(
-      true,
-    );
+  it("documents typed filters, saved filters, and response envelopes", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const overview =
+      spec.paths["/api/v1/sites/{siteId}/analytics/overview"]?.post;
+    const eventSearch =
+      spec.paths["/api/v1/sites/{siteId}/analytics/events/search"]?.post;
+    const funnel = spec.paths["/api/v1/sites/{siteId}/funnels"]?.post;
 
-    for (const recipe of manifest.taskRecipes ?? []) {
-      for (const call of recipe.calls ?? []) {
-        const [method, rawPath] = call.split(/\s+/, 2);
-        const path = rawPath.split("?")[0];
-        expect(hasOperation(method, path)).toBe(true);
+    expect(JSON.stringify(overview?.requestBody)).toContain('"inline"');
+    expect(JSON.stringify(overview?.requestBody)).toContain('"saved"');
+    expect(
+      eventSearch?.requestBody?.content?.["application/json"]?.schema,
+    ).toBeDefined();
+    expect(
+      funnel?.requestBody?.content?.["application/json"]?.schema,
+    ).toBeDefined();
+
+    for (const [path, item] of Object.entries(spec.paths)) {
+      if (!path.startsWith("/api/v1")) continue;
+      for (const operation of Object.values(item)) {
+        if (!operation?.operationId) continue;
+        expect(
+          operation.responses?.["405"],
+          `${operation.operationId} 405`,
+        ).toBeDefined();
       }
     }
-    expect(manifest.endpoints).toBeUndefined();
+  });
+
+  it("covers public operations with operationId-based recipes", () => {
+    const spec = readJson<OpenApiSpec>("docs/openapi.json");
+    const manifest = readJson<{
+      discovery: {
+        sessionInitialization: string[];
+        siteAnalyticsSchema: string;
+        teamAnalyticsSchema: string;
+        health: string;
+      };
+      taskRecipes: Array<{
+        scope: "site" | "team" | "integration";
+        preparation: string[];
+        operations: string[];
+        requiresConfirmation?: boolean;
+      }>;
+    }>("docs/skills.json");
+    const publicOperationIds = new Set(
+      Object.values(spec.paths).flatMap((item) =>
+        Object.values(item)
+          .map((operation) => operation?.operationId)
+          .filter((operationId): operationId is string => Boolean(operationId)),
+      ),
+    );
+    const referenced = new Set([
+      ...manifest.discovery.sessionInitialization,
+      manifest.discovery.siteAnalyticsSchema,
+      manifest.discovery.teamAnalyticsSchema,
+      manifest.discovery.health,
+      ...manifest.taskRecipes.flatMap((recipe) => [
+        ...recipe.preparation,
+        ...recipe.operations,
+      ]),
+    ]);
+
+    expect(
+      [...referenced].every((operationId) =>
+        publicOperationIds.has(operationId),
+      ),
+    ).toBe(true);
+    expect(
+      [...publicOperationIds].filter(
+        (operationId) => !referenced.has(operationId),
+      ),
+    ).toEqual([]);
+
+    for (const recipe of manifest.taskRecipes) {
+      const raw = JSON.stringify(recipe);
+      const operationIds = [...recipe.preparation, ...recipe.operations];
+      expect(raw).not.toMatch(/\b(?:GET|POST|PUT|PATCH|DELETE)\s+\//);
+      expect(raw).not.toMatch(/\/api\/|\/collect|\/script\.js/);
+      expect(["site", "team", "integration"]).toContain(recipe.scope);
+      if (operationIds.some((id) => id.startsWith("site.analytics."))) {
+        expect(recipe.preparation).toContain("site.analytics.schema");
+      }
+      if (operationIds.some((id) => id.startsWith("team.analytics."))) {
+        expect(recipe.preparation).toContain("team.analytics.schema");
+      }
+      if (
+        operationIds.some((id) =>
+          [
+            "sites.create",
+            "sites.update",
+            "sites.delete",
+            "funnels.create",
+            "funnels.update",
+            "funnels.delete",
+            "settings.privacy.update",
+            "settings.sharing.update",
+            "settings.tracking.update",
+          ].includes(id),
+        )
+      ) {
+        expect(recipe.requiresConfirmation).toBe(true);
+      }
+    }
   });
 });

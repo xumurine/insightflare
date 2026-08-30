@@ -5,11 +5,12 @@ import {
   fetchPagesDashboard,
   fetchPagesShareTrend,
 } from "@/lib/dashboard/client-page-data";
+import { dashboardFilterDocumentFromPresentation } from "@/lib/dashboard/filter-state";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 
 describe("dashboard client page data helpers", () => {
   const realFetch = globalThis.fetch;
-  const realDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE;
+  const realDemoMode = process.env.VITE_DEMO_MODE;
   const window: TimeWindow = {
     preset: "7d",
     from: 1000,
@@ -21,9 +22,9 @@ describe("dashboard client page data helpers", () => {
   afterEach(() => {
     globalThis.fetch = realFetch;
     if (realDemoMode == null) {
-      delete process.env.NEXT_PUBLIC_DEMO_MODE;
+      delete process.env.VITE_DEMO_MODE;
     } else {
-      process.env.NEXT_PUBLIC_DEMO_MODE = realDemoMode;
+      process.env.VITE_DEMO_MODE = realDemoMode;
     }
     vi.restoreAllMocks();
   });
@@ -40,7 +41,7 @@ describe("dashboard client page data helpers", () => {
   }
 
   it("serializes page dashboard defaults, options, and filters", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -48,10 +49,14 @@ describe("dashboard client page data helpers", () => {
       );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    await fetchPagesDashboard("pages-site", window, {
-      path: "/docs",
-      sourceDomain: "example.com",
-    });
+    await fetchPagesDashboard(
+      "pages-site",
+      window,
+      dashboardFilterDocumentFromPresentation({
+        path: "/docs",
+        sourceDomain: "example.com",
+      }),
+    );
     await fetchPagesDashboard("pages-site", window, undefined, {
       page: 3,
       pageSize: 40,
@@ -66,8 +71,8 @@ describe("dashboard client page data helpers", () => {
         interval: "day",
         page: "1",
         pageSize: "12",
-        path: "/docs",
-        sourceDomain: "example.com",
+        "filter[page.path]": "/docs",
+        "filter[referrer.domain]": "example.com",
       }),
     );
     expect(paramsFromCall(fetchMock, 1).get("page")).toBe("3");
@@ -75,7 +80,7 @@ describe("dashboard client page data helpers", () => {
   });
 
   it("builds page share trend with an Other series when totals exceed top pages", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi.fn((url: string) => {
       if (url.includes("/api/private/pages-dashboard")) {
         return Promise.resolve(
@@ -154,7 +159,7 @@ describe("dashboard client page data helpers", () => {
   });
 
   it("builds page share trend without Other when top page totals cover the trend", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi.fn((url: string) => {
       if (url.includes("/api/private/pages-dashboard")) {
         return Promise.resolve(
@@ -223,7 +228,7 @@ describe("dashboard client page data helpers", () => {
   });
 
   it("merges duplicate page buckets and fills Other from total-only buckets", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi.fn((url: string) => {
       if (url.includes("/api/private/pages-dashboard")) {
         return Promise.resolve(
@@ -269,9 +274,11 @@ describe("dashboard client page data helpers", () => {
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const trend = await fetchPagesShareTrend("share-duplicates", window, {
-      path: "/docs",
-    });
+    const trend = await fetchPagesShareTrend(
+      "share-duplicates",
+      window,
+      dashboardFilterDocumentFromPresentation({ path: "/docs" }),
+    );
 
     expect(trend.ok).toBe(false);
     expect(trend.series).toEqual([
@@ -327,7 +334,7 @@ describe("dashboard client page data helpers", () => {
   });
 
   it("uses total trend data when the page dashboard request falls back", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi.fn((url: string) => {
       if (url.includes("/api/private/pages-dashboard")) {
         return Promise.reject(new Error("pages unavailable"));
@@ -345,12 +352,14 @@ describe("dashboard client page data helpers", () => {
     });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const trend = await fetchPagesShareTrend("share-total-only", window, {
-      path: "/docs",
-    });
+    const trend = await fetchPagesShareTrend(
+      "share-total-only",
+      window,
+      dashboardFilterDocumentFromPresentation({ path: "/docs" }),
+    );
 
     expect(paramsFromCall(fetchMock, 0).get("pageSize")).toBe("5");
-    expect(paramsFromCall(fetchMock, 1).get("path")).toBe("/docs");
+    expect(paramsFromCall(fetchMock, 1).get("filter[page.path]")).toBe("/docs");
     expect(trend.series).toEqual([
       {
         key: "other",
@@ -378,7 +387,7 @@ describe("dashboard client page data helpers", () => {
   });
 
   it("keeps page trend data when the total trend request falls back", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const fetchMock = vi.fn((url: string) => {
       if (url.includes("/api/private/pages-dashboard")) {
         return Promise.resolve(
@@ -436,7 +445,7 @@ describe("dashboard client page data helpers", () => {
   });
 
   it("falls back to empty page share trend data when both source requests fail", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("offline"));
 
     await expect(
@@ -450,7 +459,7 @@ describe("dashboard client page data helpers", () => {
   });
 
   it("returns page card tabs when present and empty tabs when omitted", async () => {
-    delete process.env.NEXT_PUBLIC_DEMO_MODE;
+    delete process.env.VITE_DEMO_MODE;
     const tabs = {
       path: [{ label: "/docs", views: 3 }],
       title: [{ label: "Docs", views: 2 }],
@@ -465,7 +474,11 @@ describe("dashboard client page data helpers", () => {
     globalThis.fetch = fetchMock;
 
     await expect(
-      fetchPageCardTabs("tabs-site", window, { path: "/docs" }),
+      fetchPageCardTabs(
+        "tabs-site",
+        window,
+        dashboardFilterDocumentFromPresentation({ path: "/docs" }),
+      ),
     ).resolves.toEqual(tabs);
     await expect(fetchPageCardTabs("tabs-empty", window)).resolves.toEqual({
       path: [],
@@ -475,6 +488,6 @@ describe("dashboard client page data helpers", () => {
       exit: [],
     });
     expect(paramsFromCall(fetchMock, 0).get("limit")).toBe("100");
-    expect(paramsFromCall(fetchMock, 0).get("path")).toBe("/docs");
+    expect(paramsFromCall(fetchMock, 0).get("filter[page.path]")).toBe("/docs");
   });
 });

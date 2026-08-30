@@ -1,22 +1,25 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import type { ComponentType, ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiArrowRightLine,
   RiBarChartBoxLine,
+  RiCheckLine,
   RiCloseLine,
   RiCodeLine,
   RiDeleteBinLine,
+  RiErrorWarningLine,
   RiFileCopyLine,
   RiGlobalLine,
   RiLinksLine,
+  RiQuestionLine,
   RiRouteLine,
   RiSave3Line,
   RiSettings3Line,
   RiShareForwardLine,
   RiSpeedUpLine,
+  RiTestTubeLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -31,6 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,6 +55,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogClose,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -59,16 +73,31 @@ import {
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  type AdminServiceHttpMethod,
+  requestAdminService,
+} from "@/lib/admin-service-client";
+import type { AdminServiceRoute } from "@/lib/admin-service-contract";
+import {
+  BLOCKING_FIELD_IDS,
+  type BlockingFieldId,
+  type BlockingRequestContext,
+  type BlockingRuleSyntaxError,
+  matchBlockingRules,
+  parseBlockingRules,
+  validateBlockingRules,
+} from "@/lib/blocking-rules";
+import type { SiteSettingsInitialData } from "@/lib/dashboard/management-data";
 import type { SiteData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 import {
   DEFAULT_SITE_SCRIPT_SETTINGS,
-  formatListInput,
   normalizeSiteScriptSettings,
-  parseDomainWhitelist,
-  parsePathBlacklist,
+  type SiteSettingsConfig,
   type TrackingStrength,
 } from "@/lib/site-settings";
 import { cn } from "@/lib/utils";
@@ -88,27 +117,7 @@ interface SiteSettingsClientPageProps {
     SiteData,
     "id" | "name" | "domain" | "publicEnabled" | "publicSlug"
   >;
-}
-
-interface ActionResponse<T> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-}
-
-interface ScriptSnippetPayload {
-  ok: boolean;
-  data?: {
-    siteId: string;
-    src: string;
-    snippet: string;
-  };
-}
-
-interface SiteConfigPayload {
-  ok: boolean;
-  data?: Record<string, unknown>;
+  initialData?: SiteSettingsInitialData | null;
 }
 
 function safeSlug(value: string): string {
@@ -144,36 +153,679 @@ function formatSampleRateValue(value: number): string {
 }
 
 async function postJson<T>(
-  url: string,
+  route: AdminServiceRoute,
   body: Record<string, unknown>,
-  method: "POST" | "PATCH" = "POST",
+  method: AdminServiceHttpMethod = "POST",
 ): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: url.split("?")[0],
-      method,
-      params: Object.fromEntries(new URLSearchParams(url.split("?")[1] || "")),
-      body,
-    }) as ActionResponse<T>;
-    if (!result.ok || result.data === undefined) {
-      throw new Error(result.message || result.error || "request_failed");
+  return requestAdminService<T>(route, { method, body });
+}
+
+type BlockingEditorValues = Record<BlockingFieldId, string>;
+
+interface BlockingRuleFieldCopy {
+  title: string;
+  label: string;
+  placeholder: string;
+  hint: string;
+  syntax: string;
+  examples: readonly string[];
+  exampleDescription: string;
+  testLabel: string;
+  testPlaceholder: string;
+  testHint: string;
+}
+
+interface BlockingRuleDialogCopy {
+  testButton: string;
+  helpButton: string;
+  helpTitle: string;
+  helpDescription: string;
+  syntaxTitle: string;
+  examplesTitle: string;
+  actionsTitle: string;
+  actionsDescription: string;
+  actionBlock: string;
+  actionAllow: string;
+  statusEmpty: string;
+  statusValid: string;
+  statusInvalid: string;
+  errorInvalidRule: string;
+  errorInvalidLines: string;
+  errorInvalidLine: string;
+  errorLineTooLong: string;
+  errorTooManyLines: string;
+  errorInvalidPattern: string;
+  testTitle: string;
+  testDescription: string;
+  testRun: string;
+  testClose: string;
+  testInvalidRules: string;
+  testInvalidRule: string;
+  testBlocked: string;
+  testAllowed: string;
+  testNoMatch: string;
+  testMatchedRules: string;
+  testActionBlock: string;
+  testActionAllow: string;
+  testLine: string;
+}
+
+const BLOCKING_RULE_FIELD_DEFINITIONS: ReadonlyArray<{
+  field: BlockingFieldId;
+  icon: ComponentType<{ className?: string }>;
+}> = [
+  { field: "domains", icon: RiGlobalLine },
+  { field: "paths", icon: RiRouteLine },
+  { field: "queryParameters", icon: RiSettings3Line },
+  { field: "referrers", icon: RiLinksLine },
+  { field: "userAgents", icon: RiCodeLine },
+  { field: "ips", icon: RiBarChartBoxLine },
+  { field: "asns", icon: RiBarChartBoxLine },
+  { field: "countries", icon: RiGlobalLine },
+  { field: "regions", icon: RiGlobalLine },
+];
+
+function blockingEditorValues(input: unknown): BlockingEditorValues {
+  const parsed = parseBlockingRules(input);
+  return Object.fromEntries(
+    BLOCKING_FIELD_IDS.map((field) => [
+      field,
+      parsed.fields[field].lines.join("\n"),
+    ]),
+  ) as BlockingEditorValues;
+}
+
+function blockingEditorLines(value: string): string[] {
+  return value.length === 0 ? [] : value.split(/\r?\n/u);
+}
+
+function blockingRuleErrorMessage(
+  error: BlockingRuleSyntaxError,
+  copy: BlockingRuleFieldCopy,
+  dialogCopy: BlockingRuleDialogCopy,
+): string {
+  const params = {
+    field: copy.title,
+    line: error.line ?? "",
+  };
+  switch (error.code) {
+    case "invalid_lines":
+      return formatI18nTemplate(dialogCopy.errorInvalidLines, params);
+    case "invalid_line":
+      return formatI18nTemplate(dialogCopy.errorInvalidLine, params);
+    case "line_too_long":
+      return formatI18nTemplate(dialogCopy.errorLineTooLong, params);
+    case "too_many_lines":
+      return dialogCopy.errorTooManyLines;
+    case "invalid_pattern":
+      return formatI18nTemplate(dialogCopy.errorInvalidPattern, params);
+    default:
+      return dialogCopy.errorInvalidRule;
+  }
+}
+
+function blockingTestContext(
+  field: BlockingFieldId,
+  value: string,
+): BlockingRequestContext {
+  const input = value.trim();
+  switch (field) {
+    case "domains":
+      return { hostname: input };
+    case "paths":
+      return { pathname: input };
+    case "queryParameters":
+      return { query: input };
+    case "referrers":
+      return { referrer: input };
+    case "userAgents":
+      return { userAgent: input };
+    case "ips":
+      return { ip: input };
+    case "asns":
+      return { asn: input };
+    case "countries":
+      return { country: input };
+    case "regions":
+      return { region: input };
+  }
+}
+
+function BlockingRuleHelpDialog({
+  copy,
+  dialogCopy,
+  open,
+  onOpenChange,
+}: {
+  copy: BlockingRuleFieldCopy;
+  dialogCopy: BlockingRuleDialogCopy;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const exampleConfig = copy.examples.join("\n");
+  const blockExample =
+    copy.examples.find((example) => !example.startsWith("-")) ??
+    copy.examples[0] ??
+    "";
+  const allowExample =
+    copy.examples.find((example) => example.startsWith("-")) ?? "";
+  const allowExamplePattern = allowExample.replace(/^-/, "");
+
+  return (
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent
+        desktopClassName="max-w-2xl"
+        drawerClassName="overflow-hidden"
+      >
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle icon={RiQuestionLine}>
+            {copy.title} · {dialogCopy.helpTitle}
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
+            {dialogCopy.helpDescription}
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
+        <ResponsiveDialogBody>
+          <div className="flex flex-col gap-6">
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium">{dialogCopy.syntaxTitle}</h3>
+              <div className="space-y-2 border-y border-border py-3 text-xs">
+                {copy.syntax
+                  .split(/\r?\n/u)
+                  .filter((line) => line.length > 0)
+                  .map((line, index) => (
+                    <p key={`${line}-${index}`}>{line}</p>
+                  ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{copy.hint}</p>
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium">
+                {dialogCopy.examplesTitle}
+              </h3>
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap border bg-muted/30 p-3 font-mono text-xs leading-relaxed">
+                {exampleConfig}
+              </pre>
+              <p className="text-xs text-muted-foreground">
+                {copy.exampleDescription}
+              </p>
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium">{dialogCopy.actionsTitle}</h3>
+              <p className="text-xs text-muted-foreground">
+                {dialogCopy.actionsDescription}
+              </p>
+              <table className="w-full border-y border-border text-xs">
+                <colgroup>
+                  <col className="w-1/2" />
+                  <col className="w-1/2" />
+                </colgroup>
+                <tbody className="divide-y divide-border">
+                  {blockExample ? (
+                    <tr>
+                      <td className="w-1/2 px-3 py-3 align-top">
+                        <code className="inline-block max-w-full break-all bg-muted px-2 py-1 font-mono">
+                          {blockExample}
+                        </code>
+                      </td>
+                      <td className="w-1/2 px-3 py-3 align-top">
+                        {formatI18nTemplate(dialogCopy.actionBlock, {
+                          example: blockExample,
+                        })}
+                      </td>
+                    </tr>
+                  ) : null}
+                  {allowExample ? (
+                    <tr>
+                      <td className="w-1/2 px-3 py-3 align-top">
+                        <code className="inline-block max-w-full break-all bg-muted px-2 py-1 font-mono">
+                          {allowExample}
+                        </code>
+                      </td>
+                      <td className="w-1/2 px-3 py-3 align-top">
+                        {formatI18nTemplate(dialogCopy.actionAllow, {
+                          example: allowExamplePattern,
+                        })}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </section>
+          </div>
+        </ResponsiveDialogBody>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+}
+
+function BlockingRuleTestDialog({
+  field,
+  copy,
+  dialogCopy,
+  value,
+  errors,
+  open,
+  onOpenChange,
+}: {
+  field: BlockingFieldId;
+  copy: BlockingRuleFieldCopy;
+  dialogCopy: BlockingRuleDialogCopy;
+  value: string;
+  errors: readonly BlockingRuleSyntaxError[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [testValue, setTestValue] = useState("");
+  const [result, setResult] = useState<ReturnType<
+    typeof matchBlockingRules
+  > | null>(null);
+  const fieldResult = result?.fields[field];
+
+  useEffect(() => {
+    if (!open) {
+      setTestValue("");
+      setResult(null);
     }
-    return result.data;
+  }, [open]);
+
+  function handleTest() {
+    if (errors.length > 0) {
+      setResult(null);
+      return;
+    }
+    const parsed = parseBlockingRules({
+      blockingRules: [
+        {
+          version: 2,
+          data: { [field]: blockingEditorLines(value) },
+        },
+      ],
+    });
+    if (!parsed.ok) {
+      setResult(null);
+      return;
+    }
+    setResult(
+      matchBlockingRules(parsed, blockingTestContext(field, testValue)),
+    );
   }
-  const response = await fetch(url, {
-    method,
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const payload = (await response.json()) as ActionResponse<T>;
-  if (!response.ok || !payload.ok || payload.data === undefined) {
-    throw new Error(payload.message || payload.error || "request_failed");
-  }
-  return payload.data;
+
+  return (
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent
+        desktopClassName="max-w-xl"
+        drawerClassName="overflow-hidden"
+      >
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle icon={RiTestTubeLine}>
+            {copy.title} · {dialogCopy.testTitle}
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
+            {dialogCopy.testDescription}
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
+        <ResponsiveDialogBody>
+          <div className="flex flex-col gap-5">
+            <div className="space-y-2">
+              <Label htmlFor={`site-settings-blocking-test-${field}`}>
+                {copy.testLabel}
+              </Label>
+              <Input
+                id={`site-settings-blocking-test-${field}`}
+                value={testValue}
+                onChange={(event) => {
+                  setTestValue(event.target.value);
+                  setResult(null);
+                }}
+                placeholder={copy.testPlaceholder}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleTest();
+                  }
+                }}
+              />
+              <p className="text-xs text-muted-foreground">{copy.testHint}</p>
+            </div>
+
+            {errors.length > 0 ? (
+              <div
+                role="alert"
+                className="space-y-2 border border-destructive/30 bg-destructive/[0.04] p-3 text-xs text-destructive"
+              >
+                <p className="font-medium">{dialogCopy.testInvalidRules}</p>
+                <ul className="space-y-1">
+                  {errors.map((error, index) => (
+                    <li key={`${error.code}-${error.line ?? "x"}-${index}`}>
+                      {error.line
+                        ? `${dialogCopy.testLine} ${error.line}`
+                        : dialogCopy.testInvalidRule}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <AutoResizer>
+              <AutoTransition
+                className="pb-px"
+                transitionKey={
+                  fieldResult
+                    ? `${fieldResult.decision}-${fieldResult.matched.length > 0 ? "matched" : "no-match"}`
+                    : "empty"
+                }
+                initial={false}
+                duration={0.15}
+              >
+                {fieldResult ? (
+                  <div
+                    aria-live="polite"
+                    className={cn(
+                      "space-y-3 border p-3",
+                      fieldResult.decision === "block"
+                        ? "border-destructive/30 bg-destructive/[0.04]"
+                        : "border-emerald-500/30 bg-emerald-500/[0.04]",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "inline-flex items-center gap-2 text-sm font-medium",
+                        fieldResult.decision === "block"
+                          ? "text-destructive"
+                          : "text-emerald-700 dark:text-emerald-400",
+                      )}
+                    >
+                      {fieldResult.decision === "block" ? (
+                        <RiErrorWarningLine className="size-4" />
+                      ) : (
+                        <RiCheckLine className="size-4" />
+                      )}
+                      {fieldResult.decision === "block"
+                        ? dialogCopy.testBlocked
+                        : dialogCopy.testAllowed}
+                    </div>
+
+                    {fieldResult.matched.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-medium">
+                          {dialogCopy.testMatchedRules}
+                        </p>
+                        <ul className="space-y-1.5 text-xs">
+                          {fieldResult.matched.map((reason, index) => (
+                            <li
+                              key={`${reason.line ?? "x"}-${reason.pattern}-${index}`}
+                              className="flex flex-wrap items-center gap-x-2 gap-y-1"
+                            >
+                              <code className="bg-muted px-1.5 py-0.5 font-mono">
+                                {reason.pattern}
+                              </code>
+                              <span className="text-muted-foreground">
+                                {reason.action === "block"
+                                  ? dialogCopy.testActionBlock
+                                  : dialogCopy.testActionAllow}
+                              </span>
+                              {reason.line ? (
+                                <span className="text-muted-foreground">
+                                  ({dialogCopy.testLine} {reason.line})
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        {dialogCopy.testNoMatch}
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </AutoTransition>
+            </AutoResizer>
+          </div>
+        </ResponsiveDialogBody>
+        <ResponsiveDialogFooter>
+          <ResponsiveDialogClose asChild>
+            <Button type="button" variant="outline">
+              <RiCloseLine className="size-4" />
+              <span>{dialogCopy.testClose}</span>
+            </Button>
+          </ResponsiveDialogClose>
+          <Button
+            type="button"
+            onClick={handleTest}
+            disabled={errors.length > 0}
+          >
+            <RiTestTubeLine className="size-4" />
+            <span>{dialogCopy.testRun}</span>
+          </Button>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+}
+
+function BlockingRuleEditorCard({
+  copy,
+  dialogCopy,
+  value,
+  errors,
+  disabled,
+  saving,
+  changed,
+  onChange,
+  onSave,
+  icon: Icon,
+  field,
+  saveLabel,
+  savingLabel,
+}: {
+  copy: BlockingRuleFieldCopy;
+  dialogCopy: BlockingRuleDialogCopy;
+  value: string;
+  errors: readonly BlockingRuleSyntaxError[];
+  disabled: boolean;
+  saving: boolean;
+  changed: boolean;
+  onChange: (value: string) => void;
+  onSave: () => void;
+  icon: ComponentType<{ className?: string }>;
+  field: BlockingFieldId;
+  saveLabel: string;
+  savingLabel: string;
+}) {
+  const inputId = `site-settings-blocking-${field}`;
+  const statusId = `${inputId}-status`;
+  const errorId = `${inputId}-errors`;
+  const [testOpen, setTestOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastEmittedValueRef = useRef(value);
+
+  useEffect(() => {
+    if (value === lastEmittedValueRef.current) return;
+    lastEmittedValueRef.current = value;
+    if (textareaRef.current && textareaRef.current.value !== value) {
+      textareaRef.current.value = value;
+    }
+  }, [value]);
+
+  const hasRules = blockingEditorLines(value).some(
+    (line) => line.trim().length > 0,
+  );
+  const statusMessage =
+    errors.length > 0
+      ? dialogCopy.statusInvalid
+      : hasRules
+        ? dialogCopy.statusValid
+        : formatI18nTemplate(dialogCopy.statusEmpty, {
+            field: copy.title,
+          });
+  const statusTransitionKey =
+    errors.length > 0 ? "invalid" : hasRules ? "valid" : "empty";
+  const statusClassName =
+    errors.length > 0
+      ? "text-destructive"
+      : hasRules
+        ? "text-emerald-700 dark:text-emerald-400"
+        : "text-muted-foreground";
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle className="inline-flex items-center gap-2">
+          <Icon className="size-4" />
+          {copy.title}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex h-full flex-col gap-4">
+        <div className="space-y-2">
+          <Label htmlFor={inputId}>{copy.label}</Label>
+          <textarea
+            id={inputId}
+            ref={textareaRef}
+            defaultValue={value}
+            onInput={(event) => {
+              const nextValue = event.currentTarget.value;
+              lastEmittedValueRef.current = nextValue;
+              onChange(nextValue);
+            }}
+            placeholder={copy.placeholder}
+            rows={4}
+            aria-invalid={errors.length > 0}
+            aria-describedby={[statusId, errors.length > 0 ? errorId : null]
+              .filter((id): id is string => id !== null)
+              .join(" ")}
+            disabled={disabled}
+            className="min-h-24 w-full rounded-none border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 dark:bg-input/30 dark:disabled:bg-input/80"
+          />
+          <AutoResizer>
+            <AutoTransition
+              transitionKey={statusTransitionKey}
+              initial={false}
+              duration={0.15}
+            >
+              <div className="space-y-2">
+                <p
+                  id={statusId}
+                  role="status"
+                  className={cn("text-xs", statusClassName)}
+                >
+                  {statusMessage}
+                </p>
+                {errors.length > 0 ? (
+                  <ul
+                    id={errorId}
+                    className="space-y-1 text-xs text-destructive"
+                  >
+                    {errors.map((error, index) => (
+                      <li key={`${error.code}-${error.line ?? "x"}-${index}`}>
+                        {blockingRuleErrorMessage(error, copy, dialogCopy)}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            </AutoTransition>
+          </AutoResizer>
+        </div>
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
+          <Button
+            type="button"
+            onClick={onSave}
+            disabled={disabled || !changed || errors.length > 0}
+          >
+            <AutoTransition className="inline-flex items-center gap-2">
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="size-4" />
+                  {savingLabel}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-2">
+                  <RiSave3Line className="size-4" />
+                  {saveLabel}
+                </span>
+              )}
+            </AutoTransition>
+          </Button>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setTestOpen(true)}
+            >
+              <RiTestTubeLine className="size-4" />
+              <span>{dialogCopy.testButton}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setHelpOpen(true)}
+            >
+              <RiQuestionLine className="size-4" />
+              <span>{dialogCopy.helpButton}</span>
+            </Button>
+          </div>
+        </div>
+        <BlockingRuleTestDialog
+          field={field}
+          copy={copy}
+          dialogCopy={dialogCopy}
+          value={value}
+          errors={errors}
+          open={testOpen}
+          onOpenChange={setTestOpen}
+        />
+        <BlockingRuleHelpDialog
+          copy={copy}
+          dialogCopy={dialogCopy}
+          open={helpOpen}
+          onOpenChange={setHelpOpen}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function SettingsSection({
+  id,
+  title,
+  description,
+  children,
+  danger = false,
+}: {
+  id: string;
+  title: string;
+  description: string;
+  children: ReactNode;
+  danger?: boolean;
+}) {
+  return (
+    <section
+      aria-labelledby={id}
+      className={cn(
+        "space-y-4",
+        danger && "border border-destructive/20 bg-destructive/[0.02] p-4",
+      )}
+    >
+      <div className="space-y-1 border-b pb-3">
+        <h2
+          id={id}
+          className={cn(
+            "text-base font-semibold",
+            danger && "text-destructive",
+          )}
+        >
+          {title}
+        </h2>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">{children}</div>
+    </section>
+  );
 }
 
 export function SettingsClientPage({
@@ -184,9 +836,13 @@ export function SettingsClientPage({
   siteSlug,
   teams,
   site,
+  initialData = null,
 }: SiteSettingsClientPageProps) {
   const router = useRouter();
   const copy = messages.siteSettings;
+  const initialTrackerSettings = normalizeSiteScriptSettings(
+    initialData?.config,
+  );
   const [name, setName] = useState(site.name);
   const [domain, setDomain] = useState(site.domain);
   const [publicEnabled, setPublicEnabled] = useState(
@@ -207,45 +863,43 @@ export function SettingsClientPage({
   const [savingQueryHash, setSavingQueryHash] = useState(false);
   const [savingPerformanceTracking, setSavingPerformanceTracking] =
     useState(false);
-  const [savingDomainWhitelist, setSavingDomainWhitelist] = useState(false);
-  const [savingPathBlacklist, setSavingPathBlacklist] = useState(false);
+  const [savingBlockingField, setSavingBlockingField] =
+    useState<BlockingFieldId | null>(null);
   const [transferring, setTransferring] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [currentSiteSlug, setCurrentSiteSlug] = useState(siteSlug);
   const [transferTeamId, setTransferTeamId] = useState(activeTeamId);
-  const [scriptSnippet, setScriptSnippet] = useState("");
-  const [loadingScript, setLoadingScript] = useState(true);
-  const [loadingSettings, setLoadingSettings] = useState(true);
   const [trackingStrength, setTrackingStrength] = useState<TrackingStrength>(
-    DEFAULT_SITE_SCRIPT_SETTINGS.trackingStrength,
+    initialTrackerSettings.trackingStrength,
   );
   const [trackQueryParams, setTrackQueryParams] = useState(
-    DEFAULT_SITE_SCRIPT_SETTINGS.trackQueryParams,
+    initialTrackerSettings.trackQueryParams,
   );
-  const [trackHash, setTrackHash] = useState(
-    DEFAULT_SITE_SCRIPT_SETTINGS.trackHash,
-  );
+  const [trackHash, setTrackHash] = useState(initialTrackerSettings.trackHash);
   const [ignoreDoNotTrack, setIgnoreDoNotTrack] = useState(
-    DEFAULT_SITE_SCRIPT_SETTINGS.ignoreDoNotTrack,
+    initialTrackerSettings.ignoreDoNotTrack,
   );
   const [autoTrackOutboundLinks, setAutoTrackOutboundLinks] = useState(
-    DEFAULT_SITE_SCRIPT_SETTINGS.autoTrackOutboundLinks,
+    initialTrackerSettings.autoTrackOutboundLinks,
   );
   const [savingAutoTracking, setSavingAutoTracking] = useState(false);
   const [performanceSampleRate, setPerformanceSampleRate] = useState(
-    DEFAULT_SITE_SCRIPT_SETTINGS.performanceSampleRate,
+    initialTrackerSettings.performanceSampleRate,
   );
-  const [domainWhitelistInput, setDomainWhitelistInput] = useState(
-    formatListInput(DEFAULT_SITE_SCRIPT_SETTINGS.domainWhitelist),
+  const [blockingInputs, setBlockingInputs] = useState<BlockingEditorValues>(
+    () => blockingEditorValues(initialData?.config),
   );
-  const [pathBlacklistInput, setPathBlacklistInput] = useState(
-    formatListInput(DEFAULT_SITE_SCRIPT_SETTINGS.pathBlacklist),
-  );
+  const [persistedBlockingInputs, setPersistedBlockingInputs] =
+    useState<BlockingEditorValues>(() =>
+      blockingEditorValues(initialData?.config),
+    );
   const [persistedSettings, setPersistedSettings] = useState(
-    DEFAULT_SITE_SCRIPT_SETTINGS,
+    initialTrackerSettings,
   );
-  const [origin, setOrigin] = useState("");
+  const [origin, setOrigin] = useState(initialData?.origin ?? "");
+  const appliedConfigSiteIdRef = useRef<string | null>(null);
+  const appliedSnippetSiteIdRef = useRef<string | null>(null);
 
   const hasAutoTrackingChanges =
     autoTrackOutboundLinks !== persistedSettings.autoTrackOutboundLinks;
@@ -254,17 +908,8 @@ export function SettingsClientPage({
     savingTrackingStrength ||
     savingQueryHash ||
     savingPerformanceTracking ||
-    savingDomainWhitelist ||
-    savingPathBlacklist ||
+    savingBlockingField !== null ||
     savingAutoTracking;
-
-  function equalStringArray(a: string[], b: string[]): boolean {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i += 1) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
-  }
 
   const hasSiteInfoChanges =
     name.trim() !== persistedName.trim() ||
@@ -289,14 +934,25 @@ export function SettingsClientPage({
   const hasPerformanceTrackingChanges =
     normalizedPerformanceSampleRate !== persistedSettings.performanceSampleRate;
 
-  const hasDomainWhitelistChanges = !equalStringArray(
-    parseDomainWhitelist(domainWhitelistInput),
-    persistedSettings.domainWhitelist,
-  );
-
-  const hasPathBlacklistChanges = !equalStringArray(
-    parsePathBlacklist(pathBlacklistInput),
-    persistedSettings.pathBlacklist,
+  const blockingValidation = useMemo(
+    () =>
+      Object.fromEntries(
+        BLOCKING_FIELD_IDS.map((field) => {
+          const errors = validateBlockingRules({
+            blockingRules: [
+              {
+                version: 2,
+                data: { [field]: blockingEditorLines(blockingInputs[field]) },
+              },
+            ],
+          }).filter((error) => error.field === field);
+          return [field, errors];
+        }),
+      ) as unknown as Record<
+        BlockingFieldId,
+        readonly BlockingRuleSyntaxError[]
+      >,
+    [blockingInputs],
   );
 
   function applyTrackerSettings(raw: unknown) {
@@ -308,122 +964,80 @@ export function SettingsClientPage({
     setIgnoreDoNotTrack(normalized.ignoreDoNotTrack);
     setAutoTrackOutboundLinks(normalized.autoTrackOutboundLinks);
     setPerformanceSampleRate(normalized.performanceSampleRate);
-    setDomainWhitelistInput(formatListInput(normalized.domainWhitelist));
-    setPathBlacklistInput(formatListInput(normalized.pathBlacklist));
+    const nextBlockingInputs = blockingEditorValues(raw);
+    setBlockingInputs(nextBlockingInputs);
+    setPersistedBlockingInputs(nextBlockingInputs);
   }
+
+  const siteConfigQuery = useQuery({
+    queryKey: ["dashboard", "site-config", site.id],
+    queryFn: ({ signal }) =>
+      requestAdminService<SiteSettingsConfig>("site-config", {
+        params: { siteId: site.id },
+        signal,
+      }),
+    initialData: initialData?.config,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const scriptSnippetQuery = useQuery({
+    queryKey: ["dashboard", "site-script-snippet", site.id],
+    queryFn: async ({ signal }) => {
+      const data = await requestAdminService<{
+        siteId: string;
+        src: string;
+        snippet: string;
+      }>("script-snippet", {
+        params: { siteId: site.id },
+        signal,
+      });
+      return data.snippet;
+    },
+    initialData: initialData?.scriptSnippet,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const loadingSettings = siteConfigQuery.isPending;
+  const loadingScript = scriptSnippetQuery.isPending;
+  const scriptSnippet = scriptSnippetQuery.data ?? "";
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
 
   useEffect(() => {
-    let active = true;
-    setLoadingSettings(true);
-
-    const loadConfig = async () => {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-        const { handleDemoRequest } = await import("@/lib/realtime/mock");
-        const result = handleDemoRequest({
-          path: "/api/private/admin/site-config",
-          params: { siteId: site.id },
-        }) as SiteConfigPayload;
-        if (!active) return;
-        applyTrackerSettings(result.data ?? DEFAULT_SITE_SCRIPT_SETTINGS);
-        setLoadingSettings(false);
-        return;
-      }
-
-      fetch(
-        `/api/private/admin/site-config?siteId=${encodeURIComponent(site.id)}`,
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        },
-      )
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("load_site_config_failed");
-          }
-          const payload = (await response.json()) as SiteConfigPayload;
-          if (!payload.ok) {
-            throw new Error("load_site_config_failed");
-          }
-          if (!active) return;
-          applyTrackerSettings(payload.data ?? DEFAULT_SITE_SCRIPT_SETTINGS);
-        })
-        .catch(() => {
-          if (!active) return;
-          applyTrackerSettings(DEFAULT_SITE_SCRIPT_SETTINGS);
-          toast.error(copy.toasts.settingsLoadFailed);
-        })
-        .finally(() => {
-          if (!active) return;
-          setLoadingSettings(false);
-        });
-    };
-
-    loadConfig();
-
-    return () => {
-      active = false;
-    };
-  }, [copy.toasts.settingsLoadFailed, site.id]);
+    if (
+      siteConfigQuery.isPending ||
+      appliedConfigSiteIdRef.current === site.id
+    ) {
+      return;
+    }
+    applyTrackerSettings(siteConfigQuery.data ?? DEFAULT_SITE_SCRIPT_SETTINGS);
+    appliedConfigSiteIdRef.current = site.id;
+    if (siteConfigQuery.isError) toast.error(copy.toasts.settingsLoadFailed);
+  }, [
+    copy.toasts.settingsLoadFailed,
+    site.id,
+    siteConfigQuery.data,
+    siteConfigQuery.isError,
+    siteConfigQuery.isPending,
+  ]);
 
   useEffect(() => {
-    let active = true;
-    setLoadingScript(true);
-    setScriptSnippet("");
-
-    const loadSnippet = async () => {
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-        const { handleDemoRequest } = await import("@/lib/realtime/mock");
-        const result = handleDemoRequest({
-          path: "/api/private/admin/script-snippet",
-          params: { siteId: site.id },
-        }) as ScriptSnippetPayload;
-        if (!active) return;
-        setScriptSnippet(result.data?.snippet || "");
-        setLoadingScript(false);
-        return;
-      }
-
-      fetch(
-        `/api/private/admin/script-snippet?siteId=${encodeURIComponent(site.id)}`,
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        },
-      )
-        .then(async (response) => {
-          if (!response.ok) {
-            throw new Error("load_script_snippet_failed");
-          }
-          const payload = (await response.json()) as ScriptSnippetPayload;
-          if (!payload.ok || !payload.data?.snippet) {
-            throw new Error("load_script_snippet_failed");
-          }
-          if (!active) return;
-          setScriptSnippet(payload.data.snippet);
-        })
-        .catch(() => {
-          if (!active) return;
-          setScriptSnippet("");
-          toast.error(copy.toasts.scriptLoadFailed);
-        })
-        .finally(() => {
-          if (!active) return;
-          setLoadingScript(false);
-        });
-    };
-
-    loadSnippet();
-
-    return () => {
-      active = false;
-    };
-  }, [copy.toasts.scriptLoadFailed, site.id]);
+    if (
+      scriptSnippetQuery.isPending ||
+      appliedSnippetSiteIdRef.current === site.id
+    ) {
+      return;
+    }
+    appliedSnippetSiteIdRef.current = site.id;
+    if (scriptSnippetQuery.isError) toast.error(copy.toasts.scriptLoadFailed);
+  }, [
+    copy.toasts.scriptLoadFailed,
+    scriptSnippetQuery.isError,
+    scriptSnippetQuery.isPending,
+    site.id,
+  ]);
 
   async function handleSave() {
     if (name.trim().length < 2 || domain.trim().length < 3) {
@@ -437,7 +1051,7 @@ export function SettingsClientPage({
     setSaving(true);
     try {
       const updated = await postJson<SiteData>(
-        "/api/private/admin/sites",
+        "sites",
         {
           intent: "update",
           siteId: site.id,
@@ -481,7 +1095,7 @@ export function SettingsClientPage({
         ? publicSlug.trim() || randomPublicSlug()
         : publicSlug.trim();
       const updated = await postJson<SiteData>(
-        "/api/private/admin/sites",
+        "sites",
         {
           intent: "update",
           siteId: site.id,
@@ -519,17 +1133,10 @@ export function SettingsClientPage({
   }
 
   async function persistTrackingSettings(input: Record<string, unknown>) {
-    const normalizedSettings = normalizeSiteScriptSettings({
-      ...persistedSettings,
-      ...input,
+    const savedSettings = await postJson<SiteSettingsConfig>("site-config", {
+      siteId: site.id,
+      config: input,
     });
-    const savedSettings = await postJson<Record<string, unknown>>(
-      "/api/private/admin/site-config",
-      {
-        siteId: site.id,
-        config: normalizedSettings,
-      },
-    );
     applyTrackerSettings(savedSettings);
     toast.success(
       `${copy.toasts.saved} ${copy.toasts.settingsPropagationHint}`,
@@ -602,35 +1209,38 @@ export function SettingsClientPage({
     }
   }
 
-  async function handleSaveDomainWhitelist() {
-    if (!hasDomainWhitelistChanges) return;
-    setSavingDomainWhitelist(true);
-    try {
-      await persistTrackingSettings({
-        domainWhitelist: domainWhitelistInput,
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : copy.toasts.saveFailed;
-      toast.error(message || copy.toasts.saveFailed);
-    } finally {
-      setSavingDomainWhitelist(false);
+  async function handleSaveBlockingField(field: BlockingFieldId) {
+    if (blockingInputs[field] === persistedBlockingInputs[field]) return;
+    const errors = blockingValidation[field];
+    if (errors.length > 0) {
+      toast.error(
+        blockingRuleErrorMessage(
+          errors[0],
+          copy.blockingRulesFields[field],
+          copy.blockingRulesDialogs,
+        ),
+      );
+      return;
     }
-  }
-
-  async function handleSavePathBlacklist() {
-    if (!hasPathBlacklistChanges) return;
-    setSavingPathBlacklist(true);
+    setSavingBlockingField(field);
     try {
-      await persistTrackingSettings({
-        pathBlacklist: pathBlacklistInput,
+      const savedSettings = await postJson<SiteSettingsConfig>("site-config", {
+        siteId: site.id,
+        config: {},
+        blockingPatch: {
+          [field]: blockingEditorLines(blockingInputs[field]),
+        },
       });
+      applyTrackerSettings(savedSettings);
+      toast.success(
+        `${copy.toasts.saved} ${copy.toasts.settingsPropagationHint}`,
+      );
     } catch (error) {
       const message =
         error instanceof Error ? error.message : copy.toasts.saveFailed;
       toast.error(message || copy.toasts.saveFailed);
     } finally {
-      setSavingPathBlacklist(false);
+      setSavingBlockingField(null);
     }
   }
 
@@ -638,7 +1248,7 @@ export function SettingsClientPage({
     setDeleting(true);
     try {
       await postJson<{ siteId: string; teamId: string; removed: boolean }>(
-        "/api/private/admin/sites",
+        "sites",
         {
           intent: "remove",
           siteId: site.id,
@@ -670,7 +1280,7 @@ export function SettingsClientPage({
     setTransferring(true);
     try {
       const updated = await postJson<SiteData>(
-        "/api/private/admin/sites",
+        "sites",
         {
           intent: "update",
           siteId: site.id,
@@ -717,15 +1327,19 @@ export function SettingsClientPage({
 
   const publicLink =
     publicEnabled && publicSlug.trim() && origin
-      ? `${origin}/${locale}/share/${encodeURIComponent(publicSlug.trim())}`
+      ? `${origin}/share/${encodeURIComponent(publicSlug.trim())}`
       : "";
 
   return (
     <div className="space-y-6">
       <PageHeading title={copy.title} subtitle={copy.subtitle} />
 
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="h-full order-1">
+      <SettingsSection
+        id="site-settings-basic-info"
+        title={copy.sections.basic.title}
+        description={copy.sections.basic.description}
+      >
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiSettings3Line className="size-4" />
@@ -810,7 +1424,7 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
-        <Card className="h-full order-3">
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiShareForwardLine className="size-4" />
@@ -875,37 +1489,54 @@ export function SettingsClientPage({
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="site-settings-public-link">
-                {copy.publicLinkLabel}
-              </Label>
-              <div className="flex gap-2">
-                <Input
-                  id="site-settings-public-link"
-                  value={publicLink}
-                  placeholder={
-                    publicEnabled
-                      ? copy.publicLinkHint
-                      : copy.publicDisabledHint
-                  }
-                  readOnly
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    void handleCopyPublicLink();
-                  }}
-                  disabled={!publicLink}
+            <AutoResizer initial duration={0.24} ease={[0.22, 1, 0.36, 1]}>
+              <AutoTransition
+                initial={false}
+                duration={0.18}
+                type="fade"
+                presenceMode="wait"
+                transitionKey={publicEnabled ? "enabled" : "disabled"}
+              >
+                <div
+                  key={publicEnabled ? "enabled" : "disabled"}
+                  className="space-y-2"
                 >
-                  <RiFileCopyLine className="size-4" />
-                  <span>{messages.teamManagement.publicLinks.copyLink}</span>
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {publicEnabled ? copy.publicLinkHint : copy.publicDisabledHint}
-              </p>
-            </div>
+                  <Label htmlFor="site-settings-public-link">
+                    {copy.publicLinkLabel}
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="site-settings-public-link"
+                      value={publicLink}
+                      placeholder={
+                        publicEnabled
+                          ? copy.publicLinkHint
+                          : copy.publicDisabledHint
+                      }
+                      readOnly
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        void handleCopyPublicLink();
+                      }}
+                      disabled={!publicLink}
+                    >
+                      <RiFileCopyLine className="size-4" />
+                      <span>
+                        {messages.teamManagement.publicLinks.copyLink}
+                      </span>
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {publicEnabled
+                      ? copy.publicLinkHint
+                      : copy.publicDisabledHint}
+                  </p>
+                </div>
+              </AutoTransition>
+            </AutoResizer>
 
             <Button
               type="button"
@@ -945,7 +1576,7 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
-        <Card className="h-full order-2">
+        <Card className="h-full lg:col-span-2">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiCodeLine className="size-4" />
@@ -983,8 +1614,14 @@ export function SettingsClientPage({
             </Button>
           </CardContent>
         </Card>
+      </SettingsSection>
 
-        <Card className="h-full order-3">
+      <SettingsSection
+        id="site-settings-tracking"
+        title={copy.sections.tracking.title}
+        description={copy.sections.tracking.description}
+      >
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiBarChartBoxLine className="size-4" />
@@ -1100,7 +1737,7 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
-        <Card className="h-full order-4">
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiLinksLine className="size-4" />
@@ -1228,7 +1865,7 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
-        <Card className="h-full order-4">
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiRouteLine className="size-4" />
@@ -1307,7 +1944,7 @@ export function SettingsClientPage({
           </CardContent>
         </Card>
 
-        <Card className="h-full order-5">
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiSpeedUpLine className="size-4" />
@@ -1390,150 +2027,50 @@ export function SettingsClientPage({
             </Button>
           </CardContent>
         </Card>
+      </SettingsSection>
 
-        <Card className="h-full order-6">
-          <CardHeader>
-            <CardTitle className="inline-flex items-center gap-2">
-              <RiGlobalLine className="size-4" />
-              {copy.domainWhitelistTitle}
-            </CardTitle>
-            <CardDescription>{copy.domainWhitelistDescription}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex h-full flex-col gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="site-settings-domain-whitelist">
-                {copy.domainWhitelistLabel}
-              </Label>
-              <textarea
-                id="site-settings-domain-whitelist"
-                value={domainWhitelistInput}
-                onChange={(event) =>
-                  setDomainWhitelistInput(event.target.value)
-                }
-                placeholder={copy.domainWhitelistPlaceholder}
-                rows={4}
-                disabled={
-                  saving ||
-                  trackingSaving ||
-                  transferring ||
-                  deleting ||
-                  loadingSettings
-                }
-                className="min-h-24 w-full rounded-none border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 dark:bg-input/30 dark:disabled:bg-input/80"
-              />
-              <p className="text-xs text-muted-foreground">
-                {copy.domainWhitelistHint}
-              </p>
-            </div>
-            <Button
-              type="button"
-              className="mt-auto self-start"
-              onClick={() => {
-                void handleSaveDomainWhitelist();
-              }}
-              disabled={
-                saving ||
-                trackingSaving ||
-                transferring ||
-                deleting ||
-                loadingSettings ||
-                !hasDomainWhitelistChanges
-              }
-            >
-              <AutoTransition className="inline-flex items-center gap-2">
-                {savingDomainWhitelist ? (
-                  <span
-                    key="saving-domain-whitelist"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <Spinner className="size-4" />
-                    {copy.savingTracking}
-                  </span>
-                ) : (
-                  <span
-                    key="save-domain-whitelist"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <RiSave3Line className="size-4" />
-                    {copy.saveTracking}
-                  </span>
-                )}
-              </AutoTransition>
-            </Button>
-          </CardContent>
-        </Card>
+      <SettingsSection
+        id="site-settings-blocking"
+        title={copy.sections.blocking.title}
+        description={copy.sections.blocking.description}
+      >
+        {BLOCKING_RULE_FIELD_DEFINITIONS.map(({ field, icon }) => (
+          <BlockingRuleEditorCard
+            key={field}
+            field={field}
+            icon={icon}
+            copy={copy.blockingRulesFields[field]}
+            dialogCopy={copy.blockingRulesDialogs}
+            value={blockingInputs[field]}
+            errors={blockingValidation[field]}
+            disabled={
+              saving ||
+              trackingSaving ||
+              transferring ||
+              deleting ||
+              loadingSettings
+            }
+            saving={savingBlockingField === field}
+            changed={blockingInputs[field] !== persistedBlockingInputs[field]}
+            onChange={(value) => {
+              setBlockingInputs((current) => ({ ...current, [field]: value }));
+            }}
+            onSave={() => {
+              void handleSaveBlockingField(field);
+            }}
+            saveLabel={copy.blockingRulesSave}
+            savingLabel={copy.blockingRulesSaving}
+          />
+        ))}
+      </SettingsSection>
 
-        <Card className="h-full order-7">
-          <CardHeader>
-            <CardTitle className="inline-flex items-center gap-2">
-              <RiRouteLine className="size-4" />
-              {copy.pathBlacklistTitle}
-            </CardTitle>
-            <CardDescription>{copy.pathBlacklistDescription}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex h-full flex-col gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="site-settings-path-blacklist">
-                {copy.pathBlacklistLabel}
-              </Label>
-              <textarea
-                id="site-settings-path-blacklist"
-                value={pathBlacklistInput}
-                onChange={(event) => setPathBlacklistInput(event.target.value)}
-                placeholder={copy.pathBlacklistPlaceholder}
-                rows={4}
-                disabled={
-                  saving ||
-                  trackingSaving ||
-                  transferring ||
-                  deleting ||
-                  loadingSettings
-                }
-                className="min-h-24 w-full rounded-none border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 dark:bg-input/30 dark:disabled:bg-input/80"
-              />
-              <p className="text-xs text-muted-foreground">
-                {copy.pathBlacklistHint}
-              </p>
-            </div>
-            <Button
-              type="button"
-              className="mt-auto self-start"
-              onClick={() => {
-                void handleSavePathBlacklist();
-              }}
-              disabled={
-                saving ||
-                trackingSaving ||
-                transferring ||
-                deleting ||
-                loadingSettings ||
-                !hasPathBlacklistChanges
-              }
-            >
-              <AutoTransition className="inline-flex items-center gap-2">
-                {savingPathBlacklist ? (
-                  <span
-                    key="saving-path-blacklist"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <Spinner className="size-4" />
-                    {copy.savingTracking}
-                  </span>
-                ) : (
-                  <span
-                    key="save-path-blacklist"
-                    className="inline-flex items-center gap-2"
-                  >
-                    <RiSave3Line className="size-4" />
-                    {copy.saveTracking}
-                  </span>
-                )}
-              </AutoTransition>
-            </Button>
-          </CardContent>
-        </Card>
-
-        <Card className="h-full order-8">
+      <SettingsSection
+        id="site-settings-danger"
+        title={copy.sections.danger.title}
+        description={copy.sections.danger.description}
+        danger
+      >
+        <Card className="h-full">
           <CardHeader>
             <CardTitle className="inline-flex items-center gap-2">
               <RiArrowRightLine className="size-4" />
@@ -1615,7 +2152,7 @@ export function SettingsClientPage({
             setDeleteDialogOpen(open);
           }}
         >
-          <Card className="h-full border-destructive/40 order-9">
+          <Card className="h-full border-destructive/40">
             <CardHeader>
               <CardTitle className="inline-flex items-center gap-2">
                 <RiDeleteBinLine className="size-4" />
@@ -1703,7 +2240,7 @@ export function SettingsClientPage({
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </section>
+      </SettingsSection>
     </div>
   );
 }

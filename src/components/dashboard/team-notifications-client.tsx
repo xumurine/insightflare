@@ -1,7 +1,4 @@
-"use client";
-
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   RiAddLine,
   RiCheckboxCircleLine,
@@ -15,6 +12,7 @@ import {
   RiPlayCircleLine,
   RiSave3Line,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { JsonTreePanel } from "@/components/dashboard/json-tree";
@@ -43,6 +41,15 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -58,7 +65,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { requestAdminService } from "@/lib/admin-service-client";
 import { intlLocale, shortDateTime } from "@/lib/dashboard/format";
+import type { TeamNotificationsInitialData } from "@/lib/dashboard/management-data";
 import {
   browserTimeZone,
   buildTimeZoneOptions,
@@ -67,24 +76,21 @@ import {
   timeZoneOffsetMinutes,
 } from "@/lib/dashboard/time-zone";
 import {
-  createNotificationRule,
-  deleteNotificationRule,
-  fetchAdminMembers,
-  fetchAdminSites,
-  fetchNotificationEmailConfig,
-  fetchNotificationRules,
   type MemberData,
   type NotificationRuleData,
   type NotificationRuleEvaluationData,
-  previewNotificationRule,
-  runNotificationRuleNow,
-  sendNotificationTest,
+  type NotificationRuleRunData,
   type SiteData,
-  updateNotificationRule,
 } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
+import {
+  describeNotificationFormConditions,
+  describeNotificationRuleCondition,
+} from "@/lib/notifications/condition-description";
+import type { PublicNotificationEmailConfig } from "@/lib/notifications/email-config";
+import Link from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface TeamNotificationsClientProps {
@@ -93,6 +99,7 @@ interface TeamNotificationsClientProps {
   teamId: string;
   teamSlug: string;
   currentUserId: string;
+  initialData?: TeamNotificationsInitialData | null;
 }
 
 type RuleFormType = "report" | "milestone" | "threshold" | "change" | "health";
@@ -359,67 +366,15 @@ function scheduleLabel(
 
 function conditionLabel(
   copy: AppMessages["teamManagement"]["notifications"],
+  terms: AppMessages["conditionDescription"],
   rule: NotificationRuleData,
 ): string {
-  const primaryCondition = firstCondition(rule.condition);
-  if (rule.type === "report") {
-    const reportType = isReportType(rule.condition.reportType)
-      ? rule.condition.reportType
-      : "daily";
-    return formatI18nTemplate(copy.conditionReport, {
-      period: copy.reportPeriods[reportType],
-    });
-  }
-  if (rule.type === "milestone") {
-    const metric =
-      primaryCondition.metric === "views" ||
-      primaryCondition.metric === "sessions"
-        ? primaryCondition.metric
-        : "visitors";
-    const step = String(
-      rule.condition.step ??
-        rule.condition.every ??
-        rule.condition.value ??
-        "-",
-    );
-    return formatI18nTemplate(copy.conditionMilestone, {
-      metric: copy.metrics[metric],
-      step,
-    });
-  }
-  if (rule.type === "threshold" || rule.type === "change") {
-    const metric =
-      primaryCondition.metric === "views" ||
-      primaryCondition.metric === "sessions"
-        ? primaryCondition.metric
-        : "visitors";
-    const window =
-      primaryCondition.window === "last_24h" ||
-      primaryCondition.window === "yesterday"
-        ? primaryCondition.window
-        : "last_1h";
-    const value = String(primaryCondition.value ?? "-");
-    const operator =
-      primaryCondition.operator === ">" ||
-      primaryCondition.operator === "<" ||
-      primaryCondition.operator === "<="
-        ? primaryCondition.operator
-        : ">=";
-    const template =
-      rule.type === "change" ? copy.conditionChange : copy.conditionThreshold;
-    return formatI18nTemplate(template, {
-      metric: copy.metrics[metric],
-      window: copy.windows[window],
-      operator,
-      value,
-    });
-  }
-  if (rule.type === "health") {
-    return formatI18nTemplate(copy.conditionHealth, {
-      hours: String(rule.condition.hours ?? "-"),
-    });
-  }
-  return copy.scheduleCustom;
+  return describeNotificationRuleCondition(
+    copy,
+    terms,
+    rule.type,
+    rule.condition,
+  );
 }
 
 function ruleTypeLabel(
@@ -729,57 +684,26 @@ function buildRulePayload(
   };
 }
 
-function metricConditionText(
-  copy: AppMessages["teamManagement"]["notifications"],
-  condition: MetricConditionForm,
-  type: RuleFormType,
-): string {
-  const metric = copy.metrics[condition.metric];
-  const window = copy.windows[condition.window];
-  const value = condition.value || "0";
-  if (type === "change") {
-    return formatI18nTemplate(copy.summaryConditionChange, {
-      window,
-      metric,
-      operator: condition.operator,
-      value,
-      mode:
-        condition.changeMode === "percent"
-          ? copy.changeModePercent
-          : copy.changeModeAbsolute,
-    });
-  }
-  return formatI18nTemplate(copy.summaryConditionThreshold, {
-    window,
-    metric,
-    operator: condition.operator,
-    value,
-  });
-}
-
 function ruleSummaryLines(
   copy: AppMessages["teamManagement"]["notifications"],
+  terms: AppMessages["conditionDescription"],
   form: RuleFormState,
 ): string[] {
-  if (form.type === "threshold" || form.type === "change") {
-    return form.conditions.map((condition) =>
-      metricConditionText(copy, condition, form.type),
-    );
-  }
-  if (form.type === "report") {
-    return [];
-  }
-  if (form.type === "milestone") {
-    return [
-      formatI18nTemplate(copy.summaryMilestoneCondition, {
-        metric: copy.metrics[form.metric],
-        step: form.milestoneStep || "0",
-      }),
-    ];
-  }
   return [
-    formatI18nTemplate(copy.summaryHealthCondition, {
-      hours: form.hours || "0",
+    describeNotificationFormConditions(copy, terms, {
+      type: form.type,
+      combinator: form.combinator,
+      conditions: form.conditions.map((condition) => ({
+        metric: condition.metric,
+        window: condition.window,
+        operator: condition.operator,
+        value: condition.value || "0",
+        changeMode: condition.changeMode,
+      })),
+      reportType: form.reportType,
+      metric: form.metric,
+      milestoneStep: form.milestoneStep,
+      hours: form.hours,
     }),
   ];
 }
@@ -826,6 +750,7 @@ function RuleFormSection({
 
 function RuleFormFields({
   copy,
+  terms,
   locale,
   form,
   sites,
@@ -834,6 +759,7 @@ function RuleFormFields({
   onChange,
 }: {
   copy: AppMessages["teamManagement"]["notifications"];
+  terms: AppMessages["conditionDescription"];
   locale: Locale;
   form: RuleFormState;
   sites: SiteData[];
@@ -903,7 +829,7 @@ function RuleFormFields({
     });
   }
 
-  const summaryLines = ruleSummaryLines(copy, form);
+  const summaryLines = ruleSummaryLines(copy, terms, form);
 
   return (
     <div className="space-y-5">
@@ -1820,17 +1746,14 @@ export function TeamNotificationsClient({
   teamId,
   teamSlug,
   currentUserId,
+  initialData = null,
 }: TeamNotificationsClientProps) {
   const copy = messages.teamManagement.notifications;
-  const [rules, setRules] = useState<NotificationRuleData[]>([]);
-  const [sites, setSites] = useState<SiteData[]>([]);
-  const [members, setMembers] = useState<MemberData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [previewingId, setPreviewingId] = useState("");
   const [runningId, setRunningId] = useState("");
-  const [emailConfigured, setEmailConfigured] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -1841,6 +1764,59 @@ export function TeamNotificationsClient({
     useState<NotificationRuleEvaluationData | null>(null);
   const [form, setForm] = useState<RuleFormState>(EMPTY_FORM);
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const rulesQueryKey = [
+    "dashboard",
+    "team-notification-rules",
+    teamId,
+  ] as const;
+  const rulesQuery = useQuery({
+    queryKey: rulesQueryKey,
+    queryFn: async ({ signal }) => {
+      const [rules, sites, members, emailConfig] = await Promise.all([
+        requestAdminService<NotificationRuleData[]>("notification-rules", {
+          params: { teamId },
+          signal,
+        }),
+        requestAdminService<SiteData[]>("sites", {
+          params: { teamId },
+          signal,
+        }),
+        requestAdminService<MemberData[]>("members", {
+          params: { teamId },
+          signal,
+        }),
+        requestAdminService<PublicNotificationEmailConfig>(
+          "notification-email",
+          { signal },
+        ).catch(() => null),
+      ]);
+      return {
+        rules,
+        sites,
+        members,
+        emailConfigured:
+          emailConfig?.enabled &&
+          emailConfig.provider === "resend" &&
+          Boolean(emailConfig.fromEmail) &&
+          emailConfig.resend.configured,
+      };
+    },
+    initialData: initialData
+      ? {
+          rules: initialData.rules,
+          sites: initialData.sites,
+          members: initialData.members,
+          emailConfigured: initialData.emailConfigured,
+        }
+      : undefined,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const rules = rulesQuery.data?.rules ?? [];
+  const sites = rulesQuery.data?.sites ?? [];
+  const members = rulesQuery.data?.members ?? [];
+  const emailConfigured = rulesQuery.data?.emailConfigured ?? false;
+  const loading = rulesQuery.isPending;
 
   const siteById = useMemo(
     () => new Map(sites.map((site) => [site.id, site])),
@@ -1856,35 +1832,9 @@ export function TeamNotificationsClient({
   );
   const canCreateRule = sites.length > 0;
 
-  async function loadRules() {
-    setLoading(true);
-    try {
-      const [nextRules, nextSites, nextMembers, emailConfig] =
-        await Promise.all([
-          fetchNotificationRules({ teamId }),
-          fetchAdminSites(teamId),
-          fetchAdminMembers(teamId),
-          fetchNotificationEmailConfig(),
-        ]);
-      setRules(nextRules);
-      setSites(nextSites);
-      setMembers(nextMembers);
-      setEmailConfigured(
-        emailConfig.enabled &&
-          emailConfig.provider === "resend" &&
-          Boolean(emailConfig.fromEmail) &&
-          emailConfig.resend.configured,
-      );
-    } catch {
-      toast.error(copy.loadRulesFailed);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void loadRules();
-  }, [teamId]);
+    if (rulesQuery.isError) toast.error(copy.loadRulesFailed);
+  }, [copy.loadRulesFailed, rulesQuery.errorUpdatedAt, rulesQuery.isError]);
 
   function openCreate(type: RuleFormType = "report") {
     if (!canCreateRule) return;
@@ -1919,14 +1869,13 @@ export function TeamNotificationsClient({
     setSaving(true);
     try {
       const payload = buildRulePayload(copy, form, sites);
-      const saved = form.id
-        ? await updateNotificationRule({ ruleId: form.id, teamId, ...payload })
-        : await createNotificationRule({ teamId, ...payload });
-      setRules((current) =>
-        form.id
-          ? current.map((rule) => (rule.id === saved.id ? saved : rule))
-          : [saved, ...current],
-      );
+      await requestAdminService<NotificationRuleData>("notification-rules", {
+        method: form.id ? "PATCH" : "POST",
+        body: form.id
+          ? { ruleId: form.id, teamId, ...payload }
+          : { teamId, ...payload },
+      });
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
       setDialogOpen(false);
       toast.success(form.id ? copy.ruleUpdated : copy.ruleCreated);
     } catch {
@@ -1938,13 +1887,14 @@ export function TeamNotificationsClient({
 
   async function toggleRule(rule: NotificationRuleData) {
     try {
-      const updated = await updateNotificationRule({
-        ruleId: rule.id,
-        enabled: !rule.enabled,
+      await requestAdminService<NotificationRuleData>("notification-rules", {
+        method: "PATCH",
+        body: {
+          ruleId: rule.id,
+          enabled: !rule.enabled,
+        },
       });
-      setRules((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
     } catch {
       toast.error(copy.updateRuleFailed);
     }
@@ -1958,8 +1908,14 @@ export function TeamNotificationsClient({
     )
       return;
     try {
-      await deleteNotificationRule({ ruleId: rule.id });
-      setRules((current) => current.filter((item) => item.id !== rule.id));
+      await requestAdminService<{ id: string; removed: boolean }>(
+        "notification-rules",
+        {
+          method: "DELETE",
+          params: { id: rule.id },
+        },
+      );
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
       toast.success(copy.ruleDeleted);
     } catch {
       toast.error(copy.deleteRuleFailed);
@@ -1970,7 +1926,10 @@ export function TeamNotificationsClient({
     if (testing) return;
     setTesting(true);
     try {
-      await sendNotificationTest({ teamId, userId: currentUserId });
+      await requestAdminService("notification-test", {
+        method: "POST",
+        body: { teamId, userId: currentUserId },
+      });
       toast.success(copy.testNotificationSent);
       setTestDialogOpen(false);
     } catch {
@@ -1987,7 +1946,13 @@ export function TeamNotificationsClient({
     setPreviewDialogOpen(true);
     setPreviewingId(rule.id);
     try {
-      const result = await previewNotificationRule({ ruleId: rule.id });
+      const result = await requestAdminService<NotificationRuleEvaluationData>(
+        "notification-rules/preview",
+        {
+          method: "POST",
+          body: { ruleId: rule.id },
+        },
+      );
       setPreviewResult(result);
     } catch {
       toast.error(copy.previewFailed);
@@ -2000,7 +1965,13 @@ export function TeamNotificationsClient({
     if (runningId) return;
     setRunningId(rule.id);
     try {
-      const result = await runNotificationRuleNow({ ruleId: rule.id });
+      const result = await requestAdminService<NotificationRuleRunData>(
+        "notification-rules/run",
+        {
+          method: "POST",
+          body: { ruleId: rule.id },
+        },
+      );
       toast.success(
         formatI18nTemplate(copy.runResultToast, {
           messages: result.messageCount,
@@ -2008,7 +1979,7 @@ export function TeamNotificationsClient({
           failed: Number(result.summary.emailFailed ?? 0),
         }),
       );
-      await loadRules();
+      await queryClient.invalidateQueries({ queryKey: rulesQueryKey });
     } catch {
       toast.error(copy.runFailed);
     } finally {
@@ -2274,17 +2245,20 @@ export function TeamNotificationsClient({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
-        <DialogContent className="max-h-[min(860px,calc(100vh-2rem))] max-w-5xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle icon={RiEyeLine}>
+      <ResponsiveDialog
+        open={previewDialogOpen}
+        onOpenChange={setPreviewDialogOpen}
+      >
+        <ResponsiveDialogContent desktopClassName="max-h-[min(860px,calc(100vh-2rem))] max-w-5xl">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle icon={RiEyeLine}>
               {copy.previewDialogTitle}
-            </DialogTitle>
-            <DialogDescription>
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               {copy.previewDialogDescription}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-5">
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody className="space-y-5">
             {previewRule ? (
               <div className="grid gap-3 border bg-muted/20 p-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
                 <div>
@@ -2319,7 +2293,13 @@ export function TeamNotificationsClient({
                   <p className="text-xs text-muted-foreground">
                     {copy.columns.condition}
                   </p>
-                  <p className="mt-1">{conditionLabel(copy, previewRule)}</p>
+                  <p className="mt-1">
+                    {conditionLabel(
+                      copy,
+                      messages.conditionDescription,
+                      previewRule,
+                    )}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">
@@ -2465,8 +2445,8 @@ export function TeamNotificationsClient({
                 )}
               </AutoTransition>
             </AutoResizer>
-          </div>
-          <DialogFooter>
+          </ResponsiveDialogBody>
+          <ResponsiveDialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -2475,23 +2455,30 @@ export function TeamNotificationsClient({
               <RiCloseLine className="size-4" />
               <span>{messages.teamSelect.cancel}</span>
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="flex max-h-[min(860px,calc(100vh-1rem))] max-w-6xl flex-col overflow-hidden p-0">
-          <div className="border-b p-4 sm:p-6">
-            <DialogHeader>
-              <DialogTitle icon={RiNotification3Line}>
+      <ResponsiveDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <ResponsiveDialogContent
+          className="flex flex-col overflow-hidden p-0"
+          desktopClassName="max-h-[min(860px,calc(100vh-1rem))] max-w-6xl"
+          drawerClassName="h-[80dvh] max-h-[80dvh]"
+        >
+          <div className="shrink-0 border-b p-4 sm:p-6">
+            <ResponsiveDialogHeader>
+              <ResponsiveDialogTitle icon={RiNotification3Line}>
                 {form.id ? copy.editRule : copy.createRule}
-              </DialogTitle>
-              <DialogDescription>{copy.dialogDescription}</DialogDescription>
-            </DialogHeader>
+              </ResponsiveDialogTitle>
+              <ResponsiveDialogDescription>
+                {copy.dialogDescription}
+              </ResponsiveDialogDescription>
+            </ResponsiveDialogHeader>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <ResponsiveDialogBody className="flex-1 p-4 sm:p-6">
             <RuleFormFields
               copy={copy}
+              terms={messages.conditionDescription}
               locale={locale}
               form={form}
               sites={sites}
@@ -2504,8 +2491,8 @@ export function TeamNotificationsClient({
                 }))
               }
             />
-          </div>
-          <DialogFooter className="border-t p-4 sm:p-6">
+          </ResponsiveDialogBody>
+          <ResponsiveDialogFooter className="border-t p-4 sm:p-6">
             <Button
               type="button"
               variant="outline"
@@ -2523,9 +2510,9 @@ export function TeamNotificationsClient({
               {saving ? <Spinner className="size-4" /> : <RiSave3Line />}
               <span>{form.id ? copy.saveRule : copy.createRule}</span>
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </ResponsiveDialogFooter>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </div>
   );
 }

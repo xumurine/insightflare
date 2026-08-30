@@ -15,7 +15,7 @@ async function sessionSecret(): Promise<string> {
   if (configured) {
     return configured;
   }
-  return "insightflare-session-secret-change-me";
+  throw new Error("MAIN_SECRET or DAILY_SALT_SECRET is required for sessions");
 }
 
 export function sessionSecretSourceFromProcessEnv(): SecretSource {
@@ -116,6 +116,7 @@ export async function createSessionToken(
 export async function verifySessionToken(
   token: string | null | undefined,
   secretOverride?: string,
+  nowMs = Date.now(),
 ): Promise<DashboardSession | null> {
   if (!token || token.length < 20) {
     return null;
@@ -159,7 +160,7 @@ export async function verifySessionToken(
   if (!userId || !username || !Number.isFinite(exp) || exp <= 0) {
     return null;
   }
-  if (Math.floor(Date.now() / 1000) >= exp) {
+  if (Math.floor(nowMs / 1000) >= exp) {
     return null;
   }
 

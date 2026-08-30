@@ -4,7 +4,11 @@ import path from "node:path";
 import * as esbuild from "esbuild";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SDK_MIN as fullSdk } from "../sdk.min";
+import { SDK_MIN as noPerfSdk } from "../sdk.no-perf.min";
+
 const installKey = "__insightflare_tracker_v6__";
+const runtimeConfigKey = "__insightflare_tracker_runtime_config__";
 const sdkSourcePath = path.resolve(process.cwd(), "src/tracker/sdk.ts");
 let configuredSdkImportCounter = 0;
 
@@ -20,53 +24,29 @@ interface ConfiguredSdkOptions {
   buildPerformance?: boolean;
 }
 
+function setRuntimeConfig(options: ConfiguredSdkOptions = {}) {
+  (globalThis as Record<string, unknown>)[runtimeConfigKey] = {
+    siteId: options.siteId ?? "configured-site",
+    isEUMode: options.isEuMode === true,
+    trackQueryParams: options.trackQueryParams !== false,
+    trackHash: options.trackHash !== false,
+    ignoreDoNotTrack: options.ignoreDoNotTrack !== false,
+    autoTrackOutboundLinks: options.autoTrackOutboundLinks !== false,
+    performanceSampleRate: options.performanceSampleRate ?? 0,
+    sessionWindowMs: options.sessionWindowMs ?? 30 * 60 * 1000,
+    collectToken: "test-collect-token",
+  };
+}
+
 async function importConfiguredSdk(options: ConfiguredSdkOptions = {}) {
+  setRuntimeConfig(options);
   const source = await readFile(sdkSourcePath, "utf8");
-  const rewritten = source
-    .replace(
-      'const SITE_ID = "__IF_SITE_ID__";',
-      `const SITE_ID = ${JSON.stringify(options.siteId ?? "configured-site")};`,
-    )
-    .replace(
-      'const IS_EU_MODE = "__IF_IS_EU_MODE__";',
-      `const IS_EU_MODE = ${options.isEuMode === true ? "true" : "false"};`,
-    )
-    .replace(
-      'const TRACK_QUERY_PARAMS = "__IF_TRACK_QUERY_PARAMS__";',
-      `const TRACK_QUERY_PARAMS = ${
-        options.trackQueryParams === false ? "false" : "true"
-      };`,
-    )
-    .replace(
-      'const TRACK_HASH = "__IF_TRACK_HASH__";',
-      `const TRACK_HASH = ${options.trackHash === false ? "false" : "true"};`,
-    )
-    .replace(
-      'const IGNORE_DO_NOT_TRACK = "__IF_IGNORE_DO_NOT_TRACK__";',
-      `const IGNORE_DO_NOT_TRACK = ${
-        options.ignoreDoNotTrack === false ? "false" : "true"
-      };`,
-    )
-    .replace(
-      'const AUTO_TRACK_OUTBOUND_LINKS = "__IF_AUTO_TRACK_OUTBOUND_LINKS__";',
-      `const AUTO_TRACK_OUTBOUND_LINKS = ${
-        options.autoTrackOutboundLinks === false ? "false" : "true"
-      };`,
-    )
-    .replace(
-      'const PERFORMANCE_SAMPLE_RATE = "__IF_PERFORMANCE_SAMPLE_RATE__";',
-      `const PERFORMANCE_SAMPLE_RATE = ${options.performanceSampleRate ?? 0};`,
-    )
-    .replace(
-      'const SESSION_WINDOW_MS = "__IF_SESSION_WINDOW_MS__";',
-      `const SESSION_WINDOW_MS = ${options.sessionWindowMs ?? 30 * 60 * 1000};`,
-    )
-    .replace(
-      "declare var BUILD_PERFORMANCE: boolean;",
-      `const BUILD_PERFORMANCE = ${
-        options.buildPerformance === false ? "false" : "true"
-      };`,
-    );
+  const rewritten = source.replace(
+    "declare var BUILD_PERFORMANCE: boolean;",
+    `const BUILD_PERFORMANCE = ${
+      options.buildPerformance === false ? "false" : "true"
+    };`,
+  );
 
   const output = await esbuild.build({
     bundle: true,
@@ -95,6 +75,17 @@ async function importConfiguredSdk(options: ConfiguredSdkOptions = {}) {
 function decodeFetchBody(fetchSpy: ReturnType<typeof vi.fn>, index = 0) {
   const [, options] = fetchSpy.mock.calls[index] as [string, RequestInit];
   return JSON.parse(options.body as string);
+}
+
+async function executeGeneratedSdk(
+  sdk: string,
+  options: ConfiguredSdkOptions = {},
+) {
+  setRuntimeConfig(options);
+  new Function(sdk)();
+  await vi.waitFor(() => {
+    expect(globalThis.fetch).toHaveBeenCalled();
+  });
 }
 
 async function decodeBeaconBody(blob: Blob) {
@@ -201,6 +192,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     }
 
     (globalThis as any).BUILD_PERFORMANCE = true;
+    setRuntimeConfig();
 
     vi.resetModules();
   });
@@ -234,6 +226,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     (globalThis as any).PerformanceObserver = originalPerformanceObserver;
 
     document.body.innerHTML = "";
+    delete (globalThis as Record<string, unknown>)[runtimeConfigKey];
 
     vi.restoreAllMocks();
     vi.useRealTimers();
@@ -249,6 +242,57 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect((window as any).__insightflare_tracker_v6__.track).toBeTypeOf(
       "function",
     );
+  });
+
+  it("preserves visitor identity and EU anonymity in generated SDK variants", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+      );
+
+    for (const sdk of [fullSdk, noPerfSdk]) {
+      delete (window as any).__insightflare_tracker_v6__;
+      delete (window as any).insightflare;
+      window.localStorage.clear();
+      fetchSpy.mockClear();
+
+      await executeGeneratedSdk(sdk, { siteId: "generated-site" });
+      const body = decodeFetchBody(fetchSpy);
+      expect(body.visitorId).toBe(
+        window.localStorage.getItem("__insightflare_visitor_generated-site__"),
+      );
+      expect(body.visitorId).not.toBe("");
+
+      delete (window as any).__insightflare_tracker_v6__;
+      delete (window as any).insightflare;
+      window.localStorage.clear();
+      fetchSpy.mockClear();
+
+      await executeGeneratedSdk(sdk, {
+        isEuMode: true,
+        siteId: "generated-site",
+      });
+      expect(decodeFetchBody(fetchSpy).visitorId).toBe("");
+      expect(window.localStorage.length).toBe(0);
+    }
+  });
+
+  it("honors Do Not Track in generated SDK variants", () => {
+    Object.defineProperty(navigator, "doNotTrack", {
+      value: "1",
+      writable: true,
+      configurable: true,
+    });
+
+    for (const sdk of [fullSdk, noPerfSdk]) {
+      delete (window as any).__insightflare_tracker_v6__;
+      delete (window as any).insightflare;
+      setRuntimeConfig({ ignoreDoNotTrack: false });
+      expect(() => new Function(sdk)()).toThrow(
+        "InsightFlare: Do Not Track enabled",
+      );
+    }
   });
 
   it("should throw an entry error if loaded without a valid currentScript", async () => {
@@ -277,7 +321,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     );
   });
 
-  it("should gracefully proceed without error under default unreplaced DNT placeholder when DNT is active", async () => {
+  it("should proceed when configured to ignore Do Not Track", async () => {
     // Enable navigator DNT flag
     Object.defineProperty(navigator, "doNotTrack", {
       value: "1",
@@ -285,7 +329,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
       configurable: true,
     });
 
-    // Asset the bootstrap does NOT reject because IGNORE_DO_NOT_TRACK placeholder is a non-empty string truthy value
+    // The default runtime configuration explicitly ignores Do Not Track.
     const sdk = await import("../sdk.ts");
     expect(sdk).toBeDefined();
 
@@ -429,7 +473,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(body.kind).toBe("custom_event");
     expect(body.eventName).toBe("button_click");
     expect(body.eventData).toEqual({ color: "blue" });
-    expect(body.sequence).toBe(1);
+    expect(body.sequence).toBeUndefined();
   });
 
   it("should ignore track() invocations with empty or whitespace event names", async () => {
@@ -1145,7 +1189,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     delete (globalThis as any).IntersectionObserver;
   });
 
-  it("should normalize UA client hints when navigator.userAgentData exists", async () => {
+  it("should include UA client hints when navigator.userAgentData exists", async () => {
     const uaData = {
       brands: [{ brand: "Chromium", version: "130" }],
       mobile: false,
@@ -1258,7 +1302,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
   it("should expose the API on window.insightflare as well as the install key", async () => {
     await import("../sdk.ts");
     expect((window as any).insightflare).toBe((window as any)[installKey]);
-    expect((window as any).insightflare.siteId).toBe("__IF_SITE_ID__");
+    expect((window as any).insightflare.siteId).toBe("configured-site");
   });
 
   it("should reuse existing visitor ids without sending SDK session ids", async () => {
@@ -1437,7 +1481,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("should trim event names and increment sequence across custom events", async () => {
+  it("should trim event names without client-side sequencing", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(() =>
@@ -1453,8 +1497,8 @@ describe("Tracker Browser SDK Integration Suite", () => {
     const firstBody = decodeFetchBody(fetchSpy, 0);
     const secondBody = decodeFetchBody(fetchSpy, 1);
     expect(firstBody.eventName).toBe("spaced_event");
-    expect(firstBody.sequence).toBe(1);
-    expect(secondBody.sequence).toBe(2);
+    expect(firstBody.sequence).toBeUndefined();
+    expect(secondBody.sequence).toBeUndefined();
   });
 
   it("should ignore inherited global property keys", async () => {
@@ -1569,7 +1613,6 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     await import("../sdk.ts");
     await new Promise((r) => queueMicrotask(r));
-    const initialVisitId = decodeFetchBody(fetchSpy).visitId;
     const api = (window as any).__insightflare_tracker_v6__;
     api.debug();
     fetchSpy.mockClear();
@@ -1586,8 +1629,10 @@ describe("Tracker Browser SDK Integration Suite", () => {
       "custom_event",
     ]);
     expect(bodies[0].pathname).toBe("/flushed-route");
-    expect(bodies[0].previousVisitId).toBe(initialVisitId);
+    expect(bodies[0].navigation).toBe("route");
+    expect(bodies[0].previousVisitId).toBeUndefined();
     expect(bodies[1].pathname).toBe("/flushed-route");
+    expect(bodies[1].navigation).toBeUndefined();
     expect(bodies[1].previousVisitId).toBeUndefined();
     expect(logSpy).toHaveBeenCalledWith(
       "[InsightFlare]",
@@ -1747,7 +1792,7 @@ describe("Tracker Browser SDK Integration Suite", () => {
     expect(body.eventData).toEqual({ label: "kept" });
   });
 
-  it("should normalize malformed UA client hints without preserving invalid values", async () => {
+  it("should forward raw UA client hints for server-side normalization", async () => {
     (navigator as any).userAgentData = {
       brands: [
         null,
@@ -1782,10 +1827,21 @@ describe("Tracker Browser SDK Integration Suite", () => {
 
     const body = decodeFetchBody(fetchSpy);
     expect(body.uaClientHints).toEqual({
-      fullVersionList: [{ brand: "Chromium", version: "130.0.6723.92" }],
-      formFactors: ["Desktop", "Foldable"],
-      model: "Surface Pro",
-      platformVersion: "15.0.0",
+      brands: [
+        null,
+        [],
+        { brand: "", version: "1" },
+        { brand: "MissingVersion", version: "" },
+      ],
+      mobile: "false",
+      platform: "   ",
+      fullVersionList: [
+        { brand: "Chromium", version: "130.0.6723.92" },
+        { brand: "", version: "bad" },
+      ],
+      formFactors: [" Desktop ", "", "Foldable"],
+      model: " Surface Pro ",
+      platformVersion: " 15.0.0 ",
     });
   });
 
@@ -2049,9 +2105,10 @@ describe("Tracker Browser SDK Integration Suite", () => {
     const body = decodeFetchBody(fetchSpy);
     expect(body.kind).toBe("pageview");
     expect(body.uaClientHints.brands).toEqual([
+      { brand: "", version: "missing-brand" },
       { brand: "Chromium", version: "130" },
     ]);
-    expect(body.uaClientHints.formFactors).toEqual(["Desktop", "Tablet"]);
+    expect(body.uaClientHints.formFactors).toEqual(["Desktop", "", "Tablet"]);
     expect(body.uaClientHints.model).toBe("Surface");
   });
 

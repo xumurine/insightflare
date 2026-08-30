@@ -104,6 +104,7 @@ export interface EventsTrendData {
 export interface EventRecord {
   eventId: string;
   eventName: string;
+  eventKind?: "custom_event" | "pageview" | "session_start" | "leave";
   occurredAt: number;
   receivedAt: number;
   sequence: number;
@@ -116,6 +117,7 @@ export interface EventRecord {
   referrerHost: string;
   country: string;
   region: string;
+  city: string;
   browser: string;
   browserVersion: string;
   os: string;
@@ -126,11 +128,10 @@ export interface EventRecord {
 }
 
 export interface EventsRecordsMeta {
-  page: number;
   pageSize: number;
   returned: number;
   hasMore: boolean;
-  nextPage: number | null;
+  nextCursor: string | null;
 }
 
 export interface EventsRecordsData {
@@ -191,22 +192,73 @@ export interface EventRecordDetailData {
   ok: boolean;
   data: {
     event: EventRecord;
-    context: {
-      visitId: string;
-      sessionId: string;
-      visitorId: string;
-      pathname: string;
-      title: string;
-      hostname: string;
-      referrerHost: string;
-      country: string;
-      region: string;
-      browser: string;
-      browserVersion: string;
-      os: string;
-      osVersion: string;
-      deviceType: string;
-    };
+    context: EventRecordDetailContext;
     eventData: unknown;
   } | null;
+}
+
+export interface JourneyEventDetailData {
+  ok: boolean;
+  data: {
+    event: EventRecord;
+    context: EventRecordDetailContext;
+  } | null;
+}
+
+export interface EventRecordDetailContext {
+  visitId: string;
+  sessionId: string;
+  visitorId: string;
+  userId?: string;
+  userName?: string;
+  pathname: string;
+  queryString?: string;
+  hash?: string;
+  title: string;
+  hostname: string;
+  referrerUrl?: string;
+  referrerHost: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  country: string;
+  region: string;
+  regionCode?: string;
+  city?: string;
+  continent?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  postalCode?: string;
+  metroCode?: string;
+  timezone?: string;
+  organization?: string;
+  isEU?: boolean;
+  browser: string;
+  browserVersion: string;
+  os: string;
+  osVersion: string;
+  deviceType: string;
+  userAgent?: string;
+  language?: string;
+  screenWidth?: number | null;
+  screenHeight?: number | null;
+  status?: string;
+  startedAt?: number;
+  previousVisitId?: string;
+  previousVisitStartedAt?: number | null;
+  lastActivityAt?: number;
+  endedAt?: number | null;
+  finalizedAt?: number | null;
+  durationMs?: number | null;
+  durationSource?: string;
+  exitReason?: string;
+  performance?: {
+    ttfb: number | null;
+    fcp: number | null;
+    lcp: number | null;
+    cls: number | null;
+    inp: number | null;
+  };
 }

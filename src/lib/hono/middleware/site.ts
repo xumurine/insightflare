@@ -1,14 +1,26 @@
 import type { MiddlewareHandler } from "hono";
 
+import { jsonError } from "@/lib/api-v1/wire-helpers";
+import {
+  fetchPublicSite,
+  resolvePrivateSiteForSession,
+} from "@/lib/edge/analytics/providers/d1/internal/core";
 import { canAccessSiteId } from "@/lib/edge/api-key-auth";
-import { jsonError } from "@/lib/edge/api-v1-helpers";
-import { fetchPublicSite, resolvePrivateSite } from "@/lib/edge/query/core";
 import type { AppEnv, HonoApiSite } from "@/lib/hono/types";
 import { requestUrl } from "@/lib/hono/utils/context";
 
 export function resolvePrivateSiteMiddleware(): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const site = await resolvePrivateSite(c.req.raw, c.env, requestUrl(c));
+    const session = c.get("session");
+    if (!session) {
+      throw new Error("private session context missing");
+    }
+    const site = await resolvePrivateSiteForSession(
+      c.req.raw,
+      c.env,
+      requestUrl(c),
+      session,
+    );
     if (site instanceof Response) {
       c.res = site;
       return site;

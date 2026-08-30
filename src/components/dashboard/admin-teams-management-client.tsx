@@ -1,13 +1,11 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   RiAddLine,
   RiArrowRightLine,
   RiFileList3Line,
   RiSettings3Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -27,83 +25,62 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { requestAdminService } from "@/lib/admin-service-client";
 import { shortDateTime } from "@/lib/dashboard/format";
+import type { AdminTeamsInitialData } from "@/lib/dashboard/management-data";
 import type { TeamData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface AdminTeamsManagementClientProps {
   locale: Locale;
   messages: AppMessages;
+  initialData?: AdminTeamsInitialData | null;
 }
 
-interface ApiResponse<T> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
-}
-
-async function fetchTeams(): Promise<TeamData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: "/api/private/admin/teams",
-    }) as ApiResponse<TeamData[]>;
-    return Array.isArray(result.data) ? result.data : [];
-  }
-  const response = await fetch("/api/private/admin/teams", {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
-  const payload = (await response.json()) as ApiResponse<TeamData[]>;
-  if (!response.ok || !payload.ok || !Array.isArray(payload.data)) {
-    throw new Error(payload.message || payload.error || "load_teams_failed");
-  }
-  return payload.data;
+async function fetchTeams(signal?: AbortSignal): Promise<TeamData[]> {
+  return requestAdminService<TeamData[]>("teams", { signal });
 }
 
 export function AdminTeamsManagementClient({
   locale,
   messages,
+  initialData = null,
 }: AdminTeamsManagementClientProps) {
   const { timeZone } = useDashboardQueryControls();
   const router = useRouter();
   const t = messages.adminTeams;
-  const [teams, setTeams] = useState<TeamData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const teamsQuery = useQuery({
+    queryKey: ["dashboard", "admin-teams"],
+    queryFn: ({ signal }) => fetchTeams(signal),
+    initialData: initialData?.teams,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const teams = teamsQuery.data ?? [];
+  const loading = teamsQuery.isPending;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchTeams()
-      .then((data) => {
-        if (!active) return;
-        setTeams(data);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [t.loadFailed]);
+    if (!teamsQuery.isError) return;
+    const message =
+      teamsQuery.error instanceof Error
+        ? teamsQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    t.loadFailed,
+    teamsQuery.error,
+    teamsQuery.errorUpdatedAt,
+    teamsQuery.isError,
+  ]);
 
   async function refreshTeams() {
-    const data = await fetchTeams();
-    setTeams(data);
+    await teamsQuery.refetch();
   }
 
   async function handleCreateTeam() {
@@ -114,21 +91,13 @@ export function AdminTeamsManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/private/admin/teams", {
+      await requestAdminService<TeamData>("teams", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           name: name.trim(),
           slug: slug.trim() || undefined,
-        }),
+        },
       });
-      const payload = (await response.json()) as ApiResponse<TeamData>;
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.message || payload.error || t.createFailed);
-      }
       setName("");
       setSlug("");
       await refreshTeams();

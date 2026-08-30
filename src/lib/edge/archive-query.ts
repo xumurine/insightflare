@@ -6,7 +6,12 @@ import {
   una as unauthorized,
 } from "@/lib/response";
 
+import {
+  canAccessMemberSite,
+  parseMemberSiteIdsJson,
+} from "./member-site-access";
 import { requireSession } from "./session-auth";
+import { SITE_PK_FROM_SITE_ID_SQL } from "./site-identity-sql";
 import type { Env } from "./types";
 import { coerceNumber, ONE_HOUR_MS } from "./utils";
 
@@ -18,7 +23,7 @@ function normalizeRange(
     return null;
   }
 
-  if ("suffix" in range) {
+  if ("suffix" in range && typeof range.suffix === "number") {
     const suffix = Math.max(0, Math.floor(range.suffix));
     if (suffix <= 0) return null;
     const length = Math.min(size, suffix);
@@ -27,35 +32,50 @@ function normalizeRange(
     return { start, end, length };
   }
 
-  const start = Math.max(0, Math.floor(range.offset ?? 0));
+  const offsetRange = range as Exclude<R2Range, { suffix: number }>;
+  const start = Math.max(0, Math.floor(offsetRange.offset ?? 0));
   const maxLength = Math.max(0, size - start);
   const requestedLength =
-    range.length === undefined
+    offsetRange.length === undefined
       ? maxLength
-      : Math.max(0, Math.floor(range.length));
+      : Math.max(0, Math.floor(offsetRange.length));
   const length = Math.min(maxLength, requestedLength);
   if (length <= 0) return null;
   const end = start + length - 1;
   return { start, end, length };
 }
 
-async function assertSiteMembership(
+async function assertSiteAccess(
   env: Env,
   siteId: string,
   userId: string,
 ): Promise<boolean> {
   const row = await env.DB.prepare(
     `
-      SELECT 1 AS ok
+      SELECT
+        s.id,
+        t.owner_user_id AS ownerUserId,
+        tm.role,
+        tm.site_ids_json AS siteIdsJson
       FROM sites s
-      INNER JOIN team_members tm ON tm.team_id = s.team_id
-      WHERE s.id = ? AND tm.user_id = ?
+      INNER JOIN teams t ON t.id = s.team_id
+      LEFT JOIN team_members tm ON tm.team_id = s.team_id AND tm.user_id = ?
+      WHERE s.id = ?
       LIMIT 1
     `,
   )
-    .bind(siteId, userId)
-    .first<{ ok: number }>();
-  return Boolean(row?.ok);
+    .bind(userId, siteId)
+    .first<{
+      id: string;
+      ownerUserId: string;
+      role: string | null;
+      siteIdsJson: string | null;
+    }>();
+  if (!row?.id) return false;
+  if (row.ownerUserId === userId) return true;
+  if (row.role === "owner" || row.role === "admin") return true;
+  if (!row.role) return false;
+  return canAccessMemberSite(parseMemberSiteIdsJson(row.siteIdsJson), siteId);
 }
 
 function parseWindowHours(
@@ -105,7 +125,7 @@ export async function handlePrivateArchiveManifest(
   const allowed =
     session.systemRole === "admin"
       ? true
-      : await assertSiteMembership(env, siteId, session.userId);
+      : await assertSiteAccess(env, siteId, session.userId);
   if (!allowed) {
     return unauthorized("Site access denied for current user");
   }
@@ -128,7 +148,7 @@ export async function handlePrivateArchiveManifest(
         size_bytes AS sizeBytes,
         created_at AS createdAt
       FROM archive_objects
-      WHERE site_id = ?
+      WHERE site_pk = ${SITE_PK_FROM_SITE_ID_SQL}
         AND end_hour >= ?
         AND start_hour <= ?
       ORDER BY start_hour ASC
@@ -203,7 +223,7 @@ export async function handlePrivateArchiveFile(
   const allowed =
     session.systemRole === "admin"
       ? true
-      : await assertSiteMembership(env, row.siteId, session.userId);
+      : await assertSiteAccess(env, row.siteId, session.userId);
   if (!allowed) {
     return unauthorized("Site access denied for current user");
   }

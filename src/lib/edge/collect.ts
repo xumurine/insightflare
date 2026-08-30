@@ -1,4 +1,9 @@
 import {
+  type BlockingRequestContext,
+  matchBlockingRules,
+  parseBlockingRules,
+} from "@/lib/blocking-rules";
+import {
   classifyCollectBotTraffic,
   writeBotAnalyticsEvent,
 } from "@/lib/edge/bot-protection";
@@ -21,7 +26,8 @@ import type { TrackerPayloadKind } from "@/lib/edge/types";
 import { jsonCloneRecord } from "@/lib/edge/utils";
 import { assertContentSize, BODY_SIZE_LIMITS } from "@/lib/form-helpers";
 import { jsonResponse } from "@/lib/response";
-import type { SiteTrackingConfig } from "@/lib/site-settings";
+
+import type { InvocationLogger } from "./observability-logger";
 
 const CORS_BASE_HEADERS = {
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS",
@@ -102,16 +108,6 @@ function normalizePayloadPathname(input: unknown): string {
   return value.slice(0, 2048);
 }
 
-function matchesBlockedPath(pathname: string, blockedPaths: string[]): boolean {
-  for (const blockedPath of blockedPaths) {
-    if (!blockedPath) continue;
-    if (pathname === blockedPath || pathname.startsWith(`${blockedPath}/`)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function serializeHeaders(request: Request): Record<string, string> {
   const headers: Record<string, string> = {};
   request.headers.forEach((value, key) => {
@@ -153,6 +149,69 @@ function parseOriginHostname(origin: string | null): string {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function workerMetadata(request: Request): {
+  readonly asn?: number;
+  readonly country?: string;
+  readonly region?: string;
+} {
+  const cf = (request as Request & { readonly cf?: unknown }).cf;
+  if (!isRecord(cf)) return {};
+  const country = typeof cf.country === "string" ? cf.country.trim() : "";
+  const regionCode =
+    typeof cf.regionCode === "string" ? cf.regionCode.trim() : "";
+  return {
+    ...(typeof cf.asn === "number" && Number.isSafeInteger(cf.asn)
+      ? { asn: cf.asn }
+      : {}),
+    ...(country ? { country } : {}),
+    ...(country && regionCode ? { region: `${country}-${regionCode}` } : {}),
+  };
+}
+
+function canCheckPath(
+  payload: TrackerClientPayload,
+  kind: TrackerPayloadKind,
+): boolean {
+  return (
+    kind === "pageview" ||
+    kind === "custom_event" ||
+    kind === "visibility" ||
+    (kind === "leave" && coerceTrimmedString(payload.pathname, 4096).length > 0)
+  );
+}
+
+function blockingContext(
+  request: Request,
+  payload: TrackerClientPayload,
+  normalizedPayload: TrackerClientPayload,
+  originHostname: string,
+  kind: TrackerPayloadKind,
+): BlockingRequestContext {
+  const metadata = workerMetadata(request);
+  const hostname = normalizeClientHostname(
+    normalizedPayload.hostname ?? payload.hostname,
+  );
+  return {
+    hostname: hostname || originHostname,
+    originHostname,
+    pathname: canCheckPath(payload, kind)
+      ? normalizedPayload.pathname
+      : undefined,
+    query: payload.query,
+    referrer:
+      request.headers.get("referer") ||
+      request.headers.get("referrer") ||
+      payload.referrerUrl,
+    userAgent: request.headers.get("user-agent"),
+    ip: requestIp(request),
+    ...metadata,
+  };
+}
+
 function toCorsHeaders(origin: string | null): Record<string, string> {
   if (!origin) {
     return {
@@ -189,6 +248,7 @@ async function decideCollectionPolicy(
   env: Env,
   payload: TrackerClientPayload | null,
   requestUrl: URL,
+  logger?: InvocationLogger,
 ): Promise<CollectionDecision> {
   const origin = parseOrigin(request);
   const originHostname = parseOriginHostname(origin);
@@ -231,11 +291,8 @@ async function decideCollectionPolicy(
   try {
     // `readSiteTrackingConfig` already caches KV results for 1 hour.
     settings = await readSiteTrackingConfig(env, siteId);
-  } catch (error) {
-    logIngestTrace("collect_settings_read_failed", {
-      siteId,
-      error: errorToMessage(error),
-    });
+  } catch {
+    logger?.warn("collect.settings_read_failed");
     settings = null;
   }
 
@@ -249,34 +306,10 @@ async function decideCollectionPolicy(
     };
   }
 
-  const hasWhitelist =
-    Array.isArray(settings.domainWhitelist) &&
-    settings.domainWhitelist.length > 0;
-  if (
-    hasWhitelist &&
-    !settings.allowedHostnames.some(
-      (hostname) => hostname.trim().toLowerCase() === originHostname,
-    )
-  ) {
-    return {
-      shouldForward: false,
-      allowOrigin: origin,
-      siteId,
-      payload: null,
-      reason: "origin_not_allowed",
-      detail: {
-        origin,
-        originHostname,
-        allowedHostnames: settings.allowedHostnames,
-      },
-    };
-  }
-
   const normalizedPayloadResult = normalizeForwardPayload(
     payload,
     siteId,
     kind,
-    settings,
   );
   if (!normalizedPayloadResult.payload) {
     return {
@@ -286,6 +319,47 @@ async function decideCollectionPolicy(
       payload: null,
       reason: normalizedPayloadResult.reason,
       detail: normalizedPayloadResult.detail,
+    };
+  }
+
+  const parsedBlockingRules = parseBlockingRules(settings);
+  if (!parsedBlockingRules.ok) {
+    logger?.warn("collect.blocking_rules_invalid");
+  }
+  const legacyDomainRules = parsedBlockingRules.fields.domains;
+  if (
+    legacyDomainRules.sourceVersion === 1 &&
+    legacyDomainRules.rules.length > 0 &&
+    !originHostname
+  ) {
+    return {
+      shouldForward: false,
+      allowOrigin: origin,
+      siteId,
+      payload: null,
+      reason: "origin_not_allowed",
+      detail: { origin, originHostname },
+    };
+  }
+  const blocking = matchBlockingRules(
+    parsedBlockingRules,
+    blockingContext(
+      request,
+      payload,
+      normalizedPayloadResult.payload,
+      originHostname,
+      kind,
+    ),
+  );
+  if (!blocking.allowed) {
+    const firstBlock = blocking.blockedBy[0];
+    return {
+      shouldForward: false,
+      allowOrigin: origin,
+      siteId,
+      payload: null,
+      reason: firstBlock ? `blocked_${firstBlock.field}` : "blocked_by_rule",
+      detail: firstBlock ? { match: firstBlock } : undefined,
     };
   }
 
@@ -301,7 +375,6 @@ function normalizeForwardPayload(
   payload: TrackerClientPayload,
   siteId: string,
   kind: TrackerPayloadKind,
-  settings: SiteTrackingConfig,
 ): {
   payload: TrackerClientPayload | null;
   reason: string;
@@ -324,27 +397,13 @@ function normalizeForwardPayload(
     delete normalizedPayload.uaClientHints;
   }
 
-  const canCheckPath =
-    kind === "pageview" ||
-    kind === "custom_event" ||
-    kind === "visibility" ||
-    (kind === "leave" &&
-      coerceTrimmedString(payload.pathname, 4096).length > 0);
-
-  if (canCheckPath) {
+  if (canCheckPath(payload, kind)) {
     const pathname = normalizePayloadPathname(payload.pathname);
     if (!pathname) {
       return {
         payload: null,
         reason: "invalid_pathname",
         detail: { pathname: String(payload.pathname || "") },
-      };
-    }
-    if (matchesBlockedPath(pathname, settings.pathBlacklist)) {
-      return {
-        payload: null,
-        reason: "blocked_pathname",
-        detail: { pathname },
       };
     }
     normalizedPayload.pathname = pathname;
@@ -391,50 +450,6 @@ function createTraceId(): string {
   }
 }
 
-function errorToMessage(error: unknown): string {
-  return String(error instanceof Error ? error.message : error);
-}
-
-function logIngestTrace(
-  event: string,
-  fields: Record<string, unknown> = {},
-  level: "info" | "warn" | "error" = "info",
-): void {
-  const payload = {
-    event,
-    at: new Date().toISOString(),
-    ...fields,
-  };
-  const line = JSON.stringify(payload);
-  if (level === "error") {
-    console.error(line);
-    return;
-  }
-  if (level === "warn") {
-    console.warn(line);
-    return;
-  }
-  console.log(line);
-}
-
-function compactPayloadForLog(
-  payload: TrackerClientPayload | null,
-): Record<string, unknown> {
-  if (!payload) return {};
-  return {
-    kind: payload.kind || "",
-    siteId: payload.siteId || "",
-    visitId: payload.visitId || "",
-    previousVisitId: payload.previousVisitId || "",
-    eventId: payload.eventId || "",
-    eventName: payload.eventName || "",
-    visibilityState: payload.visibilityState || "",
-    pathname: payload.pathname || "",
-    hostname: payload.hostname || "",
-    timestamp: payload.timestamp ?? null,
-  };
-}
-
 function noContent(origin: string | null): Response {
   return new Response(null, { status: 204, headers: toCorsHeaders(origin) });
 }
@@ -462,6 +477,7 @@ export async function handleCollectRequest(
   env: Env,
   ctx: ExecutionContext,
   url = new URL(request.url),
+  logger?: InvocationLogger,
 ): Promise<Response> {
   // Body 大小限制检查
   const sizeError = assertContentSize(request, BODY_SIZE_LIMITS.COLLECT);
@@ -475,23 +491,17 @@ export async function handleCollectRequest(
     acceptedAt: Date.now(),
   };
 
-  const body = await requestWithCf.text();
+  const body = logger
+    ? await logger.measure("collect.request_body_read", () =>
+        requestWithCf.text(),
+      )
+    : await requestWithCf.text();
   let payload: TrackerClientPayload | null = null;
   if (body) {
     try {
       payload = sanitizeInputPayload(JSON.parse(body));
-    } catch (error) {
-      logIngestTrace(
-        "collect_rejected",
-        {
-          traceId: trace.id,
-          reason: "invalid_json",
-          origin,
-          bodyBytes: body.length,
-          error: errorToMessage(error),
-        },
-        "warn",
-      );
+    } catch {
+      logger?.warn("collect.rejected.invalid_json");
       return jsonError(origin, "Invalid JSON payload", 400);
     }
   }
@@ -500,20 +510,18 @@ export async function handleCollectRequest(
     const siteId = normalizeSiteSettingsKey(
       pickSiteIdFromPayload(payload, url),
     );
-    const verification = await verifyCollectToken({
-      env,
-      token: collectTokenFromPayload(payload),
-      siteId,
-      ip: requestIp(requestWithCf),
-    });
-    if (!verification.ok) {
-      logIngestTrace("collect_rejected", {
-        traceId: trace.id,
-        reason: verification.reason,
-        origin,
+    const verify = () =>
+      verifyCollectToken({
+        env,
+        token: collectTokenFromPayload(payload),
         siteId,
-        ...compactPayloadForLog(payload),
+        ip: requestIp(requestWithCf),
       });
+    const verification = logger
+      ? await logger.measure("collect.token_verify", verify)
+      : await verify();
+    if (!verification.ok) {
+      logger?.warn(`collect.rejected.${verification.reason}`);
       return noContent(origin);
     }
 
@@ -524,23 +532,20 @@ export async function handleCollectRequest(
     });
 
     if (classification.isBot) {
-      logIngestTrace("collect_bot_diverted", {
-        traceId: trace.id,
-        siteId,
-        origin,
-        confidence: classification.confidence,
-        reasons: classification.reasons,
-        ...compactPayloadForLog(payload),
-      });
-      writeBotAnalyticsEvent(env, {
-        request: requestWithCf,
-        payload,
-        siteId,
-        origin,
-        traceId: trace.id,
-        receivedAt: trace.acceptedAt,
-        classification,
-      });
+      logger?.info("collect.bot_diverted");
+      writeBotAnalyticsEvent(
+        env,
+        {
+          request: requestWithCf,
+          payload,
+          siteId,
+          origin,
+          traceId: trace.id,
+          receivedAt: trace.acceptedAt,
+          classification,
+        },
+        logger,
+      );
       return noContent(origin);
     }
   }
@@ -548,35 +553,18 @@ export async function handleCollectRequest(
   if (payload?.kind === "custom_event") {
     const eventDataResult = expandCustomEventData(payload.eventData);
     if (!eventDataResult.ok) {
-      logIngestTrace(
-        "collect_rejected",
-        {
-          traceId: trace.id,
-          reason: "invalid_custom_event_data",
-          ...compactPayloadForLog(payload),
-          error: eventDataResult.error,
-        },
-        "warn",
-      );
+      logger?.warn("collect.rejected.invalid_custom_event_data");
       return jsonError(origin, eventDataResult.error, eventDataResult.status);
     }
   }
 
-  const decision = await decideCollectionPolicy(
-    requestWithCf,
-    env,
-    payload,
-    url,
-  );
+  const decide = () =>
+    decideCollectionPolicy(requestWithCf, env, payload, url, logger);
+  const decision = logger
+    ? await logger.measure("collect.policy", decide)
+    : await decide();
   if (!decision.shouldForward) {
-    logIngestTrace("collect_rejected", {
-      traceId: trace.id,
-      reason: decision.reason,
-      origin,
-      siteId: decision.siteId,
-      ...compactPayloadForLog(payload),
-      ...(decision.detail || {}),
-    });
+    logger?.warn(`collect.rejected.${decision.reason}`);
     return noContent(decision.allowOrigin);
   }
 
@@ -592,59 +580,34 @@ export async function handleCollectRequest(
     trace,
   };
 
-  logIngestTrace("collect_forward_queued", {
-    traceId: trace.id,
-    origin,
-    ...compactPayloadForLog(decision.payload),
-  });
+  logger?.info("collect.forward_queued");
 
-  writeNormalAnalyticsEvent(env, {
-    request: requestWithCf,
-    payload: decision.payload,
-    siteId: decision.siteId,
-    origin: decision.allowOrigin,
-    traceId: trace.id,
-    receivedAt: trace.acceptedAt,
-  });
-
-  ctx.waitUntil(
-    stub
-      .fetch("https://ingest.internal/ingest", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(envelope),
-      })
-      .then(async (response) => {
-        const bodyText = await response.text().catch(() => "");
-        logIngestTrace(
-          response.ok ? "collect_forward_result" : "collect_forward_failed",
-          {
-            traceId: trace.id,
-            siteId: decision.siteId,
-            kind: decision.payload.kind || "",
-            visitId: decision.payload.visitId || "",
-            status: response.status,
-            response: bodyText.slice(0, 200),
-          },
-          response.ok ? "info" : "error",
-        );
-      })
-      .catch((error: unknown) => {
-        logIngestTrace(
-          "collect_forward_failed",
-          {
-            traceId: trace.id,
-            siteId: decision.siteId,
-            kind: decision.payload.kind || "",
-            visitId: decision.payload.visitId || "",
-            error: errorToMessage(error),
-          },
-          "error",
-        );
-      }),
+  writeNormalAnalyticsEvent(
+    env,
+    {
+      request: requestWithCf,
+      payload: decision.payload,
+      siteId: decision.siteId,
+      origin: decision.allowOrigin,
+      traceId: trace.id,
+      receivedAt: trace.acceptedAt,
+    },
+    logger,
   );
+
+  const forward = stub
+    .fetch("https://ingest.internal/ingest", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(envelope),
+    })
+    .then((response) => {
+      void response;
+    })
+    .catch(() => undefined);
+  ctx.waitUntil(logger ? logger.track(forward) : forward);
 
   return noContent(decision.allowOrigin);
 }

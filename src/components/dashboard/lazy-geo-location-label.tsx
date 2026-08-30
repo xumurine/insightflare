@@ -1,5 +1,3 @@
-"use client";
-
 import { type MutableRefObject, useEffect, useRef, useState } from "react";
 import { Icon } from "@iconify/react";
 
@@ -305,6 +303,8 @@ export function LazyGeoCityBreadcrumbLabel({
   const shouldHideCity =
     hideCity ||
     Boolean(translationResolution?.localityMatchesCountry) ||
+    isSameGeoLabel(regionLabel, cityNameDefault) ||
+    isSameGeoLabel(regionLabel, cityLabel) ||
     (!shouldHideRegion &&
       isSameGeoLabel(localizedRegionLabel, localizedCityLabel)) ||
     (shouldHideRegion &&

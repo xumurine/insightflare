@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSession, getSessionToken, isAuthenticated } from "@/lib/auth";
+import { requestHeader } from "@/lib/request-headers";
 import type * as SessionModule from "@/lib/session";
 import { verifySessionToken } from "@/lib/session";
 
@@ -12,18 +13,22 @@ vi.mock("@/lib/session", async (importOriginal) => {
   };
 });
 
+vi.mock("@/lib/request-headers", () => ({ requestHeader: vi.fn() }));
+
 const verifySessionTokenMock = vi.mocked(verifySessionToken);
+const requestHeaderMock = vi.mocked(requestHeader);
 
 describe("auth helpers", () => {
   beforeEach(() => {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "");
+    vi.stubEnv("VITE_DEMO_MODE", "");
     verifySessionTokenMock.mockReset();
+    requestHeaderMock.mockReset();
+    requestHeaderMock.mockResolvedValue(null);
     document.cookie = "if_session=; Max-Age=0; path=/";
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.doUnmock("next/headers");
     document.cookie = "if_session=; Max-Age=0; path=/";
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -47,49 +52,39 @@ describe("auth helpers", () => {
     await expect(getSessionToken()).resolves.toBe("");
   });
 
+  it("returns an empty token when browser cookies are present but empty", async () => {
+    vi.stubGlobal("document", { cookie: "" });
+
+    await expect(getSessionToken()).resolves.toBe("");
+  });
+
   it("returns an empty token when browser and server cookie headers are empty", async () => {
     document.cookie = "if_session=; Max-Age=0; path=/";
     await expect(getSessionToken()).resolves.toBe("");
 
     vi.stubGlobal("document", undefined);
-    vi.doMock("next/headers", () => ({
-      headers: vi.fn().mockResolvedValue(new Headers()),
-    }));
-
     await expect(getSessionToken()).resolves.toBe("");
   });
 
   it("reads server cookie headers when document is unavailable", async () => {
     vi.stubGlobal("document", undefined);
-    vi.doMock("next/headers", () => ({
-      headers: vi.fn().mockResolvedValue(
-        new Headers({
-          cookie: "theme=dark; if_session=server%3Dtoken; other=value",
-        }),
-      ),
-    }));
+    requestHeaderMock.mockResolvedValue(
+      "theme=dark; if_session=server%3Dtoken; other=value",
+    );
 
     await expect(getSessionToken()).resolves.toBe("server=token");
   });
 
   it("returns an empty token when server cookies omit the session key", async () => {
     vi.stubGlobal("document", undefined);
-    vi.doMock("next/headers", () => ({
-      headers: vi.fn().mockResolvedValue(
-        new Headers({
-          cookie: "theme=dark; locale=en",
-        }),
-      ),
-    }));
+    requestHeaderMock.mockResolvedValue("theme=dark; locale=en");
 
     await expect(getSessionToken()).resolves.toBe("");
   });
 
   it("returns an empty token when server headers cannot be read", async () => {
     vi.stubGlobal("document", undefined);
-    vi.doMock("next/headers", () => ({
-      headers: vi.fn().mockRejectedValue(new Error("outside request")),
-    }));
+    requestHeaderMock.mockRejectedValue(new Error("outside request"));
 
     await expect(getSessionToken()).resolves.toBe("");
   });
@@ -123,16 +118,14 @@ describe("auth helpers", () => {
     await expect(isAuthenticated()).resolves.toBe(false);
   });
 
-  it("returns demo session data without verifying tokens in demo mode", async () => {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
+  it("does not synthesize client-side session data in demo mode", async () => {
+    vi.stubEnv("VITE_DEMO_MODE", "1");
+    document.cookie = "if_session=demo-cookie-token; path=/";
+    verifySessionTokenMock.mockResolvedValue(null);
 
-    await expect(getSessionToken()).resolves.toBe("demo-token");
-    await expect(isAuthenticated()).resolves.toBe(true);
-    await expect(getSession()).resolves.toMatchObject({
-      userId: "demo-user-001",
-      username: "demo",
-      systemRole: "admin",
-    });
-    expect(verifySessionTokenMock).not.toHaveBeenCalled();
+    await expect(getSessionToken()).resolves.toBe("demo-cookie-token");
+    await expect(getSession()).resolves.toBeNull();
+    await expect(isAuthenticated()).resolves.toBe(false);
+    expect(verifySessionTokenMock).toHaveBeenCalledWith("demo-cookie-token");
   });
 });

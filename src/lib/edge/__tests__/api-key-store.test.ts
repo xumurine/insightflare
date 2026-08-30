@@ -108,6 +108,27 @@ describe("api key store utilities", () => {
     expect(timingSafeEqualString(left, other)).toBe(false);
   });
 
+  it("reuses derived and imported HMAC keys", async () => {
+    const importKey = vi.spyOn(crypto.subtle, "importKey");
+    const env = {
+      MAIN_SECRET: `api-key-cache-${crypto.randomUUID()}`,
+    } as Env;
+
+    await hashApiKeySecret(env, "ifk_live_prefix.secret");
+    await hashApiKeySecret(env, "ifk_live_prefix.secret");
+
+    expect(importKey).toHaveBeenCalledTimes(2);
+    importKey.mockRestore();
+  });
+
+  it("throws when hashing API keys without a root secret", async () => {
+    await expect(
+      hashApiKeySecret({} as Env, "ifk_live_prefix.secret"),
+    ).rejects.toThrow(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for API keys",
+    );
+  });
+
   it("timingSafeEqualString returns false for different lengths", () => {
     expect(timingSafeEqualString("abc", "ab")).toBe(false);
   });
@@ -119,11 +140,19 @@ describe("api key store utilities", () => {
     expect(
       normalizeApiKeyScopes([
         "analytics:read",
+        "analysis:read",
+        "analysis:write",
         "unknown",
+        null,
         "site:read",
         "analytics:read",
       ]),
-    ).toEqual(["analytics:read", "site:read"]);
+    ).toEqual([
+      "analytics:read",
+      "analysis:read",
+      "analysis:write",
+      "site:read",
+    ]);
     expect(normalizeApiKeyScopes(null as unknown as unknown[])).toEqual([]);
     expect(
       normalizeApiKeySiteIds([" site-1 ", "", "site-1", "site-2"]),
@@ -173,6 +202,14 @@ describe("toPublicApiKey", () => {
     expect(pub.revokedByUserId).toBe("");
     expect(pub.rotatedFromKeyId).toBe("");
     expect(pub.lastUsedAt).toBeNull();
+  });
+
+  it("treats malformed and non-array JSON fields as empty", () => {
+    expect(
+      toPublicApiKey(
+        makeRow({ scopes_json: "not-json", site_ids_json: '"site-1"' }),
+      ),
+    ).toMatchObject({ scopes: [], siteIds: [] });
   });
 
   it("reflects revoked status", () => {

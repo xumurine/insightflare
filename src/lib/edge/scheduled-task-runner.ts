@@ -1,3 +1,8 @@
+import { measureExternalFetch } from "@/lib/edge/observability-bindings";
+import {
+  currentInvocationLogger,
+  type InvocationLogger,
+} from "@/lib/edge/observability-logger";
 import {
   SCHEDULED_TASK_LOG_RETENTION_DAYS,
   type ScheduledTaskLogLevel,
@@ -88,36 +93,37 @@ function normalizeScheduledAtMs(
 async function bestEffortRun(
   label: string,
   action: () => Promise<void>,
+  observability?: Pick<InvocationLogger, "warn">,
 ): Promise<void> {
   try {
     await action();
   } catch (error) {
-    const normalized = normalizeError(error);
-    console.warn(
-      JSON.stringify({
-        event: "scheduled_task_log_write_failed",
-        label,
-        error: normalized.message,
-      }),
-    );
+    void label;
+    void error;
+    observability?.warn("scheduled_task.persistence_write_failed");
   }
 }
 
-async function pruneExpiredScheduledTaskLogs(env: Env): Promise<void> {
-  await bestEffortRun("prune", async () => {
-    await env.DB.prepare(
-      "DELETE FROM scheduled_task_run_logs WHERE expires_at < unixepoch()",
-    )
-      .bind()
-      .run();
-    await env.DB.prepare(
-      "DELETE FROM scheduled_task_runs WHERE expires_at < unixepoch()",
-    )
-      .bind()
-      .run();
-    const now = Date.now();
-    await env.DB.prepare(
-      `
+async function pruneExpiredScheduledTaskLogs(
+  env: Env,
+  observability?: Pick<InvocationLogger, "warn">,
+): Promise<void> {
+  await bestEffortRun(
+    "prune",
+    async () => {
+      await env.DB.prepare(
+        "DELETE FROM scheduled_task_run_logs WHERE expires_at < unixepoch()",
+      )
+        .bind()
+        .run();
+      await env.DB.prepare(
+        "DELETE FROM scheduled_task_runs WHERE expires_at < unixepoch()",
+      )
+        .bind()
+        .run();
+      const now = Date.now();
+      await env.DB.prepare(
+        `
         UPDATE scheduled_task_runs
         SET
           status = 'failed',
@@ -128,10 +134,12 @@ async function pruneExpiredScheduledTaskLogs(env: Env): Promise<void> {
         WHERE status = 'running'
           AND started_at_ms < ?
       `,
-    )
-      .bind(now, now, now - STALE_RUNNING_MS)
-      .run();
-  });
+      )
+        .bind(now, now, now - STALE_RUNNING_MS)
+        .run();
+    },
+    observability,
+  );
 }
 
 function createLogger(
@@ -139,6 +147,7 @@ function createLogger(
   runId: string,
   taskKey: string,
   expiresAtSec: number,
+  observability?: InvocationLogger,
 ): ScheduledTaskLogger {
   let sequence = 0;
   const write = async (
@@ -149,29 +158,39 @@ function createLogger(
   ) => {
     sequence += 1;
     const createdAtMs = Date.now();
-    await bestEffortRun(`log:${event}`, async () => {
-      await env.DB.prepare(
-        `
+    await bestEffortRun(
+      `log:${event}`,
+      async () => {
+        await env.DB.prepare(
+          `
           INSERT INTO scheduled_task_run_logs (
             id, run_id, task_key, sequence, level, event, message,
             data_json, created_at_ms, expires_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
-      )
-        .bind(
-          crypto.randomUUID(),
-          runId,
-          taskKey,
-          sequence,
-          level,
-          event.slice(0, 120),
-          message.slice(0, 500),
-          safeJsonStringify(data),
-          createdAtMs,
-          expiresAtSec,
         )
-        .run();
-    });
+          .bind(
+            crypto.randomUUID(),
+            runId,
+            taskKey,
+            sequence,
+            level,
+            event.slice(0, 120),
+            message.slice(0, 500),
+            safeJsonStringify(data),
+            createdAtMs,
+            expiresAtSec,
+          )
+          .run();
+      },
+      observability,
+    );
+    // Persisted task logs can contain operator-facing identifiers. The Worker
+    // record mirrors only the stable event and level, never its message/data.
+    const eventCode = `scheduled_task.${event.slice(0, 120)}`;
+    if (level === "error") observability?.error(eventCode);
+    else if (level === "warn") observability?.warn(eventCode);
+    else observability?.info(eventCode);
   };
   return {
     debug: (event, message, data) => write("debug", event, message, data),
@@ -188,42 +207,56 @@ export async function runScheduledTask(
   handler: (
     context: ScheduledTaskContext,
   ) => Promise<ScheduledTaskOutcome | undefined>,
+  observability?: InvocationLogger,
 ): Promise<void> {
+  // Manual tasks run beneath the Hono request scope; Cron supplies its logger
+  // explicitly. Either path must keep task work in the outer invocation record.
+  const activeObservability = observability ?? currentInvocationLogger();
   const startedAt = Date.now();
   const triggerType = definition.triggerType ?? "cron";
   const scheduledAt = normalizeScheduledAtMs(scheduledTime);
   const runId = crypto.randomUUID();
   const invocationId = crypto.randomUUID();
   const expiresAtSec = Math.floor(startedAt / 1000) + RETENTION_SECONDS;
-  await pruneExpiredScheduledTaskLogs(env);
+  await pruneExpiredScheduledTaskLogs(env, activeObservability);
 
-  await bestEffortRun("run-start", async () => {
-    await env.DB.prepare(
-      `
+  await bestEffortRun(
+    "run-start",
+    async () => {
+      await env.DB.prepare(
+        `
         INSERT INTO scheduled_task_runs (
           id, invocation_id, task_key, task_name, trigger_type, status,
           scheduled_at_ms, started_at_ms, scope_type, scope_id, summary_json,
           worker_version, expires_at
         ) VALUES (?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, '{}', ?, ?)
       `,
-    )
-      .bind(
-        runId,
-        invocationId,
-        definition.key,
-        definition.name,
-        triggerType,
-        scheduledAt,
-        startedAt,
-        definition.scopeType ?? "system",
-        definition.scopeId ?? null,
-        null,
-        expiresAtSec,
       )
-      .run();
-  });
+        .bind(
+          runId,
+          invocationId,
+          definition.key,
+          definition.name,
+          triggerType,
+          scheduledAt,
+          startedAt,
+          definition.scopeType ?? "system",
+          definition.scopeId ?? null,
+          null,
+          expiresAtSec,
+        )
+        .run();
+    },
+    activeObservability,
+  );
 
-  const logger = createLogger(env, runId, definition.key, expiresAtSec);
+  const logger = createLogger(
+    env,
+    runId,
+    definition.key,
+    expiresAtSec,
+    activeObservability,
+  );
   await logger.info("start", "Task run started", {
     triggerType,
     scheduledAt,
@@ -237,7 +270,12 @@ export async function runScheduledTask(
       scheduledTime: scheduledAt,
       startedAt,
       logger,
-      externalFetch: fetch.bind(globalThis),
+      externalFetch: (...args) =>
+        measureExternalFetch(
+          activeObservability,
+          "external_fetch.scheduled_task",
+          () => fetch(...args),
+        ),
     })) ?? { status: "success" as const };
     const finishedAt = Date.now();
     const status = outcome.status ?? "success";
@@ -246,9 +284,11 @@ export async function runScheduledTask(
       status,
       durationMs: finishedAt - startedAt,
     });
-    await bestEffortRun("run-finish", async () => {
-      await env.DB.prepare(
-        `
+    await bestEffortRun(
+      "run-finish",
+      async () => {
+        await env.DB.prepare(
+          `
           UPDATE scheduled_task_runs
           SET
             status = ?,
@@ -260,25 +300,29 @@ export async function runScheduledTask(
             error_stack = NULL
           WHERE id = ?
         `,
-      )
-        .bind(
-          status,
-          finishedAt,
-          finishedAt - startedAt,
-          safeJsonStringify(summary),
-          runId,
         )
-        .run();
-    });
+          .bind(
+            status,
+            finishedAt,
+            finishedAt - startedAt,
+            safeJsonStringify(summary),
+            runId,
+          )
+          .run();
+      },
+      activeObservability,
+    );
   } catch (error) {
     const finishedAt = Date.now();
     const normalized = normalizeError(error);
     await logger.error("error", normalized.message, {
       name: normalized.name,
     });
-    await bestEffortRun("run-error", async () => {
-      await env.DB.prepare(
-        `
+    await bestEffortRun(
+      "run-error",
+      async () => {
+        await env.DB.prepare(
+          `
           UPDATE scheduled_task_runs
           SET
             status = 'failed',
@@ -290,18 +334,20 @@ export async function runScheduledTask(
             error_stack = ?
           WHERE id = ?
         `,
-      )
-        .bind(
-          finishedAt,
-          finishedAt - startedAt,
-          "{}",
-          normalized.name.slice(0, 120),
-          normalized.message.slice(0, 1000),
-          normalized.stack?.slice(0, 4000) ?? null,
-          runId,
         )
-        .run();
-    });
+          .bind(
+            finishedAt,
+            finishedAt - startedAt,
+            "{}",
+            normalized.name.slice(0, 120),
+            normalized.message.slice(0, 1000),
+            normalized.stack?.slice(0, 4000) ?? null,
+            runId,
+          )
+          .run();
+      },
+      activeObservability,
+    );
     throw error;
   }
 }

@@ -1,7 +1,6 @@
-"use client";
-
 import {
   type ComponentType,
+  memo,
   type ReactNode,
   type SyntheticEvent,
   useEffect,
@@ -17,7 +16,10 @@ import {
 } from "@remixicon/react";
 import Avatar from "boring-avatars";
 
-import { LazyGeoRegionBreadcrumbLabel } from "@/components/dashboard/lazy-geo-location-label";
+import {
+  LazyGeoCityBreadcrumbLabel,
+  LazyGeoRegionBreadcrumbLabel,
+} from "@/components/dashboard/lazy-geo-location-label";
 import {
   durationFormat,
   intlLocale,
@@ -47,6 +49,17 @@ const UNKNOWN_ICON_KEY = "unknown";
 const BROWSER_APPLE_ICON_KEYS = new Set(["ios", "ios-webview"]);
 const OS_APPLE_ICON_KEYS = new Set(["ios", "mac-os"]);
 const ABSOLUTE_URL_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
+const RELATIVE_TIME_FORMATTERS = new Map<string, Intl.RelativeTimeFormat>();
+
+function getRelativeTimeFormatter(locale: Locale): Intl.RelativeTimeFormat {
+  const key = intlLocale(locale);
+  const cached = RELATIVE_TIME_FORMATTERS.get(key);
+  if (cached) return cached;
+
+  const formatter = new Intl.RelativeTimeFormat(key, { numeric: "auto" });
+  RELATIVE_TIME_FORMATTERS.set(key, formatter);
+  return formatter;
+}
 
 export type DeviceTypeIcon = ComponentType<{ className?: string }>;
 
@@ -54,14 +67,13 @@ export function resolveDeviceTypeMeta(
   deviceType: string,
   deviceLabels: { desktop: string; mobile: string; tablet: string },
   unknownLabel: string,
+  missingLabel = unknownLabel,
 ): { label: string; Icon: DeviceTypeIcon } {
   const normalized = deviceType.trim();
   const lowered = normalized.toLocaleLowerCase();
+  const isMissing = normalized.length === 0;
   const isUnknown =
-    normalized.length === 0 ||
-    lowered === "unknown" ||
-    lowered === "undefined" ||
-    lowered === "null";
+    lowered === "unknown" || lowered === "undefined" || lowered === "null";
   const isTablet = lowered.includes("tablet");
   const isMobile =
     lowered.includes("mobile") ||
@@ -78,20 +90,22 @@ export function resolveDeviceTypeMeta(
       : isDesktop
         ? RiComputerLine
         : RiDeviceLine;
-  const label = isUnknown
-    ? unknownLabel
-    : isTablet
-      ? deviceLabels.tablet
-      : isMobile
-        ? deviceLabels.mobile
-        : isDesktop
-          ? deviceLabels.desktop
-          : normalized;
+  const label = isMissing
+    ? missingLabel
+    : isUnknown
+      ? unknownLabel
+      : isTablet
+        ? deviceLabels.tablet
+        : isMobile
+          ? deviceLabels.mobile
+          : isDesktop
+            ? deviceLabels.desktop
+            : normalized;
 
   return { label, Icon };
 }
 
-export function VisitorAvatar({
+export const VisitorAvatar = memo(function VisitorAvatar({
   seed,
   className,
 }: {
@@ -115,7 +129,7 @@ export function VisitorAvatar({
       />
     </span>
   );
-}
+});
 
 function handleImageFallback(
   event: SyntheticEvent<HTMLImageElement>,
@@ -249,18 +263,26 @@ function osLabel(os: string, version?: string | null): string {
   return `${base} ${suffix}`;
 }
 
-export function BrowserMeta({
+export const BrowserMeta = memo(function BrowserMeta({
   browser,
   version,
   unknownLabel,
+  missingLabel = unknownLabel,
   className,
 }: {
   browser: string;
   version?: string | null;
   unknownLabel: string;
+  missingLabel?: string;
   className?: string;
 }) {
-  const label = browserLabel(browser, version) || unknownLabel;
+  const normalizedBrowser = browser.trim().toLocaleLowerCase();
+  const isUnknown = ["unknown", "undefined", "null"].includes(
+    normalizedBrowser,
+  );
+  const label = isUnknown
+    ? unknownLabel
+    : browserLabel(browser, version) || missingLabel;
   const iconKey = resolveBrowserIconKey(label);
   return (
     <InlineMeta
@@ -275,20 +297,24 @@ export function BrowserMeta({
       className={className}
     />
   );
-}
+});
 
-export function OsMeta({
+export const OsMeta = memo(function OsMeta({
   os,
   version,
   unknownLabel,
+  missingLabel = unknownLabel,
   className,
 }: {
   os: string;
   version?: string | null;
   unknownLabel: string;
+  missingLabel?: string;
   className?: string;
 }) {
-  const label = osLabel(os, version) || unknownLabel;
+  const normalizedOs = os.trim().toLocaleLowerCase();
+  const isUnknown = ["unknown", "undefined", "null"].includes(normalizedOs);
+  const label = isUnknown ? unknownLabel : osLabel(os, version) || missingLabel;
   const iconKey = resolveOsIconKey(label);
   return (
     <InlineMeta
@@ -303,23 +329,26 @@ export function OsMeta({
       className={className}
     />
   );
-}
+});
 
-export function DeviceMeta({
+export const DeviceMeta = memo(function DeviceMeta({
   deviceType,
   deviceLabels,
   unknownLabel,
+  missingLabel = unknownLabel,
   className,
 }: {
   deviceType: string;
   deviceLabels: { desktop: string; mobile: string; tablet: string };
   unknownLabel: string;
+  missingLabel?: string;
   className?: string;
 }) {
   const { Icon: DeviceIcon, label } = resolveDeviceTypeMeta(
     deviceType,
     deviceLabels,
     unknownLabel,
+    missingLabel,
   );
   return (
     <InlineMeta
@@ -328,9 +357,9 @@ export function DeviceMeta({
       className={className}
     />
   );
-}
+});
 
-export function LocationMeta({
+export const LocationMeta = memo(function LocationMeta({
   locale,
   messages,
   country,
@@ -372,24 +401,32 @@ export function LocationMeta({
       className={className}
     />
   );
-}
+});
 
 function resolveCountryRegionBreadcrumbData({
   locale,
   unknownLabel,
+  missingLabel,
   country,
   region,
   regionCode,
+  city,
 }: {
   locale: Locale;
   unknownLabel: string;
+  missingLabel: string;
   country: string;
   region?: string | null;
   regionCode?: string | null;
+  city?: string | null;
 }) {
   const parsedRegion = parseGeoLocationValue(region || "");
   const countryValue = parsedRegion?.countryCode || country.trim() || "";
-  const resolved = resolveCountryLabel(countryValue, locale, unknownLabel);
+  const resolved = resolveCountryLabel(
+    countryValue,
+    locale,
+    countryValue ? unknownLabel : missingLabel,
+  );
   const flagCode = resolveCountryFlagCode(resolved.code, locale);
   const countryIconName = flagCode
     ? `flagpack:${flagCode.toLowerCase()}`
@@ -408,8 +445,24 @@ function resolveCountryRegionBreadcrumbData({
     parsedRegion?.regionName ||
     (parsedRegion?.level === "locality" ? parsedRegion.localityName : "") ||
     String(region || "").trim();
-  const regionLabel = normalizeGeoDisplayLabel(rawRegionLabel, unknownLabel);
+  const regionLabel = normalizeGeoDisplayLabel(
+    rawRegionLabel,
+    rawRegionLabel ? unknownLabel : missingLabel,
+  );
+  const rawCityLabel =
+    String(city || "").trim() ||
+    (parsedRegion?.level === "locality"
+      ? (parsedRegion.localityName ?? "")
+      : "");
+  const parsedCity = parseGeoLocationValue(rawCityLabel);
+  const cityDisplayLabel =
+    parsedCity?.localityName || parsedCity?.regionName || rawCityLabel;
+  const cityLabel = normalizeGeoDisplayLabel(
+    cityDisplayLabel,
+    cityDisplayLabel ? unknownLabel : missingLabel,
+  );
   const hideRegion = !String(stateCode || rawRegionLabel).trim();
+  const hideCity = !cityDisplayLabel;
 
   return {
     countryLabel: resolved.label,
@@ -418,15 +471,20 @@ function resolveCountryRegionBreadcrumbData({
     countryCode,
     stateCode,
     hideRegion,
+    cityLabel,
+    cityNameDefault: cityDisplayLabel,
+    hideCity,
   };
 }
 
-export function CountryRegionMeta({
+export const CountryRegionMeta = memo(function CountryRegionMeta({
   locale,
   messages,
   country,
   region,
   regionCode,
+  city,
+  missingLabel = messages.common.unknown,
   className,
 }: {
   locale: Locale;
@@ -434,30 +492,49 @@ export function CountryRegionMeta({
   country: string;
   region?: string | null;
   regionCode?: string | null;
+  city?: string | null;
+  missingLabel?: string;
   className?: string;
 }) {
   const breadcrumb = resolveCountryRegionBreadcrumbData({
     locale,
     unknownLabel: messages.common.unknown,
+    missingLabel,
     country,
     region,
     regionCode,
+    city,
   });
 
   return (
     <span className={cn("block max-w-full", className)}>
-      <LazyGeoRegionBreadcrumbLabel
-        locale={locale}
-        countryLabel={breadcrumb.countryLabel}
-        countryIconName={breadcrumb.countryIconName}
-        regionLabel={breadcrumb.regionLabel}
-        countryCode={breadcrumb.countryCode}
-        stateCode={breadcrumb.stateCode}
-        hideRegion={breadcrumb.hideRegion}
-      />
+      {breadcrumb.hideCity ? (
+        <LazyGeoRegionBreadcrumbLabel
+          locale={locale}
+          countryLabel={breadcrumb.countryLabel}
+          countryIconName={breadcrumb.countryIconName}
+          regionLabel={breadcrumb.regionLabel}
+          countryCode={breadcrumb.countryCode}
+          stateCode={breadcrumb.stateCode}
+          hideRegion={breadcrumb.hideRegion}
+        />
+      ) : (
+        <LazyGeoCityBreadcrumbLabel
+          locale={locale}
+          countryLabel={breadcrumb.countryLabel}
+          countryIconName={breadcrumb.countryIconName}
+          regionLabel={breadcrumb.regionLabel}
+          cityLabel={breadcrumb.cityLabel}
+          cityNameDefault={breadcrumb.cityNameDefault}
+          countryCode={breadcrumb.countryCode}
+          stateCode={breadcrumb.stateCode}
+          hideRegion={breadcrumb.hideRegion}
+          hideCity={breadcrumb.hideCity}
+        />
+      )}
     </span>
   );
-}
+});
 
 function sanitizeHostname(value: string): string {
   return value
@@ -483,7 +560,7 @@ function faviconUrl(value: string): string | null {
   }
 }
 
-export function ReferrerMeta({
+export const ReferrerMeta = memo(function ReferrerMeta({
   referrerHost,
   referrerUrl,
   directLabel,
@@ -504,7 +581,7 @@ export function ReferrerMeta({
       className={className}
     />
   );
-}
+});
 
 function ReferrerIcon({
   src,
@@ -557,7 +634,7 @@ function ReferrerIcon({
   );
 }
 
-export function InlineMeta({
+export const InlineMeta = memo(function InlineMeta({
   icon,
   label,
   className,
@@ -572,7 +649,6 @@ export function InlineMeta({
         "inline-flex min-h-5 min-w-0 max-w-full items-center gap-1.5 align-middle leading-5",
         className,
       )}
-      title={label}
     >
       <span className="inline-flex size-4 shrink-0 items-center justify-center self-center [&>svg]:block">
         {icon}
@@ -580,16 +656,14 @@ export function InlineMeta({
       <span className="truncate leading-5">{label}</span>
     </span>
   );
-}
+});
 
 export function formatRelativeTime(
   locale: Locale,
   timestamp: number,
   now: number,
 ): string {
-  const formatter = new Intl.RelativeTimeFormat(intlLocale(locale), {
-    numeric: "auto",
-  });
+  const formatter = getRelativeTimeFormatter(locale);
   const diffSeconds = Math.round((timestamp - now) / 1000);
   const absoluteSeconds = Math.abs(diffSeconds);
   if (absoluteSeconds < 60) return formatter.format(diffSeconds, "second");
