@@ -1,15 +1,17 @@
 import type { MiddlewareHandler } from "hono";
 import type { Context } from "hono";
 
+import { errorLogData } from "@/lib/edge/observability-logger";
 import type { AppEnv } from "@/lib/hono/types";
 import { internalServerError } from "@/lib/hono/utils/response";
 
 export function handleHonoError(error: Error, c: Context<AppEnv>): Response {
-  console.error("hono_route_unhandled_error", {
-    method: c.req.raw.method,
-    url: c.req.raw.url,
-    error,
-  });
+  if ("get" in c && typeof c.get === "function") {
+    c.get("observabilityLogger")?.error(
+      "request.unhandled_error",
+      errorLogData(error),
+    );
+  }
   return internalServerError(c.req.raw, error);
 }
 

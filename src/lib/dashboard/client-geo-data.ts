@@ -6,14 +6,25 @@ import {
   emptyOverviewGeoPoints,
   emptyOverviewGeoTab,
 } from "@/lib/dashboard/client-empty-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   OverviewGeoPointsData,
   OverviewGeoTabData,
 } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 
 import { fetchPrivateJson } from "./client-request";
 import { withFilters } from "./client-utils";
+
+function emptyGeoPointsUnlessAborted(error: unknown): OverviewGeoPointsData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyOverviewGeoPoints();
+}
+
+function emptyGeoTabUnlessAborted(error: unknown): OverviewGeoTabData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyOverviewGeoTab();
+}
 
 function normalizeGeoDimensionLabel(
   tab: OverviewGeoDimensionTab,
@@ -35,10 +46,11 @@ function normalizeGeoDimensionLabel(
 export async function fetchOverviewGeoPoints(
   siteId: string,
   window: TimeWindow,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
     applyGeoFilter?: boolean;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewGeoPointsData> {
   return fetchPrivateJson<OverviewGeoPointsData>(
@@ -54,6 +66,7 @@ export async function fetchOverviewGeoPoints(
       },
       filters,
     ),
+    { signal: options?.signal },
   )
     .then((payload) => ({
       ok: payload.ok,
@@ -103,16 +116,17 @@ export async function fetchOverviewGeoPoints(
           }))
         : [],
     }))
-    .catch(() => emptyOverviewGeoPoints());
+    .catch(emptyGeoPointsUnlessAborted);
 }
 
 export async function fetchOverviewGeoDimensionTab(
   siteId: string,
   window: TimeWindow,
   tab: OverviewGeoDimensionTab,
-  filters?: DashboardFilters,
+  filters?: FilterDocument,
   options?: {
     limit?: number;
+    signal?: AbortSignal;
   },
 ): Promise<OverviewGeoTabRows> {
   const payload = await fetchPrivateJson<OverviewGeoTabData>(
@@ -127,7 +141,8 @@ export async function fetchOverviewGeoDimensionTab(
       },
       filters,
     ),
-  ).catch(() => emptyOverviewGeoTab());
+    { signal: options?.signal },
+  ).catch(emptyGeoTabUnlessAborted);
   return Array.isArray(payload.data)
     ? payload.data.map((row) => ({
         value:

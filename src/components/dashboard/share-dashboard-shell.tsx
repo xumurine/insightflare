@@ -1,15 +1,14 @@
-"use client";
-
 import type { ReactNode } from "react";
-import { usePathname } from "next/navigation";
 
 import { AnalyticsTabs } from "@/components/dashboard/analytics-tabs";
 import { DashboardQueryProvider } from "@/components/dashboard/dashboard-query-provider";
 import { ShareHeader } from "@/components/dashboard/share-header";
 import { PageTransition } from "@/components/page-transition";
 import { publicDashboardSiteId } from "@/lib/dashboard/client-request";
+import { sharePath } from "@/lib/dashboard/share-path";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { usePathname } from "@/lib/router";
 
 interface ShareDashboardShellProps {
   locale: Locale;
@@ -32,8 +31,7 @@ const SHARE_TABS = [
 ] as const;
 
 function shareTabHref(locale: Locale, slug: string, key: string): string {
-  const base = `/${locale}/share/${encodeURIComponent(slug)}`;
-  return key === "overview" ? base : `${base}/${key}`;
+  return sharePath(locale, slug, key === "overview" ? undefined : key);
 }
 
 export function ShareDashboardShell({
@@ -54,11 +52,7 @@ export function ShareDashboardShell({
     : "mx-auto w-full max-w-[1400px] p-4 md:p-6";
 
   return (
-    <DashboardQueryProvider
-      scopeKey={publicSiteId}
-      maxRangeDays={365}
-      initialTimeZonePreference=""
-    >
+    <DashboardQueryProvider scopeKey={publicSiteId} maxRangeDays={365}>
       <div className={rootClassName}>
         <div className="sticky top-0 z-20 shrink-0 border-b bg-background/92 backdrop-blur">
           <div className="p-3">

@@ -1,3 +1,4 @@
+import { BlockingRulesValidationError } from "@/lib/blocking-rules";
 import { DEFAULT_SITE_SCRIPT_SETTINGS } from "@/lib/site-settings";
 
 import {
@@ -5,9 +6,11 @@ import {
   canManageTeam,
   canReadSite,
   canReadTeam,
+  teamById,
+  teamMembershipAccess,
   toSlug,
 } from "./admin-access";
-import { requireActor } from "./admin-auth";
+import { type Actor, requireActor } from "./admin-auth";
 import {
   bad,
   bool,
@@ -18,10 +21,12 @@ import {
   nf,
   parseJson,
 } from "./admin-response";
+import { SITE_PK_FROM_SITE_ID_SQL } from "./site-identity-sql";
 import {
   deleteSiteScriptSettings,
-  readSiteScriptSettings,
+  readSiteTrackingConfig,
   upsertSiteScriptSettings,
+  upsertSiteTrackingConfig,
 } from "./site-settings-store";
 import type { Env } from "./types";
 import { clampString } from "./utils";
@@ -80,36 +85,69 @@ export async function createSiteWithDefaultSettings(
   return siteId;
 }
 
+async function filterReadableSitesForActor<T extends { id: string }>(
+  env: Env,
+  actor: Actor,
+  teamId: string,
+  sites: T[],
+): Promise<T[]> {
+  if (actor.isAdmin) return sites;
+  const team = await teamById(env, teamId);
+  if (team?.ownerUserId === actor.user.id) return sites;
+  const membership = await teamMembershipAccess(env, teamId, actor.user.id);
+  if (!membership) return [];
+  if (membership.role === "owner" || membership.role === "admin") return sites;
+  if (membership.siteIds.length === 0) return sites;
+  const allowed = new Set(membership.siteIds);
+  return sites.filter((site) => allowed.has(site.id));
+}
+
 export async function deleteSiteData(env: Env, siteId: string): Promise<void> {
   await env.DB.prepare("DELETE FROM configs WHERE config_key=?")
     .bind(`site:${siteId}`)
     .run();
-  await env.DB.prepare("DELETE FROM custom_event_json_values WHERE site_id=?")
-    .bind(siteId)
-    .run();
   await env.DB.prepare(
-    "DELETE FROM custom_event_json_nodes WHERE event_pk IN (SELECT event_pk FROM custom_events WHERE site_id=?)",
+    `DELETE FROM custom_event_json_values WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
   )
     .bind(siteId)
     .run();
-  await env.DB.prepare("DELETE FROM custom_events WHERE site_id=?")
-    .bind(siteId)
-    .run();
-  await env.DB.prepare("DELETE FROM custom_event_names WHERE site_id=?")
-    .bind(siteId)
-    .run();
-  await env.DB.prepare("DELETE FROM custom_event_json_keys WHERE site_id=?")
-    .bind(siteId)
-    .run();
-  await env.DB.prepare("DELETE FROM custom_event_json_paths WHERE site_id=?")
-    .bind(siteId)
-    .run();
-  await env.DB.prepare("DELETE FROM visits WHERE site_id=?").bind(siteId).run();
-  await env.DB.prepare("DELETE FROM visit_hourly_rollups WHERE site_id=?")
+  await env.DB.prepare(
+    `DELETE FROM custom_event_json_nodes WHERE event_pk IN (SELECT event_pk FROM custom_events WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL})`,
+  )
     .bind(siteId)
     .run();
   await env.DB.prepare(
-    "DELETE FROM visit_hourly_aggregation_state WHERE site_id=?",
+    `DELETE FROM custom_events WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    `DELETE FROM custom_event_names WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    `DELETE FROM custom_event_json_keys WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    `DELETE FROM custom_event_json_paths WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    `DELETE FROM visits WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    `DELETE FROM visit_hourly_rollups WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
+  )
+    .bind(siteId)
+    .run();
+  await env.DB.prepare(
+    `DELETE FROM visit_hourly_aggregation_state WHERE site_pk=${SITE_PK_FROM_SITE_ID_SQL}`,
   )
     .bind(siteId)
     .run();
@@ -137,8 +175,20 @@ export async function handleSitesAdmin(
       "SELECT id,team_id AS teamId,name,domain,public_enabled AS publicEnabled,public_slug AS publicSlug,created_at AS createdAt,updated_at AS updatedAt FROM sites WHERE team_id=? ORDER BY created_at DESC",
     )
       .bind(teamId)
-      .all<Record<string, unknown>>();
-    return jsonResponseFor(req, { ok: true, data: rows.results });
+      .all<{
+        id: string;
+        teamId: string;
+        name: string;
+        domain: string;
+        publicEnabled: number;
+        publicSlug: string | null;
+        createdAt: number;
+        updatedAt: number;
+      }>();
+    return jsonResponseFor(req, {
+      ok: true,
+      data: await filterReadableSitesForActor(env, a, teamId, rows.results),
+    });
   }
   if (req.method === "POST") {
     const body = await parseJson(req);
@@ -255,10 +305,15 @@ export async function handleSiteConfigAdmin(
     if (!(await canReadSite(env, a, siteId)))
       return forb("Site access denied", undefined, req);
     try {
-      const settings = await readSiteScriptSettings(env, siteId);
+      const settings = await readSiteTrackingConfig(env, siteId);
       return jsonResponseFor(req, {
         ok: true,
-        data: settings ?? DEFAULT_SITE_SCRIPT_SETTINGS,
+        data: settings ?? {
+          siteId,
+          siteDomain: "",
+          allowedHostnames: [],
+          ...DEFAULT_SITE_SCRIPT_SETTINGS,
+        },
       });
     } catch (error) {
       const message =
@@ -282,15 +337,22 @@ export async function handleSiteConfigAdmin(
         .bind(siteId)
         .first<{ domain: string }>();
       if (!site?.domain) return nf("Site not found", undefined, req);
-      const next = await upsertSiteScriptSettings(env, siteId, {
+      const next = await upsertSiteTrackingConfig(env, siteId, {
         siteDomain: site.domain,
         settings: cfg,
+        ...(body.blockingPatch !== undefined
+          ? { blockingPatch: body.blockingPatch }
+          : {}),
       });
       return jsonResponseFor(req, { ok: true, data: next });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "save_site_config_failed";
-      return jsonResponseFor(req, { ok: false, error: message }, 500);
+      return jsonResponseFor(
+        req,
+        { ok: false, error: message },
+        error instanceof BlockingRulesValidationError ? 422 : 500,
+      );
     }
   }
   return na(req);

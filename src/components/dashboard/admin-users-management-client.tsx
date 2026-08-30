@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import {
   RiAddLine,
@@ -9,6 +7,7 @@ import {
   RiFileList3Line,
   RiKey2Line,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -45,7 +44,9 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { requestAdminService } from "@/lib/admin-service-client";
 import { shortDateTime } from "@/lib/dashboard/format";
+import type { AdminUsersInitialData } from "@/lib/dashboard/management-data";
 import type { AccountUserData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -54,13 +55,7 @@ interface AdminUsersManagementClientProps {
   locale: Locale;
   messages: AppMessages;
   currentUserId?: string;
-}
-
-interface ApiResponse<T> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
+  initialData?: AdminUsersInitialData | null;
 }
 
 interface CreatedAccountLink {
@@ -72,24 +67,8 @@ function epochSecondsToMs(value: number): number {
   return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
 }
 
-async function getUsers(): Promise<AccountUserData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: "/api/private/admin/users",
-    }) as ApiResponse<AccountUserData[]>;
-    return Array.isArray(result.data) ? result.data : [];
-  }
-  const response = await fetch("/api/private/admin/users", {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
-  });
-  const payload = (await response.json()) as ApiResponse<AccountUserData[]>;
-  if (!response.ok || !payload.ok || !Array.isArray(payload.data)) {
-    throw new Error(payload.message || payload.error || "load_users_failed");
-  }
-  return payload.data;
+async function getUsers(signal?: AbortSignal): Promise<AccountUserData[]> {
+  return requestAdminService<AccountUserData[]>("users", { signal });
 }
 
 function formatDefaultTeamName(template: string, name: string) {
@@ -100,12 +79,11 @@ export function AdminUsersManagementClient({
   locale,
   messages,
   currentUserId,
+  initialData = null,
 }: AdminUsersManagementClientProps) {
   const { timeZone } = useDashboardQueryControls();
   const t = messages.adminUsers;
   const defaultTeamNameTemplate = t.defaultTeamName;
-  const [users, setUsers] = useState<AccountUserData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -127,29 +105,29 @@ export function AdminUsersManagementClient({
     null,
   );
   const [deleteUserDialogOpen, setDeleteUserDialogOpen] = useState(false);
+  const usersQuery = useQuery({
+    queryKey: ["dashboard", "admin-users"],
+    queryFn: ({ signal }) => getUsers(signal),
+    initialData: initialData?.users,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    enabled: typeof window !== "undefined",
+  });
+  const users = usersQuery.data ?? [];
+  const loading = usersQuery.isPending;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    getUsers()
-      .then((data) => {
-        if (!active) return;
-        setUsers(data);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [t.loadFailed]);
+    if (!usersQuery.isError) return;
+    const message =
+      usersQuery.error instanceof Error
+        ? usersQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    t.loadFailed,
+    usersQuery.error,
+    usersQuery.errorUpdatedAt,
+    usersQuery.isError,
+  ]);
 
   useEffect(() => {
     if (teamNameTouched) return;
@@ -160,8 +138,7 @@ export function AdminUsersManagementClient({
   }, [defaultTeamNameTemplate, name, teamNameTouched, username]);
 
   async function refreshUsers() {
-    const data = await getUsers();
-    setUsers(data);
+    await usersQuery.refetch();
   }
 
   async function handleCreateUser() {
@@ -186,13 +163,9 @@ export function AdminUsersManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/private/admin/users", {
+      await requestAdminService<AccountUserData>("users", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           username: normalizedUsername,
           email: normalizedEmail,
           name: name.trim() || undefined,
@@ -200,12 +173,8 @@ export function AdminUsersManagementClient({
           systemRole,
           teamName: normalizedTeamName,
           teamSlug: teamSlug.trim() || undefined,
-        }),
+        },
       });
-      const payload = (await response.json()) as ApiResponse<AccountUserData>;
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.message || payload.error || t.createFailed);
-      }
       setUsername("");
       setEmail("");
       setName("");
@@ -227,24 +196,16 @@ export function AdminUsersManagementClient({
   async function handleDeleteUser(userId: string) {
     setDeletingUserId(userId);
     try {
-      const response = await fetch("/api/private/admin/users", {
-        method: "PATCH",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          intent: "remove",
-          userId,
-        }),
-      });
-      const payload = (await response.json()) as ApiResponse<{
+      await requestAdminService<{
         userId: string;
         removed: boolean;
-      }>;
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.message || payload.error || t.deleteFailed);
-      }
+      }>("users", {
+        method: "PATCH",
+        body: {
+          intent: "remove",
+          userId,
+        },
+      });
       await refreshUsers();
       toast.success(t.deleteSuccess);
       setDeleteUserDialogOpen(false);
@@ -260,26 +221,18 @@ export function AdminUsersManagementClient({
   async function handleGenerateResetLink(userId: string) {
     setGeneratingResetUserId(userId);
     try {
-      const response = await fetch("/api/private/admin/account-links", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
+      const data = await requestAdminService<CreatedAccountLink>(
+        "account-links",
+        {
+          method: "POST",
+          body: {
+            type: "password_reset",
+            userId,
+          },
         },
-        body: JSON.stringify({
-          type: "password_reset",
-          userId,
-        }),
-      });
-      const payload =
-        (await response.json()) as ApiResponse<CreatedAccountLink>;
-      if (!response.ok || !payload.ok || !payload.data) {
-        throw new Error(
-          payload.message || payload.error || t.resetLinkCreateFailed,
-        );
-      }
-      setResetLinkUrl(payload.data.url);
-      setResetLinkExpiresAt(payload.data.expiresAt);
+      );
+      setResetLinkUrl(data.url);
+      setResetLinkExpiresAt(data.expiresAt);
       toast.success(t.resetLinkCreated);
     } catch (error) {
       const message =

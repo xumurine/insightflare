@@ -11,6 +11,7 @@ import {
   na,
   nf,
   normalizeErrorMessage,
+  readJsonResponse,
   toErrorCode,
   una,
 } from "@/lib/response";
@@ -73,6 +74,39 @@ describe("response helpers", () => {
     expect(withContext).toMatchObject({ ok: true, requestId: "ctx-1" });
   });
 
+  it("reuses internal JSON payloads and falls back for external responses", async () => {
+    const internal = j({ rows: [{ value: 1 }] });
+    const internalJson = vi.spyOn(internal, "json");
+
+    await expect(readJsonResponse(internal)).resolves.toEqual({
+      rows: [{ value: 1 }],
+    });
+    expect(internalJson).not.toHaveBeenCalled();
+
+    const external = new Response('{"ok":true}', {
+      headers: { "content-type": "application/json" },
+    });
+    const externalJson = vi.spyOn(external, "json");
+
+    await expect(readJsonResponse(external)).resolves.toEqual({ ok: true });
+    expect(externalJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("defers body serialization for structured internal responses", async () => {
+    const stringify = vi.spyOn(JSON, "stringify");
+    const response = jsonResponseWith(
+      { requestId: "internal-1", deferJsonSerialization: true },
+      { rows: [{ value: 1 }] },
+    );
+
+    expect(stringify).not.toHaveBeenCalled();
+    expect(await response.text()).toBe("");
+    await expect(readJsonResponse(response)).resolves.toMatchObject({
+      requestId: "internal-1",
+      rows: [{ value: 1 }],
+    });
+  });
+
   it("normalizes error codes and common error response shortcuts", async () => {
     expect(toErrorCode(" Bad input! ")).toBe("bad_input");
     expect(toErrorCode("!!!")).toBe("error");
@@ -101,9 +135,8 @@ describe("response helpers", () => {
     });
   });
 
-  it("hides server error details in production and logs diagnostics", async () => {
+  it("hides server error details in production", async () => {
     vi.stubEnv("NODE_ENV", "production");
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const req = new Request("https://example.test/fail", {
       method: "POST",
       headers: { "x-request-id": "request-3" },
@@ -119,9 +152,6 @@ describe("response helpers", () => {
       requestId: "request-3",
       error: { code: "boom", message: "An internal error occurred" },
     });
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining('"event":"api_error"'),
-    );
   });
 
   it("extracts nested JSON error messages when available", () => {
@@ -137,5 +167,9 @@ describe("response helpers", () => {
       "request failed {bad json",
     );
     expect(normalizeErrorMessage(42)).toBe("42");
+    expect(normalizeErrorMessage('{"error": ""}')).toBe('{"error": ""}');
+    expect(normalizeErrorMessage('{"message": 42, "error": ""}')).toBe(
+      '{"message": 42, "error": ""}',
+    );
   });
 });

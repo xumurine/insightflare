@@ -1,16 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type {
-  DashboardFilters,
-  RangePreset,
-} from "@/lib/dashboard/query-state";
+import {
+  dashboardFilterDocumentFromPresentation,
+  dashboardFilterPresentation,
+  dashboardFilterValue,
+  serializeDashboardSearchParams,
+  withDashboardFilterSearchParams,
+} from "@/lib/dashboard/filter-state";
+import type { RangePreset } from "@/lib/dashboard/query-state";
 import {
   allowedIntervalsForRange,
   clampIntervalForRange,
   DEFAULT_RANGE_PRESET,
   finestIntervalForRange,
   normalizeCustomDateRange,
-  parseDashboardFiltersFromSearchParams,
+  parseFilterDocumentFromSearchParams,
   resolveRangePreset,
   resolveTimeWindow,
   withRangeAndFilters,
@@ -64,7 +68,7 @@ describe("dashboard query-state helpers", () => {
   });
 
   describe("resolveTimeWindow", () => {
-    const now = Date.UTC(2026, 4, 26, 15, 14, 56, 789);
+    const now = Date.UTC(2026, 4, 26, 15, 14, 59, 999);
 
     it.each([
       ["30m", now - 30 * MINUTE_MS, now, "minute"],
@@ -86,6 +90,28 @@ describe("dashboard query-state helpers", () => {
       },
     );
 
+    it("stabilizes preset cache keys within a minute while preserving custom precision", () => {
+      const withinMinuteNow = Date.UTC(2026, 4, 26, 15, 14, 12, 345);
+      const first = resolveTimeWindow("30d", withinMinuteNow, {
+        timeZone: "UTC",
+      });
+      const second = resolveTimeWindow("30d", withinMinuteNow + 32_000, {
+        timeZone: "UTC",
+      });
+      const nextMinute = resolveTimeWindow("30d", withinMinuteNow + 48_000, {
+        timeZone: "UTC",
+      });
+
+      expect(second).toMatchObject({ from: first.from, to: first.to });
+      expect(nextMinute.to).toBe(first.to + MINUTE_MS);
+      expect(
+        resolveTimeWindow("custom", withinMinuteNow, {
+          customRange: { from: 101, to: 202 },
+          timeZone: "UTC",
+        }),
+      ).toMatchObject({ from: 101, to: 202 });
+    });
+
     it("resolves calendar anchored ranges in the requested reporting timezone", () => {
       expect(
         resolveTimeWindow("today", now, { timeZone: "UTC" }),
@@ -98,7 +124,7 @@ describe("dashboard query-state helpers", () => {
         resolveTimeWindow("yesterday", now, { timeZone: "UTC" }),
       ).toMatchObject({
         from: Date.UTC(2026, 4, 25),
-        to: Date.UTC(2026, 4, 26) - 1,
+        to: Date.UTC(2026, 4, 26),
         interval: "hour",
       });
       expect(
@@ -208,110 +234,40 @@ describe("dashboard query-state helpers", () => {
     });
   });
 
-  describe("parseDashboardFiltersFromSearchParams", () => {
+  describe("parseFilterDocumentFromSearchParams", () => {
     it("normalizes supported scalar filters and drops blanks", () => {
-      const longValue = "x".repeat(140);
       const params = new URLSearchParams({
-        country: " US ",
-        device: "  ",
-        browser: longValue,
+        "filter[geo.country]": "US",
+        "filter[client.deviceType]": "desktop",
+        "filter[client.browser]": "Chrome",
+        "filter[geo.timeZone]": "Asia/Shanghai",
+      });
+
+      const filters = parseFilterDocumentFromSearchParams(params);
+      expect(dashboardFilterPresentation(filters)).toMatchObject({
+        country: "us",
+        device: "desktop",
+        browser: "Chrome",
         geoTimezone: "Asia/Shanghai",
       });
-
-      const filters = parseDashboardFiltersFromSearchParams(params);
-      expect(filters.country).toBe("US");
-      expect(filters.device).toBeUndefined();
-      expect(filters.browser).toBe("x".repeat(120));
-      expect(filters.geoTimezone).toBe("Asia/Shanghai");
     });
 
-    it("parses, normalizes, truncates, and filters event payload rules", () => {
-      const longString = "x".repeat(260);
-      const rules = [
-        { path: " $.user.role ", operator: "!=", value: "admin" },
-        { path: "/items/0/name", operator: "eq", value: "x" },
-        { path: "$.cart.items[0].sku", operator: "eq", value: longString },
-        { path: "metrics.count", operator: "eq", value: 3 },
-        { path: "flags.active", operator: "ne", value: true },
-        { path: "optional.value", operator: "weird", value: null },
-        { path: "empty.value", operator: "eq" },
-        { path: "/", operator: "eq", value: "ignored" },
-        { path: "bad.symbol", operator: "eq", value: Symbol("x") },
-      ];
-      const params = new URLSearchParams({
-        eventPayloadFilters: JSON.stringify(rules),
-      });
-
-      expect(
-        parseDashboardFiltersFromSearchParams(params).eventPayloadFilters,
-      ).toEqual([
-        { path: "/user/role", operator: "ne", value: "admin" },
-        { path: "/items/0/name", operator: "eq", value: "x" },
-        { path: "/cart/items/*/sku", operator: "eq", value: "x".repeat(240) },
-        { path: "/metrics/count", operator: "eq", value: 3 },
-        { path: "/flags/active", operator: "ne", value: true },
-        { path: "/optional/value", operator: "eq", value: null },
-      ]);
-    });
-
-    it("ignores malformed event payload filter params", () => {
-      expect(
-        parseDashboardFiltersFromSearchParams(
-          new URLSearchParams({ eventPayloadFilters: "not json" }),
-        ).eventPayloadFilters,
-      ).toBeUndefined();
-      expect(
-        parseDashboardFiltersFromSearchParams(
-          new URLSearchParams({ eventPayloadFilters: "{}" }),
-        ).eventPayloadFilters,
-      ).toBeUndefined();
-      expect(
-        parseDashboardFiltersFromSearchParams(
-          new URLSearchParams({ eventPayloadFilters: "  " }),
-        ).eventPayloadFilters,
-      ).toBeUndefined();
-      expect(
-        parseDashboardFiltersFromSearchParams(
-          new URLSearchParams({
-            eventPayloadFilters: JSON.stringify([
-              null,
-              "bad",
-              { path: "value", operator: "eq", value: { nested: true } },
-            ]),
-          }),
-        ).eventPayloadFilters,
-      ).toBeUndefined();
-    });
-
-    it("limits event payload filter parsing to the first twelve rules", () => {
-      const params = new URLSearchParams({
-        eventPayloadFilters: JSON.stringify(
-          Array.from({ length: 14 }, (_, index) => ({
-            path: `item.${index}`,
-            operator: index % 2 === 0 ? "eq" : "ne",
-            value: index,
-          })),
-        ),
-      });
-
-      const filters = parseDashboardFiltersFromSearchParams(params);
-      expect(filters.eventPayloadFilters).toHaveLength(12);
-      expect(filters.eventPayloadFilters?.at(0)).toEqual({
-        path: "/item/0",
-        operator: "eq",
-        value: 0,
-      });
-      expect(filters.eventPayloadFilters?.at(11)).toEqual({
-        path: "/item/11",
-        operator: "ne",
-        value: 11,
-      });
+    it("parses nested event payload and boolean logic through the shared codec", () => {
+      const filters = parseFilterDocumentFromSearchParams(
+        new URLSearchParams({
+          "filter[event.payload][/plan]": "pro",
+          "filter[event.payload][/trial]": "neq:false",
+          "filter[page.path][or.0]": "/docs",
+          "filter[page.path][or.1]": "/pricing",
+        }),
+      );
+      expect(filters.root).toBeTruthy();
     });
   });
 
   describe("withRangeAndFilters", () => {
     it("builds a range URL with every supported filter dimension", () => {
-      const filters: DashboardFilters = {
+      const filters = dashboardFilterDocumentFromPresentation({
         country: "US",
         device: "Desktop",
         browser: "Chrome",
@@ -323,57 +279,127 @@ describe("dashboard query-state helpers", () => {
         exit: "/pricing",
         sourceDomain: "google.com",
         sourceLink: "https://google.com/search",
+        channel: "organic_search",
         clientBrowser: "Chrome",
         clientOsVersion: "macOS 15",
         clientDeviceType: "Desktop",
         clientLanguage: "en-US",
         clientScreenSize: "1920x1080",
-        geo: "US-CA",
+        geo: "US::CA::California",
         geoContinent: "NA",
         geoTimezone: "America/Los_Angeles",
         geoOrganization: "Example ISP",
-        eventPayloadFilters: [
-          { path: "/user/role", operator: "eq", value: "admin" },
-        ],
-      };
+      });
 
       const href = withRangeAndFilters("/dashboard", "7d", filters);
       const url = new URL(href, "https://example.test");
       expect(url.pathname).toBe("/dashboard");
       expect(url.searchParams.get("range")).toBe("7d");
-      expect(url.searchParams.get("country")).toBe("US");
-      expect(url.searchParams.get("clientScreenSize")).toBe("1920x1080");
-      expect(url.searchParams.get("geoOrganization")).toBe("Example ISP");
-      expect(
-        JSON.parse(url.searchParams.get("eventPayloadFilters") || "[]"),
-      ).toEqual(filters.eventPayloadFilters);
+      expect(url.searchParams.get("filter[geo.country]")).toBe("us");
+      expect(url.searchParams.get("filter[client.screenSize]")).toBe(
+        "1920x1080",
+      );
+      expect(url.searchParams.get("filter[geo.organization]")).toBe(
+        "Example ISP",
+      );
+      expect(url.searchParams.get("filter[traffic.channel]")).toBe(
+        "organic_search",
+      );
     });
 
     it("omits absent filters and still sets the range", () => {
       expect(withRangeAndFilters("/dashboard", "today")).toBe(
         "/dashboard?range=today",
       );
-      expect(withRangeAndFilters("/dashboard", "today", {})).toBe(
+      expect(withRangeAndFilters("/dashboard", "today", undefined)).toBe(
         "/dashboard?range=today",
       );
     });
 
     it("omits empty scalar and event payload filters from the URL", () => {
-      const href = withRangeAndFilters("/dashboard", "30d", {
-        country: "",
-        browser: "Chrome",
-        eventPayloadFilters: [],
-      });
+      const href = withRangeAndFilters(
+        "/dashboard",
+        "30d",
+        dashboardFilterDocumentFromPresentation({ browser: "Chrome" }),
+      );
       const url = new URL(href, "https://example.test");
 
       expect(url.searchParams.get("range")).toBe("30d");
-      expect(url.searchParams.get("country")).toBeNull();
-      expect(url.searchParams.get("browser")).toBe("Chrome");
-      expect(url.searchParams.get("eventPayloadFilters")).toBeNull();
+      expect(url.searchParams.get("filter[geo.country]")).toBeNull();
+      expect(url.searchParams.get("filter[client.browser]")).toBe("Chrome");
+    });
+  });
+
+  describe("withDashboardFilterSearchParams", () => {
+    it("replaces typed and legacy filter parameters while preserving route state", () => {
+      const params = new URLSearchParams({
+        range: "7d",
+        sourceDomain: "old.example",
+        geoCountry: "US",
+        "filter[geo.country]": "us",
+      });
+      const next = withDashboardFilterSearchParams(
+        params,
+        dashboardFilterDocumentFromPresentation({ sourceDomain: "google.com" }),
+      );
+
+      expect(next.get("range")).toBe("7d");
+      expect(next.get("sourceDomain")).toBeNull();
+      expect(next.get("geoCountry")).toBeNull();
+      expect(next.get("filter[geo.country]")).toBeNull();
+      expect(next.get("filter[referrer.domain]")).toBe("google.com");
+    });
+  });
+
+  describe("dashboardFilterValue", () => {
+    it("does not treat a negated row condition as an active card selection", () => {
+      const filters = parseFilterDocumentFromSearchParams(
+        new URLSearchParams({
+          "filter[referrer.domain][not]": "__direct__",
+        }),
+      );
+
+      expect(dashboardFilterValue(filters, "sourceDomain")).toBeUndefined();
+    });
+  });
+
+  describe("serializeDashboardSearchParams", () => {
+    it("keeps filter syntax readable while encoding unsafe values", () => {
+      const params = new URLSearchParams([
+        ["filter[page.path]", "/politics"],
+        ["filter[page.path][or:0.0]", "/world"],
+        ["filter[event.payload][/device/screen/width]", "json:1920"],
+        ["filter[referrer.domain]", "google.com"],
+        ["filter[page.title]", "News & Politics"],
+      ]);
+
+      expect(serializeDashboardSearchParams(params)).toBe(
+        "filter[page.path]=/politics&filter[page.path][or:0.0]=/world&filter[event.payload][/device/screen/width]=json:1920&filter[referrer.domain]=google.com&filter[page.title]=News%20%26%20Politics",
+      );
     });
   });
 
   describe("normalizeCustomDateRange", () => {
+    it("uses the server timezone fallback when no browser window exists", () => {
+      vi.stubGlobal("window", undefined);
+      try {
+        expect(resolveTimeWindow("today", Date.UTC(2026, 4, 2)).timeZone).toBe(
+          "UTC",
+        );
+        expect(
+          normalizeCustomDateRange({
+            from: new Date(Date.UTC(2026, 4, 1)),
+            to: new Date(Date.UTC(2026, 4, 1)),
+          }),
+        ).toEqual({
+          from: Date.UTC(2026, 4, 1),
+          to: Date.UTC(2026, 4, 2),
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
     it("normalizes selected dates to the full zoned date range", () => {
       expect(
         normalizeCustomDateRange(
@@ -385,7 +411,7 @@ describe("dashboard query-state helpers", () => {
         ),
       ).toEqual({
         from: Date.UTC(2026, 4, 1),
-        to: Date.UTC(2026, 4, 3, 23, 59, 59, 999),
+        to: Date.UTC(2026, 4, 4),
       });
     });
 

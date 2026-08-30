@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   NORMAL_ANALYTICS_BLOBS,
@@ -47,6 +47,10 @@ function env(writeDataPoint: AnalyticsWriter = vi.fn<AnalyticsWriter>()): Env {
   } as Env;
 }
 
+function logger() {
+  return { warn: vi.fn(), error: vi.fn() };
+}
+
 const basePayload: TrackerClientPayload = {
   siteId: "site-1",
   kind: "pageview",
@@ -69,6 +73,10 @@ describe("normal request Analytics Engine writes", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("keeps the normal request schema within AE data point limits", () => {
     expect(NORMAL_ANALYTICS_BLOBS).toHaveLength(16);
     expect(NORMAL_ANALYTICS_DOUBLES.length).toBeLessThanOrEqual(20);
@@ -77,6 +85,7 @@ describe("normal request Analytics Engine writes", () => {
   it("writes normalized pageview data points", () => {
     const writeDataPoint = analyticsWriter();
     const testEnv = env(writeDataPoint);
+    vi.spyOn(Date, "now").mockReturnValue(1_000_045);
 
     writeNormalAnalyticsEvent(testEnv, {
       request: request(
@@ -135,7 +144,7 @@ describe("normal request Analytics Engine writes", () => {
     expect(point.doubles).toEqual([
       1_000_000,
       999_900,
-      100,
+      45,
       13335,
       37.7749,
       -122.4194,
@@ -182,30 +191,36 @@ describe("normal request Analytics Engine writes", () => {
       throw new Error("write failed");
     });
 
-    writeNormalAnalyticsEvent(env(writeDataPoint), {
-      request: request(
-        {
-          "user-agent": "bot".repeat(400),
-          "cf-ray": "ray-2",
+    const invocationLogger = logger();
+    vi.spyOn(Date, "now").mockReturnValue(2_050);
+    writeNormalAnalyticsEvent(
+      env(writeDataPoint),
+      {
+        request: request(
+          {
+            "user-agent": "bot".repeat(400),
+            "cf-ray": "ray-2",
+          },
+          {
+            asn: "bad",
+            latitude: "bad",
+            longitude: undefined,
+          },
+        ),
+        payload: {
+          kind: "custom_event",
+          timestamp: 2_000,
+          startedAt: 1_000,
+          hostname: "",
+          pathname: "https://%",
         },
-        {
-          asn: "bad",
-          latitude: "bad",
-          longitude: undefined,
-        },
-      ),
-      payload: {
-        kind: "custom_event",
-        timestamp: 2_000,
-        startedAt: 1_000,
-        hostname: "",
-        pathname: "https://%",
+        siteId: "",
+        origin: null,
+        traceId: "trace-2",
+        receivedAt: 1_000,
       },
-      siteId: "",
-      origin: null,
-      traceId: "trace-2",
-      receivedAt: 1_000,
-    });
+      invocationLogger,
+    );
 
     expect(writeDataPoint).toHaveBeenCalledTimes(1);
     const point = writeDataPoint.mock.calls[0][0];
@@ -215,68 +230,79 @@ describe("normal request Analytics Engine writes", () => {
     expect(point.blobs[3]).toBe("");
     expect(point.blobs[4]).toBe("");
     expect(point.doubles[1]).toBe(2_000);
-    expect(point.doubles[2]).toBe(0);
+    expect(point.doubles[2]).toBe(1_050);
     expect(point.doubles[3]).toBe(0);
     expect(point.doubles[4]).toBe(0);
     expect(point.doubles[5]).toBe(0);
     expect(point.doubles[6]).toBe(1024);
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("normal_analytics_write_failed"),
+    expect(invocationLogger.error).toHaveBeenCalledWith(
+      "collect.normal_analytics_write_failed",
     );
   });
 
   it("normalizes relative paths, fallback timestamps, and missing request metadata", () => {
     const writeDataPoint = analyticsWriter();
+    vi.spyOn(Date, "now").mockReturnValue(3_025);
 
-    writeNormalAnalyticsEvent(env(writeDataPoint), {
-      request: request(),
-      payload: {
-        kind: "pageview",
-        timestamp: 0,
-        startedAt: 0,
-        hostname: "EXAMPLE.test",
-        pathname: "/docs?utm=source#intro",
+    const invocationLogger = logger();
+    writeNormalAnalyticsEvent(
+      env(writeDataPoint),
+      {
+        request: request(),
+        payload: {
+          kind: "pageview",
+          timestamp: 0,
+          startedAt: 0,
+          hostname: "EXAMPLE.test",
+          pathname: "/docs?utm=source#intro",
+        },
+        siteId: "site-2",
+        origin: null,
+        traceId: "trace-3",
+        receivedAt: 3_000,
       },
-      siteId: "site-2",
-      origin: null,
-      traceId: "trace-3",
-      receivedAt: 3_000,
-    });
+      invocationLogger,
+    );
 
     const point = writeDataPoint.mock.calls[0][0];
     expect(point.blobs[3]).toBe("example.test");
     expect(point.blobs[4]).toBe("/docs");
     expect(point.blobs[12]).toBe("");
     expect(point.doubles[1]).toBe(3_000);
-    expect(point.doubles[2]).toBe(0);
+    expect(point.doubles[2]).toBe(25);
   });
 
   it("normalizes blank pathnames and non-Error write failures", () => {
     const writeDataPoint = analyticsWriter(() => {
       throw "write failed";
     });
+    const invocationLogger = logger();
 
-    writeNormalAnalyticsEvent(env(writeDataPoint), {
-      request: request({}, {}),
-      payload: {
-        kind: "" as TrackerClientPayload["kind"],
-        timestamp: Number.NaN,
-        startedAt: undefined,
-        hostname: "",
-        pathname: "",
+    writeNormalAnalyticsEvent(
+      env(writeDataPoint),
+      {
+        request: request({}, {}),
+        payload: {
+          kind: "" as TrackerClientPayload["kind"],
+          timestamp: Number.NaN,
+          startedAt: undefined,
+          hostname: "",
+          pathname: "",
+        },
+        siteId: "site-3",
+        origin: "",
+        traceId: "trace-4",
+        receivedAt: 4_000,
       },
-      siteId: "site-3",
-      origin: "",
-      traceId: "trace-4",
-      receivedAt: 4_000,
-    });
+      invocationLogger,
+    );
 
     const point = writeDataPoint.mock.calls[0][0];
     expect(point.blobs[1]).toBe("");
     expect(point.blobs[4]).toBe("");
     expect(point.doubles[1]).toBe(4_000);
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("write failed"),
+    expect(invocationLogger.error).toHaveBeenCalledWith(
+      "collect.normal_analytics_write_failed",
     );
   });
 });

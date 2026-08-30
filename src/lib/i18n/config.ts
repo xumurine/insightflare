@@ -1,4 +1,4 @@
-export const SUPPORTED_LOCALES = ["en", "zh"] as const;
+export const SUPPORTED_LOCALES = ["en", "zh", "ja"] as const;
 
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
 
@@ -13,4 +13,8 @@ export function isValidLocale(
 
 export function resolveLocale(value: string | null | undefined): Locale {
   return isValidLocale(value) ? value : DEFAULT_LOCALE;
+}
+
+export function localeToHtmlLang(locale: Locale): string {
+  return locale === "zh" ? "zh-CN" : locale;
 }

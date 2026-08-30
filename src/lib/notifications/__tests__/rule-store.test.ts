@@ -100,7 +100,9 @@ describe("notification rule store", () => {
   });
 
   it("creates rules with normalized defaults and creator attribution", async () => {
-    vi.spyOn(crypto, "randomUUID").mockReturnValue("rule-new");
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "rule-new" as ReturnType<Crypto["randomUUID"]>,
+    );
     vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const inserted: unknown[][] = [];
     const env = {
@@ -343,10 +345,12 @@ describe("notification rule store", () => {
               })),
             };
           }
-          if (sql.includes("SELECT role FROM team_members")) {
+          if (sql.includes("SELECT role,site_ids_json")) {
             return {
               bind: vi.fn(() => ({
-                first: vi.fn(() => Promise.resolve({ role: "member" })),
+                first: vi.fn(() =>
+                  Promise.resolve({ role: "member", siteIdsJson: "[]" }),
+                ),
               })),
             };
           }

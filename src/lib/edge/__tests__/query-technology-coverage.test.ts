@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { QueryWindow } from "@/lib/edge/query/core";
+import { buildTrafficChannelSqlExpression } from "@/lib/analytics/traffic-channel-rules";
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import type { QueryWindow } from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   BROWSER_CROSS_OTHER_BROWSER_TOKEN,
   BROWSER_CROSS_OTHER_DIMENSION_TOKEN,
@@ -12,27 +14,30 @@ import {
   SHARE_TREND_OTHER_KEY,
   SHARE_TREND_OTHER_LABEL,
   SHARE_TREND_OTHER_TOKEN,
-} from "@/lib/edge/query/core";
-import { clientDimensionDefinition } from "@/lib/edge/query/core";
+} from "@/lib/edge/analytics/providers/d1/internal/core";
+import { clientDimensionDefinition } from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   queryBrowserCrossBreakdownFromD1,
   queryBrowserCrossDimensionFromD1,
   queryBrowserEngineTrendFromD1,
   queryBrowserTrendFromD1,
   queryBrowserVersionBreakdownFromD1,
-} from "@/lib/edge/query/technology/browser";
-import { queryCrossDimensionFromD1 } from "@/lib/edge/query/technology/client-cross";
+} from "@/lib/edge/analytics/providers/d1/internal/technology/browser";
+import { queryCrossDimensionFromD1 } from "@/lib/edge/analytics/providers/d1/internal/technology/client-cross";
 import {
   queryBrowserRadarFromD1,
   queryReferrerRadarFromD1,
-} from "@/lib/edge/query/technology/radar";
+} from "@/lib/edge/analytics/providers/d1/internal/technology/radar";
 import {
   queryClientDimensionTrendFromD1,
+  queryReferrerAndChannelTrendFromD1,
   queryReferrerTrendFromD1,
   queryShareTrendFromD1,
   queryUtmDimensionTrendFromD1,
-} from "@/lib/edge/query/technology/share-trend";
+} from "@/lib/edge/analytics/providers/d1/internal/technology/share-trend";
 import type { Env } from "@/lib/edge/types";
+
+import { filterFixture } from "./filter-fixtures";
 
 type D1Row = Record<string, unknown>;
 
@@ -43,8 +48,8 @@ interface QueryCall {
 
 const siteId = "site-technology";
 const window: QueryWindow = {
-  fromMs: Date.UTC(2026, 0, 1, 0),
-  toMs: Date.UTC(2026, 0, 1, 2),
+  startMs: Date.UTC(2026, 0, 1, 0),
+  endExclusiveMs: Date.UTC(2026, 0, 1, 2),
   nowMs: Date.UTC(2026, 0, 1, 3),
   timeZone: "UTC",
 };
@@ -55,10 +60,54 @@ function createD1Env(resultSets: D1Row[][]): {
 } {
   const calls: QueryCall[] = [];
   const pendingResults = [...resultSets];
+  const withRowType = (row: D1Row, rowType: string) =>
+    "rowType" in row ? row : { ...row, rowType };
+  const taggedShareResults =
+    resultSets.length >= 3
+      ? [
+          ...resultSets[0].map((row) => withRowType(row, "top")),
+          ...resultSets[1].map((row) => withRowType(row, "series")),
+          ...resultSets[2].map((row) => withRowType(row, "bucket")),
+        ]
+      : [];
+  const taggedClientCrossResults =
+    resultSets.length >= 2
+      ? [
+          ...resultSets[0].map((row) => withRowType(row, "primary")),
+          ...resultSets[1].map((row) => withRowType(row, "secondary")),
+          ...(resultSets[2] ?? []).map((row) => withRowType(row, "pair")),
+        ]
+      : [];
+  let taggedShareResultsConsumed = false;
+  let taggedClientCrossResultsConsumed = false;
   const prepare = vi.fn((sql: string) => ({
     bind: vi.fn((...bindings: Array<string | number | null>) => ({
       all: vi.fn(async () => {
         calls.push({ sql, bindings });
+        if (sql.includes("top_browser_rows") && sql.includes("tagged_rows")) {
+          const browserRows = pendingResults.shift() ?? [];
+          const dimensionRows = pendingResults.shift() ?? [];
+          const pairRows = pendingResults.shift() ?? [];
+          return {
+            results: [
+              ...browserRows.map((row) => withRowType(row, "browser")),
+              ...dimensionRows.map((row) => withRowType(row, "dimension")),
+              ...pairRows.map((row) => withRowType(row, "pair")),
+            ],
+          };
+        }
+        if (
+          sql.includes("top_primary_rows") &&
+          sql.includes("tagged_rows") &&
+          !taggedClientCrossResultsConsumed
+        ) {
+          taggedClientCrossResultsConsumed = true;
+          return { results: taggedClientCrossResults };
+        }
+        if (sql.includes("tagged_rows") && !taggedShareResultsConsumed) {
+          taggedShareResultsConsumed = true;
+          return { results: taggedShareResults };
+        }
         return { results: pendingResults.shift() ?? [] };
       }),
     })),
@@ -74,8 +123,58 @@ function createD1Env(resultSets: D1Row[][]): {
   };
 }
 
+function createCombinedShareTrendEnv(rows: D1Row[]): {
+  env: Env;
+  calls: QueryCall[];
+} {
+  const calls: QueryCall[] = [];
+  const trendJson = (trendType: "source" | "channel") =>
+    JSON.stringify({
+      top: rows
+        .filter((row) => row.trendType === trendType && row.rowType === "top")
+        .map(({ trendType: _trendType, rowType: _rowType, ...row }) => row),
+      series: rows
+        .filter(
+          (row) => row.trendType === trendType && row.rowType === "series",
+        )
+        .map(({ trendType: _trendType, rowType: _rowType, ...row }) => row),
+      buckets: rows
+        .filter(
+          (row) => row.trendType === trendType && row.rowType === "bucket",
+        )
+        .map(({ trendType: _trendType, rowType: _rowType, ...row }) => row),
+    });
+  const prepare = vi.fn((sql: string) => ({
+    bind: vi.fn((...bindings: Array<string | number | null>) => ({
+      all: vi.fn(async () => {
+        calls.push({ sql, bindings });
+        return {
+          results:
+            rows.length === 0
+              ? []
+              : [
+                  {
+                    source: trendJson("source"),
+                    channel: trendJson("channel"),
+                  },
+                ],
+        };
+      }),
+    })),
+  }));
+
+  return {
+    env: {
+      DB: { prepare },
+      DAILY_SALT_SECRET: "test-secret",
+      INGEST_DO: {},
+    } as unknown as Env,
+    calls,
+  };
+}
+
 function visitBindings() {
-  return [siteId, window.fromMs, window.toMs];
+  return [siteId, window.startMs, window.endExclusiveMs];
 }
 
 describe("edge technology query coverage", () => {
@@ -87,7 +186,7 @@ describe("edge technology query coverage", () => {
         env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         Number.NaN,
         2,
       ),
@@ -101,44 +200,58 @@ describe("edge technology query coverage", () => {
   it("maps browser version slices with unknown and other buckets", async () => {
     const { env, calls } = createD1Env([
       [
-        { browser: " Chrome ", views: 20, visitors: 10, sessions: 8 },
-        { browser: "Ignored", views: 9, visitors: 0, sessions: 0 },
-      ],
-      [
         {
           browser: "Chrome",
+          views: 20,
+          visitors: 10,
+          sessions: 8,
           version: "124",
-          views: 8,
-          visitors: 5,
-          sessions: 4,
+          versionViews: 8,
+          versionVisitors: 5,
+          versionSessions: 4,
         },
         {
           browser: "Chrome",
           version: BROWSER_VERSION_UNKNOWN_TOKEN,
-          views: 4,
-          visitors: 3,
-          sessions: 2,
+          views: 20,
+          visitors: 10,
+          sessions: 8,
+          versionViews: 4,
+          versionVisitors: 3,
+          versionSessions: 2,
         },
         {
           browser: "Chrome",
           version: "122",
-          views: 3,
-          visitors: 2,
-          sessions: 2,
+          views: 20,
+          visitors: 10,
+          sessions: 8,
+          versionViews: 3,
+          versionVisitors: 2,
+          versionSessions: 2,
         },
-        { browser: "", version: "121", views: 9, visitors: 9, sessions: 9 },
         {
-          browser: "Chrome",
+          browser: "Ignored",
           version: "121",
           views: 9,
           visitors: 0,
           sessions: 0,
+          versionViews: 9,
+          versionVisitors: 0,
+          versionSessions: 0,
         },
       ],
     ]);
 
     await expect(
-      queryBrowserVersionBreakdownFromD1(env, siteId, window, {}, 2.9, 2),
+      queryBrowserVersionBreakdownFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        2.9,
+        2,
+      ),
     ).resolves.toEqual([
       {
         browser: "Chrome",
@@ -167,28 +280,46 @@ describe("edge technology query coverage", () => {
       },
     ]);
 
-    expect(calls[0].sql).toContain("LIMIT ?");
+    expect(calls[0].sql).toContain("browserRank <= ?");
     expect(calls[0].bindings.at(-1)).toBe(2);
-    expect(calls[1].bindings).toEqual([...visitBindings(), "Chrome"]);
+    expect(calls).toHaveLength(1);
   });
 
   it("returns browser version rows with empty versions when all version rows are invalid", async () => {
     const { env } = createD1Env([
-      [{ browser: "Chrome", views: 5, visitors: 3, sessions: 2 }],
       [
         {
           browser: "Chrome",
+          views: 5,
+          visitors: 3,
+          sessions: 2,
           version: "124",
+          versionViews: 5,
+          versionVisitors: 0,
+          versionSessions: 0,
+        },
+        {
+          browser: "",
           views: 5,
           visitors: 0,
           sessions: 0,
+          version: "123",
+          versionViews: 5,
+          versionVisitors: 3,
+          versionSessions: 2,
         },
-        { browser: "", version: "123", views: 5, visitors: 3, sessions: 2 },
       ],
     ]);
 
     await expect(
-      queryBrowserVersionBreakdownFromD1(env, siteId, window, {}, 1, 99),
+      queryBrowserVersionBreakdownFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        1,
+        99,
+      ),
     ).resolves.toEqual([
       {
         browser: "Chrome",
@@ -285,7 +416,7 @@ describe("edge technology query coverage", () => {
       env,
       siteId,
       window,
-      {},
+      EMPTY_FILTER_DOCUMENT,
       99,
       0,
       "TRIM(COALESCE(os, ''))",
@@ -443,8 +574,8 @@ describe("edge technology query coverage", () => {
       },
     ]);
     expect(result.totalVisitors).toBe(16);
-    expect(calls[0].bindings.at(-1)).toBe(12);
-    expect(calls[1].bindings.at(-1)).toBe(1);
+    expect(calls[0].bindings.at(-2)).toBe(12);
+    expect(calls[0].bindings.at(-1)).toBe(1);
   });
 
   it("returns empty browser cross dimensions when top buckets are missing", async () => {
@@ -459,7 +590,7 @@ describe("edge technology query coverage", () => {
         noBrowsers.env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         3,
         "TRIM(COALESCE(os, ''))",
@@ -471,7 +602,7 @@ describe("edge technology query coverage", () => {
         noDimensions.env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         3,
         "TRIM(COALESCE(os, ''))",
@@ -480,15 +611,13 @@ describe("edge technology query coverage", () => {
     ).resolves.toEqual({ columns: [], rows: [], totalVisitors: 0 });
 
     expect(noBrowsers.calls).toHaveLength(1);
-    expect(noDimensions.calls).toHaveLength(2);
+    expect(noDimensions.calls).toHaveLength(1);
   });
 
   it("queries browser cross breakdown dimensions in parallel", async () => {
     const { env, calls } = createD1Env([
       [{ browser: "Chrome", views: 5, visitors: 3, sessions: 2 }],
-      [{ browser: "Chrome", views: 5, visitors: 3, sessions: 2 }],
       [{ dimension: "Windows", views: 5, visitors: 3, sessions: 2 }],
-      [{ dimension: "desktop", views: 5, visitors: 3, sessions: 2 }],
       [
         {
           browser: "Chrome",
@@ -498,6 +627,8 @@ describe("edge technology query coverage", () => {
           sessions: 2,
         },
       ],
+      [{ browser: "Chrome", views: 5, visitors: 3, sessions: 2 }],
+      [{ dimension: "desktop", views: 5, visitors: 3, sessions: 2 }],
       [
         {
           browser: "Chrome",
@@ -513,7 +644,7 @@ describe("edge technology query coverage", () => {
       env,
       siteId,
       window,
-      {},
+      EMPTY_FILTER_DOCUMENT,
       1,
       2,
       3,
@@ -527,10 +658,11 @@ describe("edge technology query coverage", () => {
       key: "desktop",
       label: "desktop",
     });
-    expect(calls[2].sql).toContain("TRIM(COALESCE(os, ''))");
-    expect(calls[3].sql).toContain("TRIM(COALESCE(device_type, ''))");
-    expect(calls[2].bindings.at(-1)).toBe(2);
-    expect(calls[3].bindings.at(-1)).toBe(3);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].sql).toContain("TRIM(COALESCE(os, ''))");
+    expect(calls[1].sql).toContain("TRIM(COALESCE(device_type, ''))");
+    expect(calls[0].bindings.at(-1)).toBe(2);
+    expect(calls[1].bindings.at(-1)).toBe(3);
   });
 
   it("maps client cross dimensions with unknown and other buckets", async () => {
@@ -594,7 +726,7 @@ describe("edge technology query coverage", () => {
       env,
       siteId,
       window,
-      {},
+      EMPTY_FILTER_DOCUMENT,
       3,
       2,
       clientDimensionDefinition("browser"),
@@ -675,7 +807,7 @@ describe("edge technology query coverage", () => {
         noPrimary.env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         3,
         clientDimensionDefinition("browser"),
@@ -687,7 +819,7 @@ describe("edge technology query coverage", () => {
         noSecondary.env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         3,
         clientDimensionDefinition("browser"),
@@ -696,7 +828,7 @@ describe("edge technology query coverage", () => {
     ).resolves.toEqual({ columns: [], rows: [], totalVisitors: 0 });
 
     expect(noPrimary.calls).toHaveLength(1);
-    expect(noSecondary.calls).toHaveLength(2);
+    expect(noSecondary.calls).toHaveLength(1);
   });
 
   it("filters invalid client cross pair rows and drops zero-visitor fallback rows", async () => {
@@ -743,7 +875,7 @@ describe("edge technology query coverage", () => {
         env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         2,
         1,
         clientDimensionDefinition("deviceType"),
@@ -792,7 +924,7 @@ describe("edge technology query coverage", () => {
       siteId,
       window,
       "hour",
-      {},
+      EMPTY_FILTER_DOCUMENT,
       3,
       "TRIM(COALESCE(browser, ''))",
       "browser",
@@ -848,7 +980,7 @@ describe("edge technology query coverage", () => {
       siteId,
       window,
       "hour",
-      {},
+      EMPTY_FILTER_DOCUMENT,
       99,
       "TRIM(COALESCE(browser, ''))",
       "browser",
@@ -865,7 +997,7 @@ describe("edge technology query coverage", () => {
         isOther: true,
       },
     ]);
-    expect(result.data).toHaveLength(3);
+    expect(result.data).toHaveLength(2);
     expect(result.data[0]).toMatchObject({
       bucket: 0,
       totalVisitors: 5,
@@ -876,13 +1008,183 @@ describe("edge technology query coverage", () => {
       totalVisitors: 0,
       visitorsBySeries: { chrome: 0, other: 0 },
     });
-    expect(result.data[2]).toMatchObject({
-      bucket: 2,
-      totalVisitors: 0,
-      visitorsBySeries: { chrome: 0, other: 0 },
-    });
     expect(calls[0].bindings.at(-1)).toBe(12);
-    expect(calls[1].bindings).toEqual([...visitBindings(), "Chrome", "Safari"]);
+    expect(calls[0].sql).toContain("tagged_rows");
+    expect(calls[0].bindings).toEqual([...visitBindings(), 12]);
+  });
+
+  it("maps source and channel trends from one JSON-aggregated query", async () => {
+    const { env, calls } = createCombinedShareTrendEnv([
+      {
+        trendType: "source",
+        rowType: "top",
+        label: "google.com",
+        views: 4,
+        visitors: 2,
+        sessions: 2,
+      },
+      {
+        trendType: "source",
+        rowType: "series",
+        label: "google.com",
+        views: 4,
+        visitors: 2,
+        sessions: 2,
+      },
+      {
+        trendType: "source",
+        rowType: "series",
+        label: SHARE_TREND_OTHER_TOKEN,
+        views: 3,
+        visitors: 1,
+        sessions: 1,
+      },
+      {
+        trendType: "source",
+        rowType: "bucket",
+        bucket: 0,
+        label: "google.com",
+        views: 2,
+        visitors: 1,
+        sessions: 1,
+      },
+      {
+        trendType: "source",
+        rowType: "bucket",
+        bucket: 1,
+        label: SHARE_TREND_OTHER_TOKEN,
+        views: 2,
+        visitors: 1,
+        sessions: 1,
+      },
+      {
+        trendType: "channel",
+        rowType: "top",
+        label: "organic_search",
+        views: 4,
+        visitors: 2,
+        sessions: 2,
+      },
+      {
+        trendType: "channel",
+        rowType: "series",
+        label: "organic_search",
+        views: 4,
+        visitors: 2,
+        sessions: 2,
+      },
+      {
+        trendType: "channel",
+        rowType: "series",
+        label: SHARE_TREND_OTHER_TOKEN,
+        views: 3,
+        visitors: 1,
+        sessions: 1,
+      },
+      {
+        trendType: "channel",
+        rowType: "bucket",
+        bucket: 0,
+        label: "organic_search",
+        views: 2,
+        visitors: 1,
+        sessions: 1,
+      },
+      {
+        trendType: "channel",
+        rowType: "bucket",
+        bucket: 1,
+        label: SHARE_TREND_OTHER_TOKEN,
+        views: 2,
+        visitors: 1,
+        sessions: 1,
+      },
+    ]);
+
+    const result = await queryReferrerAndChannelTrendFromD1(
+      env,
+      siteId,
+      window,
+      "hour",
+      EMPTY_FILTER_DOCUMENT,
+      5,
+    );
+
+    expect(result.source.series).toEqual([
+      {
+        key: "google-com",
+        label: "google.com",
+        views: 4,
+        visitors: 2,
+        sessions: 2,
+      },
+      {
+        key: SHARE_TREND_OTHER_KEY,
+        label: SHARE_TREND_OTHER_LABEL,
+        views: 3,
+        visitors: 1,
+        sessions: 1,
+        isOther: true,
+      },
+    ]);
+    expect(result.source.data.map((point) => point.visitorsBySeries)).toEqual([
+      { "google-com": 1, other: 0 },
+      { "google-com": 0, other: 1 },
+    ]);
+    expect(result.channel.series).toEqual([
+      {
+        key: "organic-search",
+        label: "organic_search",
+        views: 4,
+        visitors: 2,
+        sessions: 2,
+      },
+      {
+        key: SHARE_TREND_OTHER_KEY,
+        label: SHARE_TREND_OTHER_LABEL,
+        views: 3,
+        visitors: 1,
+        sessions: 1,
+        isOther: true,
+      },
+    ]);
+    expect(result.channel.data.map((point) => point.visitorsBySeries)).toEqual([
+      { "organic-search": 1, other: 0 },
+      { "organic-search": 0, other: 1 },
+    ]);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].bindings).toEqual([...visitBindings(), 5, 5]);
+    expect(calls[0].sql).toContain("sourceGlobalLabel");
+    expect(calls[0].sql).toContain("channelGlobalLabel");
+    expect(calls[0].sql).toContain("sourceBucketLabel");
+    expect(calls[0].sql).toContain("channelBucketLabel");
+    expect(calls[0].sql).toContain("source_top_rows");
+    expect(calls[0].sql).toContain("channel_top_rows");
+    expect(calls[0].sql).toContain(buildTrafficChannelSqlExpression());
+    expect(calls[0].sql).not.toContain("CROSS JOIN source_bucket_rows");
+    expect(calls[0].sql).toContain("json_group_array");
+    expect(calls[0].sql).not.toContain("UNION ALL");
+  });
+
+  it("returns independent empty source and channel results", async () => {
+    const { env, calls } = createCombinedShareTrendEnv([]);
+
+    await expect(
+      queryReferrerAndChannelTrendFromD1(
+        env,
+        siteId,
+        window,
+        "hour",
+        EMPTY_FILTER_DOCUMENT,
+        5,
+      ),
+    ).resolves.toEqual({
+      source: { series: [], data: [] },
+      channel: { series: [], data: [] },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].bindings).toEqual([...visitBindings(), 5, 5]);
   });
 
   it("returns no share trend data when selected top labels have no series rows", async () => {
@@ -898,7 +1200,7 @@ describe("edge technology query coverage", () => {
         siteId,
         window,
         "hour",
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         "TRIM(COALESCE(browser, ''))",
         "browser",
@@ -937,7 +1239,7 @@ describe("edge technology query coverage", () => {
         siteId,
         window,
         "hour",
-        {},
+        EMPTY_FILTER_DOCUMENT,
         0,
         "TRIM(COALESCE(browser, ''))",
         "browser",
@@ -955,8 +1257,8 @@ describe("edge technology query coverage", () => {
       ],
     });
     expect(calls[0].bindings.at(-1)).toBe(1);
-    expect(calls[1].sql).toContain(`'${SHARE_TREND_OTHER_TOKEN}' AS label`);
-    expect(calls[1].bindings).toEqual(visitBindings());
+    expect(calls[0].sql).toContain(`'${SHARE_TREND_OTHER_TOKEN}'`);
+    expect(calls[0].bindings).toEqual([...visitBindings(), 1]);
   });
 
   it("returns no share trend data when all series rows are filtered out", async () => {
@@ -974,7 +1276,7 @@ describe("edge technology query coverage", () => {
         siteId,
         window,
         "hour",
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         "TRIM(COALESCE(browser, ''))",
         "browser",
@@ -990,7 +1292,14 @@ describe("edge technology query coverage", () => {
     const referrerEnv = createD1Env([[], []]);
 
     await expect(
-      queryBrowserTrendFromD1(browserEnv.env, siteId, window, "hour", {}, 3),
+      queryBrowserTrendFromD1(
+        browserEnv.env,
+        siteId,
+        window,
+        "hour",
+        EMPTY_FILTER_DOCUMENT,
+        3,
+      ),
     ).resolves.toEqual({ series: [], data: [] });
     await expect(
       queryBrowserEngineTrendFromD1(
@@ -998,7 +1307,7 @@ describe("edge technology query coverage", () => {
         siteId,
         window,
         "hour",
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
       ),
     ).resolves.toEqual({ series: [], data: [] });
@@ -1008,7 +1317,7 @@ describe("edge technology query coverage", () => {
         siteId,
         window,
         "hour",
-        {},
+        EMPTY_FILTER_DOCUMENT,
         "deviceType",
         3,
       ),
@@ -1019,13 +1328,20 @@ describe("edge technology query coverage", () => {
         siteId,
         window,
         "hour",
-        {},
+        EMPTY_FILTER_DOCUMENT,
         "source",
         3,
       ),
     ).resolves.toEqual({ series: [], data: [] });
     await expect(
-      queryReferrerTrendFromD1(referrerEnv.env, siteId, window, "hour", {}, 3),
+      queryReferrerTrendFromD1(
+        referrerEnv.env,
+        siteId,
+        window,
+        "hour",
+        EMPTY_FILTER_DOCUMENT,
+        3,
+      ),
     ).resolves.toEqual({ series: [], data: [] });
 
     expect(browserEnv.calls[0].sql).toContain("TRIM(COALESCE(browser, ''))");
@@ -1041,22 +1357,28 @@ describe("edge technology query coverage", () => {
   it("defaults nullable browser version rows while filtering empty browser buckets", async () => {
     const { env } = createD1Env([
       [
-        { browser: null, views: 9, visitors: 9, sessions: 9 },
-        { browser: " Chrome ", views: null, visitors: "4", sessions: null },
-      ],
-      [
         {
           browser: "Chrome",
-          version: null,
           views: null,
-          visitors: "2",
+          visitors: "4",
           sessions: null,
+          version: BROWSER_VERSION_UNKNOWN_TOKEN,
+          versionViews: null,
+          versionVisitors: "2",
+          versionSessions: null,
         },
       ],
     ]);
 
     await expect(
-      queryBrowserVersionBreakdownFromD1(env, siteId, window, {}, 3, 2),
+      queryBrowserVersionBreakdownFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        3,
+        2,
+      ),
     ).resolves.toEqual([
       {
         browser: "Chrome",
@@ -1065,11 +1387,12 @@ describe("edge technology query coverage", () => {
         sessions: 0,
         versions: [
           {
-            key: "version",
-            label: "",
+            key: "unknown",
+            label: "Unknown",
             views: 0,
             visitors: 2,
             sessions: 0,
+            isUnknown: true,
           },
         ],
       },
@@ -1113,7 +1436,7 @@ describe("edge technology query coverage", () => {
         env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         3,
         "TRIM(COALESCE(os, ''))",
@@ -1195,7 +1518,7 @@ describe("edge technology query coverage", () => {
         env,
         siteId,
         window,
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         3,
         clientDimensionDefinition("browser"),
@@ -1238,7 +1561,8 @@ describe("edge technology query coverage", () => {
   it("defaults nullable share trend rows and bucket metrics", async () => {
     const { env } = createD1Env([
       [
-        { label: null, views: 9, visitors: 9, sessions: 9 },
+        { rowType: null, label: "Ignored", views: 9, visitors: 9, sessions: 9 },
+        { label: null, views: 9, visitors: null, sessions: 9 },
         { label: " Chrome ", views: null, visitors: "4", sessions: null },
       ],
       [
@@ -1263,7 +1587,7 @@ describe("edge technology query coverage", () => {
         siteId,
         window,
         "hour",
-        {},
+        EMPTY_FILTER_DOCUMENT,
         3,
         "TRIM(COALESCE(browser, ''))",
         "browser",
@@ -1289,11 +1613,6 @@ describe("edge technology query coverage", () => {
           totalVisitors: 0,
           visitorsBySeries: { chrome: 0 },
         },
-        {
-          bucket: 2,
-          totalVisitors: 0,
-          visitorsBySeries: { chrome: 0 },
-        },
       ],
     });
   });
@@ -1314,9 +1633,14 @@ describe("edge technology query coverage", () => {
     ]);
 
     await expect(
-      queryBrowserRadarFromD1(browserEnv.env, siteId, window, {
-        browser: "Chrome",
-      }),
+      queryBrowserRadarFromD1(
+        browserEnv.env,
+        siteId,
+        window,
+        filterFixture({
+          browser: "Chrome",
+        }),
+      ),
     ).resolves.toEqual([
       {
         browser: "Chrome",
@@ -1331,7 +1655,13 @@ describe("edge technology query coverage", () => {
       },
     ]);
     await expect(
-      queryReferrerRadarFromD1(referrerEnv.env, siteId, window, {}, 5),
+      queryReferrerRadarFromD1(
+        referrerEnv.env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        5,
+      ),
     ).resolves.toEqual([
       {
         referrer: "",

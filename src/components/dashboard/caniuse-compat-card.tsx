@@ -1,7 +1,6 @@
-"use client";
-
 import {
   Fragment,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -13,6 +12,7 @@ import {
   RiExternalLinkLine,
   RiInformationLine,
 } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -29,8 +29,9 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { fetchBrowserVersionBreakdown } from "@/lib/dashboard/client-data";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { BrowserVersionBreakdownData } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -172,28 +173,68 @@ interface CanIUseCompatCardProps {
   messages: AppMessages;
   siteId: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
 }
 
-export function CanIUseCompatCard({
+export const CanIUseCompatCard = memo(function CanIUseCompatCard({
   locale,
   messages,
   siteId,
   window: tw,
   filters,
 }: CanIUseCompatCardProps) {
-  /* -- catalog state -- */
-  const [searchIndex, setSearchIndex] = useState<CaniuseSearchEntry[]>([]);
-  const [hotFeatures, setHotFeatures] = useState<CaniuseHotFeature[]>([]);
-  const [trendingFeatures, setTrendingFeatures] = useState<
-    CaniuseTrendingFeature[]
-  >([]);
-  const [indexLoading, setIndexLoading] = useState(true);
+  const catalogQuery = useQuery({
+    queryKey: ["dashboard", "caniuse-catalog"],
+    queryFn: async ({ signal }) => {
+      const [searchIndex, hotFeatures, trendingFeatures] = await Promise.all([
+        fetch(CANIUSE_BASE, { signal }).then(
+          (response) => response.json() as Promise<CaniuseSearchEntry[]>,
+        ),
+        fetch(`${CANIUSE_BASE}/hot/`, { signal }).then(
+          (response) => response.json() as Promise<CaniuseHotFeature[]>,
+        ),
+        fetch(`${CANIUSE_BASE}/trending/`, { signal }).then(
+          (response) => response.json() as Promise<CaniuseTrendingFeature[]>,
+        ),
+      ]);
+      return { searchIndex, hotFeatures, trendingFeatures };
+    },
+    enabled: !import.meta.env.SSR,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const searchIndex = catalogQuery.data?.searchIndex ?? [];
+  const hotFeatures = catalogQuery.data?.hotFeatures ?? [];
+  const trendingFeatures = catalogQuery.data?.trendingFeatures ?? [];
+  const indexLoading = catalogQuery.isPending;
 
   /* -- browser data -- */
-  const [browserData, setBrowserData] =
-    useState<BrowserVersionBreakdownData>(emptyBreakdown);
-  const [browserLoading, setBrowserLoading] = useState(true);
+  const browserDataQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "caniuse-browser-versions",
+      siteId,
+      tw.from,
+      tw.to,
+      tw.timeZone,
+      filters,
+    ],
+    queryFn: async ({ signal }) => {
+      try {
+        return await fetchBrowserVersionBreakdown(siteId, tw, filters, {
+          browserLimit: 0,
+          versionLimit: 0,
+          signal,
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
+        return emptyBreakdown();
+      }
+    },
+    enabled: !import.meta.env.SSR,
+  });
+  const browserData = browserDataQuery.data ?? emptyBreakdown();
+  const browserLoading = browserDataQuery.isPending;
 
   /* -- search UI -- */
   const [query, setQuery] = useState("");
@@ -203,128 +244,56 @@ export function CanIUseCompatCard({
 
   /* -- selected feature -- */
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [featureDetail, setFeatureDetail] =
-    useState<CaniuseFeatureDetail | null>(null);
-  const [featureLoading, setFeatureLoading] = useState(false);
-
-  /* -- preview details for default view -- */
-  const [previewDetails, setPreviewDetails] = useState<
-    Record<string, CaniuseFeatureDetail>
-  >({});
+  const featureQuery = useQuery({
+    queryKey: ["dashboard", "caniuse-feature", selectedId],
+    queryFn: ({ signal }) =>
+      fetch(`${CANIUSE_BASE}/feature/${selectedId}/`, { signal }).then(
+        (response) => response.json() as Promise<CaniuseFeatureDetail>,
+      ),
+    enabled: !import.meta.env.SSR && Boolean(selectedId),
+    retry: false,
+    staleTime: Infinity,
+  });
+  const featureDetail = featureQuery.data ?? null;
+  const featureLoading = featureQuery.isPending;
+  const previewIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const feature of hotFeatures.slice(0, 10)) ids.add(feature.id);
+    for (const feature of trendingFeatures.slice(0, 10)) ids.add(feature.id);
+    return [...ids].sort();
+  }, [hotFeatures, trendingFeatures]);
+  const previewDetailsQuery = useQuery({
+    queryKey: ["dashboard", "caniuse-feature-previews", previewIds],
+    queryFn: async ({ signal }) => {
+      const results = await Promise.all(
+        previewIds.map((id) =>
+          fetch(`${CANIUSE_BASE}/feature/${id}/`, { signal })
+            .then(
+              (response) => response.json() as Promise<CaniuseFeatureDetail>,
+            )
+            .then((detail) => [id, detail] as const)
+            .catch((error: unknown) => {
+              if (error instanceof Error && error.name === "AbortError") {
+                throw error;
+              }
+              return null;
+            }),
+        ),
+      );
+      return Object.fromEntries(
+        results.filter(
+          (result): result is readonly [string, CaniuseFeatureDetail] =>
+            result !== null,
+        ),
+      );
+    },
+    enabled: !import.meta.env.SSR && previewIds.length > 0,
+    retry: false,
+    staleTime: Infinity,
+  });
+  const previewDetails = previewDetailsQuery.data ?? {};
 
   const m = messages.browsers;
-
-  /* ---- fetch catalog on mount ---- */
-  useEffect(() => {
-    let active = true;
-    setIndexLoading(true);
-
-    Promise.all([
-      fetch(CANIUSE_BASE).then(
-        (r) => r.json() as Promise<CaniuseSearchEntry[]>,
-      ),
-      fetch(`${CANIUSE_BASE}/hot/`).then(
-        (r) => r.json() as Promise<CaniuseHotFeature[]>,
-      ),
-      fetch(`${CANIUSE_BASE}/trending/`).then(
-        (r) => r.json() as Promise<CaniuseTrendingFeature[]>,
-      ),
-    ])
-      .then(([idx, hot, trend]) => {
-        if (!active) return;
-        setSearchIndex(idx);
-        setHotFeatures(hot);
-        setTrendingFeatures(trend);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setIndexLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  /* ---- fetch site browser data ---- */
-  useEffect(() => {
-    let active = true;
-    setBrowserLoading(true);
-
-    fetchBrowserVersionBreakdown(siteId, tw, filters, {
-      browserLimit: 0,
-      versionLimit: 0,
-    })
-      .catch(() => emptyBreakdown())
-      .then((d) => {
-        if (active) setBrowserData(d);
-      })
-      .finally(() => {
-        if (active) setBrowserLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [siteId, tw.from, tw.to, filters]);
-
-  /* ---- fetch feature detail ---- */
-  useEffect(() => {
-    if (!selectedId) {
-      setFeatureDetail(null);
-      return;
-    }
-
-    let active = true;
-    setFeatureLoading(true);
-
-    fetch(`${CANIUSE_BASE}/feature/${selectedId}/`)
-      .then((r) => r.json() as Promise<CaniuseFeatureDetail>)
-      .then((d) => {
-        if (active) setFeatureDetail(d);
-      })
-      .catch(() => {
-        if (active) setFeatureDetail(null);
-      })
-      .finally(() => {
-        if (active) setFeatureLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [selectedId]);
-
-  /* ---- batch-fetch preview details for default view ---- */
-  useEffect(() => {
-    if (hotFeatures.length === 0 && trendingFeatures.length === 0) return;
-
-    const ids = new Set<string>();
-    for (const f of hotFeatures.slice(0, 10)) ids.add(f.id);
-    for (const f of trendingFeatures.slice(0, 10)) ids.add(f.id);
-
-    let active = true;
-
-    Promise.all(
-      [...ids].map((id) =>
-        fetch(`${CANIUSE_BASE}/feature/${id}/`)
-          .then((r) => r.json() as Promise<CaniuseFeatureDetail>)
-          .then((d) => [id, d] as const)
-          .catch(() => null),
-      ),
-    ).then((results) => {
-      if (!active) return;
-      const map: Record<string, CaniuseFeatureDetail> = {};
-      for (const r of results) {
-        if (r) map[r[0]] = r[1];
-      }
-      setPreviewDetails(map);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [hotFeatures, trendingFeatures]);
 
   /* ---- click outside ---- */
   useEffect(() => {
@@ -444,7 +413,6 @@ export function CanIUseCompatCard({
 
   const clearSelection = useCallback(() => {
     setSelectedId(null);
-    setFeatureDetail(null);
   }, []);
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -808,4 +776,4 @@ export function CanIUseCompatCard({
       </Card>
     </section>
   );
-}
+});

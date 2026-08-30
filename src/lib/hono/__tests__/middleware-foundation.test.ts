@@ -9,7 +9,6 @@ import {
   authenticateApiKeyMiddleware,
   requireApiScopeMiddleware,
 } from "@/lib/hono/middleware/api-key";
-import { normalizeJsonBodyMiddleware } from "@/lib/hono/middleware/body";
 import { dashboardCacheMiddleware } from "@/lib/hono/middleware/dashboard-cache";
 import {
   errorBoundaryMiddleware,
@@ -20,7 +19,6 @@ import {
   requireMethodsMiddleware,
 } from "@/lib/hono/middleware/method";
 import { requestIdMiddleware } from "@/lib/hono/middleware/request-id";
-import { sameOriginMiddleware } from "@/lib/hono/middleware/same-origin";
 import { requireSessionMiddleware } from "@/lib/hono/middleware/session";
 import {
   resolveApiSiteMiddleware,
@@ -49,25 +47,20 @@ vi.mock("@/lib/edge/dashboard-cache", () => ({
   ),
 }));
 
-vi.mock("@/lib/edge/query/core", () => ({
+vi.mock("@/lib/edge/analytics/providers/d1/internal/core", () => ({
   fetchPublicSite: vi.fn(),
-  resolvePrivateSite: vi.fn(),
+  resolvePrivateSiteForSession: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/session-auth", () => ({
   requireSession: vi.fn(),
 }));
 
-vi.mock("@/lib/edge/utils", () => ({
-  requireSameOrigin: vi.fn(),
-}));
-
 const { authenticateApiKey } = await import("@/lib/edge/api-key-auth");
 const { withDashboardCache } = await import("@/lib/edge/dashboard-cache");
-const { fetchPublicSite, resolvePrivateSite } =
-  await import("@/lib/edge/query/core");
+const { fetchPublicSite, resolvePrivateSiteForSession } =
+  await import("@/lib/edge/analytics/providers/d1/internal/core");
 const { requireSession } = await import("@/lib/edge/session-auth");
-const { requireSameOrigin } = await import("@/lib/edge/utils");
 
 const ctx = {
   passThroughOnException: vi.fn(),
@@ -81,6 +74,13 @@ const principal: ApiKeyPrincipal = {
   scopes: ["analytics:read"],
   siteIds: ["site-1"],
 };
+const session = {
+  userId: "user-1",
+  username: "user",
+  displayName: "User",
+  systemRole: "user" as const,
+  exp: 9999999999,
+};
 
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://app.test${path}`, init);
@@ -92,6 +92,17 @@ function createApp(
 ) {
   const app = new Hono<AppEnv>();
   app.use("*", middleware);
+  app.all("*", handler);
+  return app;
+}
+
+function createPrivateSiteApp(handler: Handler<AppEnv>) {
+  const app = new Hono<AppEnv>();
+  app.use("*", async (c, next) => {
+    c.set("session", session);
+    await next();
+  });
+  app.use("*", resolvePrivateSiteMiddleware());
   app.all("*", handler);
   return app;
 }
@@ -122,7 +133,6 @@ function responseWithThrowingHeaderSet(): Response {
 describe("Hono middleware foundation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(requireSameOrigin).mockReturnValue(null);
   });
 
   it("stores the shared request id value", async () => {
@@ -196,8 +206,10 @@ describe("Hono middleware foundation", () => {
 
   it("maps Error instances through the error boundary middleware", async () => {
     const middleware = errorBoundaryMiddleware();
+    const logger = { error: vi.fn() };
     const c = {
       req: { raw: request("/api/private/overview") },
+      get: vi.fn(() => logger),
     } as never;
 
     const response = (await middleware(c, async () => {
@@ -208,38 +220,13 @@ describe("Hono middleware foundation", () => {
 
     expect(response.status).toBe(500);
     expect(body.error.message).toBe("middleware boom");
-  });
-
-  it("short-circuits unsafe cross-origin requests", async () => {
-    vi.mocked(requireSameOrigin).mockReturnValue(
-      new Response("Forbidden", { status: 403 }),
-    );
-    const app = createApp(sameOriginMiddleware(), () => new Response("ok"));
-
-    const response = await app.fetch(
-      request("/api/private/admin/users", {
-        method: "POST",
-        headers: { origin: "https://evil.test" },
+    expect(logger.error).toHaveBeenCalledWith(
+      "request.unhandled_error",
+      expect.objectContaining({
+        errorName: "Error",
+        errorMessage: "middleware boom",
       }),
-      createEnv(),
-      ctx,
     );
-
-    expect(response.status).toBe(403);
-    await expect(response.text()).resolves.toBe("Forbidden");
-  });
-
-  it("continues same-origin middleware when the shared helper allows the request", async () => {
-    const app = createApp(sameOriginMiddleware(), () => new Response("ok"));
-
-    const response = await app.fetch(
-      request("/api/private/admin/users", { method: "POST" }),
-      createEnv(),
-      ctx,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.text()).resolves.toBe("ok");
   });
 
   it("guards exact and grouped methods with the API v1 response shape", async () => {
@@ -289,69 +276,6 @@ describe("Hono middleware foundation", () => {
 
     expect(exactResponse.status).toBe(200);
     expect(groupedResponse.status).toBe(200);
-  });
-
-  it("normalizes JSON bodies by replacing the raw request body", async () => {
-    const app = createApp(
-      normalizeJsonBodyMiddleware((body) => ({ ...body, added: true })),
-      async (c) => Response.json(await c.req.raw.json()),
-    );
-
-    const response = await app.fetch(
-      request("/api/private/admin/sites", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Site" }),
-      }),
-      createEnv(),
-      ctx,
-    );
-
-    await expect(response.json()).resolves.toEqual({
-      name: "Site",
-      added: true,
-    });
-  });
-
-  it("leaves non-record JSON bodies unchanged", async () => {
-    const app = createApp(
-      normalizeJsonBodyMiddleware((body) => ({ ...body, added: true })),
-      async (c) => Response.json(await c.req.raw.json()),
-    );
-
-    const response = await app.fetch(
-      request("/api/private/admin/sites", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(["Site"]),
-      }),
-      createEnv(),
-      ctx,
-    );
-
-    await expect(response.json()).resolves.toEqual(["Site"]);
-  });
-
-  it("leaves invalid JSON bodies available to downstream handlers", async () => {
-    const app = createApp(
-      normalizeJsonBodyMiddleware((body) => ({ ...body, added: true })),
-      async (c) => {
-        await expect(c.req.raw.text()).resolves.toBe("{");
-        return new Response("ok");
-      },
-    );
-
-    const response = await app.fetch(
-      request("/api/private/admin/sites", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{",
-      }),
-      createEnv(),
-      ctx,
-    );
-
-    await expect(response.text()).resolves.toBe("ok");
   });
 
   it("stores authenticated session claims", async () => {
@@ -476,7 +400,7 @@ describe("Hono middleware foundation", () => {
   });
 
   it("resolves private, public, and API site context", async () => {
-    vi.mocked(resolvePrivateSite).mockResolvedValue({
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValue({
       id: "private-site",
       name: "Private Site",
       domain: "app.test",
@@ -487,7 +411,7 @@ describe("Hono middleware foundation", () => {
       domain: "app.test",
     });
 
-    const privateApp = createApp(resolvePrivateSiteMiddleware(), (c) =>
+    const privateApp = createPrivateSiteApp((c) =>
       c.json({ id: c.get("privateSite")?.id }),
     );
     const publicApp = new Hono<AppEnv>();
@@ -533,20 +457,24 @@ describe("Hono middleware foundation", () => {
     await expect(privateResponse.json()).resolves.toEqual({
       id: "private-site",
     });
+    expect(resolvePrivateSiteForSession).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.any(Object),
+      new URL("https://app.test/api/private/overview"),
+      session,
+    );
     await expect(publicResponse.json()).resolves.toEqual({ slug: "demo" });
     await expect(apiResponse.json()).resolves.toEqual({ id: "site-1" });
   });
 
   it("passes through site resolver response failures", async () => {
-    vi.mocked(resolvePrivateSite).mockResolvedValueOnce(
+    vi.mocked(resolvePrivateSiteForSession).mockResolvedValueOnce(
       new Response("private-denied", { status: 403 }),
     );
     vi.mocked(fetchPublicSite).mockResolvedValueOnce(
       new Response("public-missing", { status: 404 }),
     );
-    const privateApp = createApp(resolvePrivateSiteMiddleware(), () =>
-      Response.json({ ok: true }),
-    );
+    const privateApp = createPrivateSiteApp(() => Response.json({ ok: true }));
     const publicApp = createApp(resolvePublicSiteMiddleware(), () =>
       Response.json({ ok: true }),
     );

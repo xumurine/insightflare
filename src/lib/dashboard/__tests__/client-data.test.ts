@@ -13,7 +13,6 @@ import {
   fetchBrowserVersionBreakdown,
   fetchClientCrossBreakdown,
   fetchClientDimensionTrend,
-  fetchDashboardFilterOptions,
   fetchEventRecordDetail,
   fetchEventsRecords,
   fetchEventsSummary,
@@ -21,6 +20,9 @@ import {
   fetchEventTypeDetail,
   fetchEventTypeFieldValues,
   fetchEventTypesTab,
+  fetchFilterValues,
+  fetchFunnelDetail,
+  fetchFunnels,
   fetchOverview,
   fetchOverviewClientDimensionTab,
   fetchOverviewGeoDimensionTab,
@@ -49,6 +51,9 @@ import {
   toQueryString,
   withFilters,
 } from "@/lib/dashboard/client-data";
+import { dashboardFilterDocumentFromPresentation } from "@/lib/dashboard/filter-state";
+import { handleDemoRequest } from "@/lib/realtime/mock";
+import { isErrorEnvelope } from "@/lib/realtime/mock/envelope";
 
 describe("Dashboard Client Data Processing Utilities", () => {
   describe("normalizeOverviewRows", () => {
@@ -151,24 +156,17 @@ describe("Dashboard Client Data Processing Utilities", () => {
 
     it("should correctly map filters into request parameters object", () => {
       const baseParams = { siteId: "123" };
-      const filters = {
+      const filters = dashboardFilterDocumentFromPresentation({
         country: "US",
         browser: "Chrome",
         path: "/docs",
-        eventPayloadFilters: [
-          { path: "user.role", operator: "eq", value: "admin" },
-        ],
-      };
+      });
 
-      const withResult = withFilters(baseParams, filters as any);
+      const withResult = withFilters(baseParams, filters);
       expect(withResult.siteId).toBe("123");
-      expect(withResult.country).toBe("US");
-      expect(withResult.browser).toBe("Chrome");
-      expect(withResult.path).toBe("/docs");
-      expect(withResult.eventPayloadFilters).toBeTypeOf("string");
-      expect(JSON.parse(withResult.eventPayloadFilters as string)).toEqual(
-        filters.eventPayloadFilters,
-      );
+      expect(withResult["filter[geo.country]"]).toBe("us");
+      expect(withResult["filter[client.browser]"]).toBe("Chrome");
+      expect(withResult["filter[page.path]"]).toBe("/docs");
     });
 
     it("should skip mapping filters if filters object is empty or undefined", () => {
@@ -177,7 +175,8 @@ describe("Dashboard Client Data Processing Utilities", () => {
     });
   });
 
-  describe("API Data Fetching in Demo Mode", () => {
+  describe("Dashboard demo API contract smoke", () => {
+    const realFetch = globalThis.fetch;
     const mockWindow = {
       preset: "24h" as const,
       from: Date.now() - 24 * 60 * 60 * 1000,
@@ -187,15 +186,30 @@ describe("Dashboard Client Data Processing Utilities", () => {
     };
 
     beforeAll(() => {
-      process.env.NEXT_PUBLIC_DEMO_MODE = "1";
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init) => {
+        const url = new URL(String(input), "https://app.test");
+        const result = handleDemoRequest({
+          path: url.pathname,
+          method: init?.method,
+          params: Object.fromEntries(url.searchParams),
+        });
+        return new Response(JSON.stringify(result), {
+          status: isErrorEnvelope(result)
+            ? result.error.code === "not_found"
+              ? 404
+              : 400
+            : 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof globalThis.fetch;
     });
 
     afterAll(() => {
-      delete process.env.NEXT_PUBLIC_DEMO_MODE;
+      globalThis.fetch = realFetch;
     });
 
     it(
-      "should fetch all dashboard metrics correctly under demo mode",
+      "should fetch all dashboard metrics through an HTTP response boundary",
       { timeout: 30000 },
       async () => {
         // 1. Overview
@@ -351,10 +365,10 @@ describe("Dashboard Client Data Processing Utilities", () => {
           "country",
         );
         expect(geoDimensionTab).toBeDefined();
-        const filterOptions = await fetchDashboardFilterOptions(
+        const filterOptions = await fetchFilterValues(
           "demo-site-001",
           mockWindow,
-          "country",
+          "geo.country",
         );
         expect(filterOptions).toBeDefined();
 
@@ -442,7 +456,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
   describe("withFilters — comprehensive filter mapping", () => {
     it("should pass through every supported filter dimension into the request params", () => {
       const baseParams = { siteId: "abc" };
-      const filters = {
+      const filters = dashboardFilterDocumentFromPresentation({
         country: "JP",
         device: "mobile",
         browser: "Chrome",
@@ -459,40 +473,30 @@ describe("Dashboard Client Data Processing Utilities", () => {
         clientDeviceType: "tablet",
         clientLanguage: "en-US",
         clientScreenSize: "1920x1080",
-        geo: "JP-13",
+        geo: "JP::13::Tokyo",
         geoContinent: "AS",
         geoTimezone: "Asia/Tokyo",
         geoOrganization: "AS12345",
-      } as any;
+      });
       const out = withFilters(baseParams, filters);
       expect(out.siteId).toBe("abc");
-      expect(out.country).toBe("JP");
-      expect(out.device).toBe("mobile");
-      expect(out.browser).toBe("Chrome");
-      expect(out.path).toBe("/docs");
-      expect(out.query).toBe("?ref=x");
-      expect(out.title).toBe("Docs Home");
-      expect(out.hostname).toBe("docs.test");
-      expect(out.entry).toBe("/landing");
-      expect(out.exit).toBe("/checkout");
-      expect(out.sourceDomain).toBe("google.com");
-      expect(out.sourceLink).toBe("https://google.com/search");
-      expect(out.clientBrowser).toBe("Firefox");
-      expect(out.clientOsVersion).toBe("14");
-      expect(out.clientDeviceType).toBe("tablet");
-      expect(out.clientLanguage).toBe("en-US");
-      expect(out.clientScreenSize).toBe("1920x1080");
-      expect(out.geo).toBe("JP-13");
-      expect(out.geoContinent).toBe("AS");
-      expect(out.geoTimezone).toBe("Asia/Tokyo");
-      expect(out.geoOrganization).toBe("AS12345");
+      expect(out["filter[geo.country]"]).toBe("jp");
+      expect(out["filter[client.deviceType]"]).toBe("tablet");
+      expect(out["filter[client.browser]"]).toBe("Firefox");
+      expect(out["filter[page.path]"]).toBe("/docs");
+      expect(out["filter[page.query]"]).toBe("?ref=x");
+      expect(out["filter[referrer.domain]"]).toBe("google.com");
+      expect(out["filter[geo.continent]"]).toBe("as");
+      expect(out["filter[geo.timeZone]"]).toBe("Asia/Tokyo");
+      expect(out["filter[geo.organization]"]).toBe("AS12345");
     });
 
     it("should skip empty eventPayloadFilters and not serialize them", () => {
-      const out = withFilters({ siteId: "x" }, {
-        eventPayloadFilters: [],
-      } as any);
-      expect(out.eventPayloadFilters).toBeUndefined();
+      const out = withFilters(
+        { siteId: "x" },
+        dashboardFilterDocumentFromPresentation({}),
+      );
+      expect(Object.keys(out)).toEqual(["siteId"]);
     });
   });
 
@@ -521,7 +525,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
     const suppressUnhandled = () => {};
 
     beforeAll(() => {
-      delete process.env.NEXT_PUBLIC_DEMO_MODE;
+      delete process.env.VITE_DEMO_MODE;
       // The dedupe path adds a finally-chain off the in-flight promise. When the
       // primary promise rejects (e.g. on HTTP 500), the secondary chain surfaces
       // as a stray unhandled rejection one tick later. Suppress globally for
@@ -565,6 +569,87 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(init.method).toBe("GET");
       expect(init.credentials).toBe("include");
       expect((out as any).data.views).toBe(42);
+    });
+
+    it("forwards query cancellation signals for overview and trend requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(freshJsonResponse({ ok: true, data: [] })),
+        );
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await Promise.all([
+        fetchOverview("signal-overview", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+        fetchTrend("signal-trend", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls).toEqual(
+        expect.arrayContaining([
+          [
+            expect.any(String),
+            expect.objectContaining({ signal: controller.signal }),
+          ],
+        ]),
+      );
+    });
+
+    it("forwards query cancellation signals for share trend data sources", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockImplementation(() =>
+          Promise.resolve(freshJsonResponse({ ok: true, data: [] })),
+        );
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+      const options = { limit: 5, signal: controller.signal };
+
+      await Promise.all([
+        fetchClientDimensionTrend(
+          "signal-client-dimension",
+          mockWindow,
+          "browser",
+          undefined,
+          options,
+        ),
+        fetchClientCrossBreakdown(
+          "signal-client-cross",
+          mockWindow,
+          "deviceType",
+          "browser",
+          undefined,
+          options,
+        ),
+        fetchBrowserTrend("signal-browser", mockWindow, undefined, options),
+        fetchBrowserEngineTrend(
+          "signal-browser-engine",
+          mockWindow,
+          undefined,
+          options,
+        ),
+        fetchUtmTrend("signal-utm", mockWindow, "source", undefined, options),
+        fetchReferrerTrend("signal-referrer", mockWindow, undefined, options),
+        fetchReferrerRadar("signal-referrer-radar", mockWindow, undefined, {
+          limit: 24,
+          signal: controller.signal,
+        }),
+        fetchEventTypesTab("signal-event-types", mockWindow, undefined, {
+          limit: 100,
+          signal: controller.signal,
+        }),
+        fetchPagesShareTrend("signal-pages", mockWindow, undefined, options),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(10);
+      for (const [, init] of fetchMock.mock.calls) {
+        expect((init as RequestInit).signal).toBe(controller.signal);
+      }
     });
 
     it("should propagate non-OK HTTP responses as thrown errors", async () => {
@@ -619,13 +704,17 @@ describe("Dashboard Client Data Processing Utilities", () => {
         );
       globalThis.fetch = fetchMock as any;
 
-      await fetchPages("filter-site-unique", mockWindow, {
-        country: "DE",
-        browser: "Safari",
-      } as any);
+      await fetchPages(
+        "filter-site-unique",
+        mockWindow,
+        dashboardFilterDocumentFromPresentation({
+          country: "DE",
+          browser: "Safari",
+        }),
+      );
       const [calledUrl] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(calledUrl).toContain("country=DE");
-      expect(calledUrl).toContain("browser=Safari");
+      expect(calledUrl).toContain("filter%5Bgeo.country%5D=de");
+      expect(calledUrl).toContain("filter%5Bclient.browser%5D=Safari");
     });
 
     it("should serialize optional request params for overview, lists, events, and details", async () => {
@@ -646,7 +735,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(params.get("interval")).toBe("hour");
 
       await fetchVisitors("option-visitors", mockWindow, undefined, {
-        page: 2,
+        cursor: "visitor-cursor",
         pageSize: 25,
         limit: 7,
         sortBy: "lastSeenAt",
@@ -654,7 +743,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
         search: "  alice  ",
       });
       params = paramsFromCall(fetchMock, 1);
-      expect(params.get("page")).toBe("2");
+      expect(params.get("cursor")).toBe("visitor-cursor");
       expect(params.get("pageSize")).toBe("25");
       expect(params.get("limit")).toBe("7");
       expect(params.get("sortBy")).toBe("lastSeenAt");
@@ -670,7 +759,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(params.has("search")).toBe(false);
 
       await fetchSessions("option-sessions", mockWindow, undefined, {
-        page: 3,
+        cursor: "session-cursor",
         pageSize: 30,
         limit: 9,
         sortBy: "durationMs",
@@ -678,7 +767,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
         search: "  session  ",
       });
       params = paramsFromCall(fetchMock, 3);
-      expect(params.get("page")).toBe("3");
+      expect(params.get("cursor")).toBe("session-cursor");
       expect(params.get("pageSize")).toBe("30");
       expect(params.get("limit")).toBe("9");
       expect(params.get("sortBy")).toBe("durationMs");
@@ -702,7 +791,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(params.get("eventName")).toBe("Signup");
 
       await fetchEventsRecords("option-events-records", mockWindow, undefined, {
-        page: 4,
+        cursor: "event-cursor",
         pageSize: 15,
         sortBy: "pathname",
         sortDir: "desc",
@@ -710,7 +799,8 @@ describe("Dashboard Client Data Processing Utilities", () => {
         eventName: "  Purchase  ",
       });
       params = paramsFromCall(fetchMock, 6);
-      expect(params.get("page")).toBe("4");
+      expect(params.get("cursor")).toBe("event-cursor");
+      expect(params.has("page")).toBe(false);
       expect(params.get("pageSize")).toBe("15");
       expect(params.get("sortBy")).toBe("pathname");
       expect(params.get("sortDir")).toBe("desc");
@@ -787,8 +877,8 @@ describe("Dashboard Client Data Processing Utilities", () => {
         },
       );
       params = paramsFromCall(fetchMock, 3);
-      expect(params.get("page")).toBe("1");
       expect(params.get("pageSize")).toBe("80");
+      expect(params.has("cursor")).toBe(false);
       expect(params.has("search")).toBe(false);
       expect(params.has("eventName")).toBe(false);
     });
@@ -974,6 +1064,545 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(params.get("granularity")).toBe("day");
     });
 
+    it("forwards cancellation signals for overview geo point requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchOverviewGeoPoints("geo-points-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("forwards cancellation signals for overview source tabs", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchOverviewSourceCardTab(
+        "source-tab-signal",
+        mockWindow,
+        "domain",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted overview source tab requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchOverviewSourceCardTab(
+          "source-tab-aborted",
+          mockWindow,
+          "domain",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for session list requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [], meta: {} }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchSessions("sessions-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted session list requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchSessions("sessions-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for visitor list requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [], meta: {} }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchVisitors("visitors-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted visitor list requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchVisitors("visitors-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for event overview requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await Promise.all([
+        fetchEventsSummary("events-summary-signal", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+        fetchEventsTrend("events-trend-signal", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ]);
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted event overview requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchEventsSummary("events-summary-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      await expect(
+        fetchEventsTrend("events-trend-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for event record requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [], meta: {} }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchEventsRecords("event-records-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted event record requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchEventsRecords("event-records-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for event type detail requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: {} }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchEventTypeDetail(
+        "event-type-detail-signal",
+        mockWindow,
+        "Signup",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted event type detail requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchEventTypeDetail(
+          "event-type-detail-aborted",
+          mockWindow,
+          "Signup",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for event field values", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchEventTypeFieldValues(
+        "event-field-values-signal",
+        mockWindow,
+        "Signup",
+        "payload.plan",
+        "string",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("forwards cancellation signals for UTM dimension requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchUtmDimension(
+        "utm-dimension-signal",
+        mockWindow,
+        "campaign",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted UTM dimension requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchUtmDimension(
+          "utm-dimension-aborted",
+          mockWindow,
+          "campaign",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for retention requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchRetention("retention-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted retention requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchRetention("retention-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for funnel requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, funnels: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchFunnels("funnels-signal", { signal: controller.signal });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted funnel requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchFunnels("funnels-aborted", { signal: controller.signal }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+      await expect(
+        fetchFunnelDetail(
+          "funnel-detail-aborted",
+          "funnel-1",
+          mockWindow,
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for browser radar requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchBrowserRadar("browser-radar-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted browser radar requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchBrowserRadar("browser-radar-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for browser version requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchBrowserVersionBreakdown(
+        "browser-version-signal",
+        mockWindow,
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted browser version requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchBrowserVersionBreakdown(
+          "browser-version-aborted",
+          mockWindow,
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for browser cross breakdown requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchBrowserCrossBreakdown(
+        "browser-cross-signal",
+        mockWindow,
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted browser cross breakdown requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchBrowserCrossBreakdown(
+          "browser-cross-aborted",
+          mockWindow,
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for overview geo dimension requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchOverviewGeoDimensionTab(
+        "geo-dimension-signal",
+        mockWindow,
+        "country",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted overview geo dimension requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchOverviewGeoDimensionTab(
+          "geo-dimension-aborted",
+          mockWindow,
+          "country",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for performance requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchPerformance("performance-signal", mockWindow, undefined, {
+        signal: controller.signal,
+      });
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted performance requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchPerformance("performance-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("forwards cancellation signals for overview page tab requests", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: [] }));
+      globalThis.fetch = fetchMock as any;
+      const controller = new AbortController();
+
+      await fetchOverviewPageCardTab(
+        "page-tab-signal",
+        mockWindow,
+        "title",
+        undefined,
+        { signal: controller.signal },
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ signal: controller.signal }),
+      );
+    });
+
+    it("preserves aborted overview page tab requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchOverviewPageCardTab(
+          "page-tab-aborted",
+          mockWindow,
+          "title",
+          undefined,
+          { signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("preserves aborted overview geo point requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        fetchOverviewGeoPoints("geo-points-aborted", mockWindow, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: "AbortError" });
+    });
+
     it("should return empty fallback payloads when recoverable endpoints fail", async () => {
       const fetchMock = vi.fn().mockRejectedValue(new Error("offline"));
       globalThis.fetch = fetchMock as any;
@@ -984,11 +1613,10 @@ describe("Dashboard Client Data Processing Utilities", () => {
         ok: true,
         data: [],
         meta: {
-          page: 1,
           pageSize: 0,
           returned: 0,
           hasMore: false,
-          nextPage: null,
+          nextCursor: null,
         },
       });
       await expect(
@@ -997,11 +1625,10 @@ describe("Dashboard Client Data Processing Utilities", () => {
         ok: true,
         data: [],
         meta: {
-          page: 1,
           pageSize: 0,
           returned: 0,
           hasMore: false,
-          nextPage: null,
+          nextCursor: null,
         },
       });
 
@@ -1114,11 +1741,7 @@ describe("Dashboard Client Data Processing Utilities", () => {
         fetchOverviewGeoDimensionTab("fallback-geo-tab", mockWindow, "country"),
       ).resolves.toEqual([]);
       await expect(
-        fetchDashboardFilterOptions(
-          "fallback-filter-options",
-          mockWindow,
-          "country",
-        ),
+        fetchFilterValues("fallback-filter-options", mockWindow, "geo.country"),
       ).resolves.toEqual([]);
     });
 
@@ -1453,18 +2076,14 @@ describe("Dashboard Client Data Processing Utilities", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("should reject demo requests if the signal aborts during module resolution", async () => {
-      const fetchMock = vi.fn();
+    it("should keep demo detail requests on the network path", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(freshJsonResponse({ ok: true, data: null }));
       globalThis.fetch = fetchMock as any;
-      let abortedReads = 0;
-      const signal = {
-        get aborted() {
-          abortedReads += 1;
-          return abortedReads > 1;
-        },
-      } as AbortSignal;
+      const controller = new AbortController();
 
-      process.env.NEXT_PUBLIC_DEMO_MODE = "1";
+      process.env.VITE_DEMO_MODE = "1";
       try {
         await expect(
           fetchVisitorDetail(
@@ -1473,18 +2092,19 @@ describe("Dashboard Client Data Processing Utilities", () => {
             undefined,
             undefined,
             {
-              signal,
+              signal: controller.signal,
             },
           ),
-        ).rejects.toMatchObject({
-          name: "AbortError",
-          message: "Aborted",
-        });
+        ).resolves.toMatchObject({ ok: true, data: null });
       } finally {
-        delete process.env.NEXT_PUBLIC_DEMO_MODE;
+        delete process.env.VITE_DEMO_MODE;
       }
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(abortedReads).toBeGreaterThanOrEqual(2);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/private/visitor-detail?siteId=demo-site-001",
+        ),
+        expect.objectContaining({ signal: controller.signal }),
+      );
     });
 
     it("should return empty field values when the field path is nullish", async () => {

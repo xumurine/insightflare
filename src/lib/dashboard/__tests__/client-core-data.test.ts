@@ -7,10 +7,13 @@ import {
   fetchEventsRecords,
   fetchEventsSummary,
   fetchEventsTrend,
+  fetchEventTypeContextCards,
   fetchEventTypeDetail,
+  fetchEventTypeFields,
   fetchEventTypeFieldValues,
   fetchFunnelDetail,
   fetchFunnels,
+  fetchJourneyEventDetail,
   fetchPerformance,
   fetchSessionDetail,
   fetchSessions,
@@ -24,12 +27,14 @@ import {
   emptyEventsSummary,
   emptyEventsTrend,
   emptyEventTypeDetail,
+  emptyJourneyEventDetail,
   emptyPerformance,
   emptySessionDetail,
   emptySessions,
   emptyVisitorDetail,
   emptyVisitors,
 } from "@/lib/dashboard/client-empty-data";
+import { dashboardFilterDocumentFromPresentation } from "@/lib/dashboard/filter-state";
 
 vi.mock("@/lib/dashboard/client-request", () => ({
   fetchPrivateJson: vi.fn(),
@@ -70,7 +75,7 @@ describe("fetchVisitors", () => {
     } as any);
 
     await fetchVisitors("site-1", window, undefined, {
-      page: 2,
+      cursor: "visitor-cursor",
       pageSize: 25,
       sortBy: "lastSeenAt",
       sortDir: "desc",
@@ -80,7 +85,7 @@ describe("fetchVisitors", () => {
     expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
       "/api/private/visitors",
       expect.objectContaining({
-        page: 2,
+        cursor: "visitor-cursor",
         pageSize: 25,
         sortBy: "lastSeenAt",
         sortDir: "desc",
@@ -162,7 +167,7 @@ describe("fetchSessions", () => {
     } as any);
 
     await fetchSessions("site-1", window, undefined, {
-      page: 3,
+      cursor: "session-cursor",
       pageSize: 10,
       sortBy: "startedAt",
       sortDir: "asc",
@@ -172,7 +177,7 @@ describe("fetchSessions", () => {
     expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
       "/api/private/sessions",
       expect.objectContaining({
-        page: 3,
+        cursor: "session-cursor",
         pageSize: 10,
         sortBy: "startedAt",
         sortDir: "asc",
@@ -284,19 +289,133 @@ describe("fetchEventTypeDetail", () => {
     const result = await fetchEventTypeDetail("site-1", window, "click");
     expect(result).toEqual(emptyEventTypeDetail("click"));
   });
+
+  it("requests the private summary-only detail shape", async () => {
+    await fetchEventTypeDetail("site-1", window, "click");
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-detail",
+      expect.objectContaining({
+        includeContext: "false",
+        includeBreakdowns: "false",
+        includeFields: "false",
+      }),
+    );
+  });
+});
+
+describe("fetchEventTypeFields", () => {
+  it("loads fields across event types without an event name", async () => {
+    await fetchEventTypeFields("site-1", window, "  ");
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-fields",
+      expect.not.objectContaining({ eventName: expect.anything() }),
+      { signal: undefined },
+    );
+  });
+
+  it("uses the private fields endpoint and keeps filters", async () => {
+    await fetchEventTypeFields(
+      "site-1",
+      window,
+      "click",
+      dashboardFilterDocumentFromPresentation({ country: "CN" }),
+    );
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-fields",
+      expect.objectContaining({ eventName: "click" }),
+      { signal: undefined },
+    );
+  });
+
+  it("falls back to empty fields when the request fails", async () => {
+    fetchPrivateJsonMock.mockRejectedValueOnce(new Error("fail"));
+
+    await expect(
+      fetchEventTypeFields("site-1", window, "click"),
+    ).resolves.toEqual({
+      fields: [],
+    });
+  });
+});
+
+describe("fetchEventTypeContextCards", () => {
+  it("skips requests until both event and card keys are available", async () => {
+    const cards = await fetchEventTypeContextCards(
+      "site-1",
+      window,
+      " ",
+      "path",
+    );
+
+    expect(cards).toEqual(emptyEventTypeDetail("").cards);
+    expect(fetchPrivateJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("loads the requested context card and returns its response shape", async () => {
+    const cards = emptyEventTypeDetail("click").cards;
+    cards.page.path = [
+      { label: "/pricing", views: 2, sessions: 1, visitors: 1 },
+    ];
+    fetchPrivateJsonMock.mockResolvedValueOnce({ cards } as any);
+
+    await expect(
+      fetchEventTypeContextCards(
+        "site-1",
+        window,
+        " click ",
+        " path ",
+        dashboardFilterDocumentFromPresentation({ country: "CN" }),
+      ),
+    ).resolves.toEqual(cards);
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-context",
+      expect.objectContaining({ eventName: "click", cards: "path" }),
+    );
+  });
+
+  it("falls back to an empty card shape when context loading fails", async () => {
+    fetchPrivateJsonMock.mockRejectedValueOnce(new Error("fail"));
+
+    await expect(
+      fetchEventTypeContextCards("site-1", window, "click", "path"),
+    ).resolves.toEqual(emptyEventTypeDetail("click").cards);
+  });
 });
 
 describe("fetchEventTypeFieldValues", () => {
-  it("returns emptyEventFieldValues for empty eventName", async () => {
-    const result = await fetchEventTypeFieldValues(
+  it("forwards a trimmed search term", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce(
+      emptyEventFieldValues("path", "string"),
+    );
+
+    await fetchEventTypeFieldValues(
       "site-1",
       window,
-      "  ",
-      "field",
+      "click",
+      "path",
       "string",
+      undefined,
+      { search: "  pro  " },
     );
-    expect(result).toEqual(emptyEventFieldValues("field", "string"));
-    expect(fetchPrivateJsonMock).not.toHaveBeenCalled();
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-field-values",
+      expect.objectContaining({ search: "pro" }),
+      { signal: undefined },
+    );
+  });
+
+  it("loads field values across event types without an event name", async () => {
+    await fetchEventTypeFieldValues("site-1", window, "  ", "field", "string");
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-field-values",
+      expect.not.objectContaining({ eventName: expect.anything() }),
+      { signal: undefined },
+    );
   });
 
   it("returns emptyEventFieldValues for empty fieldPath", async () => {
@@ -337,6 +456,77 @@ describe("fetchEventRecordDetail", () => {
 
     const result = await fetchEventRecordDetail("site-1", "evt-1");
     expect(result).toEqual(emptyEventRecordDetail());
+  });
+
+  it("can preserve detail request errors for the drawer", async () => {
+    fetchPrivateJsonMock.mockRejectedValueOnce(new Error("fail"));
+
+    await expect(
+      fetchEventRecordDetail("site-1", "evt-1", undefined, {
+        preserveErrors: true,
+      }),
+    ).rejects.toThrow("fail");
+  });
+
+  it("forwards cancellation signals and preserves aborts", async () => {
+    const controller = new AbortController();
+    fetchPrivateJsonMock.mockResolvedValueOnce(emptyEventRecordDetail());
+
+    await fetchEventRecordDetail("site-1", "evt-1", window, {
+      signal: controller.signal,
+    });
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-record-detail",
+      expect.objectContaining({ siteId: "site-1", eventId: "evt-1" }),
+      { signal: controller.signal },
+    );
+
+    const aborted = new AbortController();
+    aborted.abort();
+    fetchPrivateJsonMock.mockRejectedValueOnce(
+      new DOMException("Aborted", "AbortError"),
+    );
+
+    await expect(
+      fetchEventRecordDetail("site-1", "evt-1", window, {
+        signal: aborted.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+});
+
+describe("fetchJourneyEventDetail", () => {
+  it("returns an empty detail without requesting an empty event id", async () => {
+    const result = await fetchJourneyEventDetail("site-1", "  ", "pageview");
+
+    expect(result).toEqual(emptyJourneyEventDetail());
+    expect(fetchPrivateJsonMock).not.toHaveBeenCalled();
+  });
+
+  it("forwards the event kind, time window, and parent identifiers", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce(emptyJourneyEventDetail());
+    const controller = new AbortController();
+
+    await fetchJourneyEventDetail("site-1", "visit-1", "pageview", window, {
+      sessionId: "session-1",
+      visitId: "visit-1",
+      signal: controller.signal,
+    });
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/journey-event-detail",
+      {
+        siteId: "site-1",
+        eventId: "visit-1",
+        eventKind: "pageview",
+        from: 1000,
+        to: 2000,
+        sessionId: "session-1",
+        visitId: "visit-1",
+      },
+      { signal: controller.signal },
+    );
   });
 });
 
@@ -379,7 +569,7 @@ describe("fetchEventsRecords", () => {
     await fetchEventsRecords("site-1", window, undefined, {
       search: "test",
       eventName: "click",
-      page: 2,
+      cursor: "event-cursor",
       pageSize: 20,
       sortBy: "occurredAt",
       sortDir: "desc",
@@ -390,7 +580,7 @@ describe("fetchEventsRecords", () => {
       expect.objectContaining({
         search: "test",
         eventName: "click",
-        page: 2,
+        cursor: "event-cursor",
         pageSize: 20,
         sortBy: "occurredAt",
         sortDir: "desc",

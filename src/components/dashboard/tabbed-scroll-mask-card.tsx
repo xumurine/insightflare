@@ -1,5 +1,3 @@
-"use client";
-
 import { type ReactNode, useEffect, useRef } from "react";
 import type { PartialOptions } from "overlayscrollbars";
 import { OverlayScrollbars } from "overlayscrollbars";
@@ -33,7 +31,7 @@ export interface TabbedScrollMaskCardTab<T extends string = string> {
 interface TabbedScrollMaskCardProps<T extends string = string> {
   value: T;
   onValueChange: (value: T) => void;
-  tabs: TabbedScrollMaskCardTab<T>[];
+  tabs: readonly TabbedScrollMaskCardTab<T>[];
   children: ReactNode;
   headerRight?: ReactNode;
   headerHidden?: boolean;
@@ -121,7 +119,7 @@ export function TabbedScrollMaskCard<T extends string = string>({
     if (!host) return;
     if (prepareNativeScrollbarHost(host)) {
       const sync = () => scheduleMaskSync(host);
-      host.addEventListener("scroll", sync);
+      host.addEventListener("scroll", sync, { passive: true });
       const animationFrame = requestAnimationFrame(() => syncMasks(host));
 
       return () => {

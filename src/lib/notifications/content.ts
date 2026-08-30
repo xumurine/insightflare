@@ -77,25 +77,9 @@ function reportContent(input: NotificationContentInput): NotificationContent {
     typeof input.data.reportType === "string" && input.data.reportType
       ? input.data.reportType
       : "daily";
-  const periodLabels = {
-    en: {
-      daily: "daily",
-      weekly: "weekly",
-      monthly: "monthly",
-      quarterly: "quarterly",
-      yearly: "yearly",
-    },
-    zh: {
-      daily: "每日",
-      weekly: "每周",
-      monthly: "每月",
-      quarterly: "每季度",
-      yearly: "每年",
-    },
-  } as const;
   const periodLabel =
-    periodLabels[input.locale][
-      reportType as keyof (typeof periodLabels)[typeof input.locale]
+    messages.report.periodLabels[
+      reportType as keyof typeof messages.report.periodLabels
     ] ?? reportType;
   const range =
     input.data.range && typeof input.data.range === "object"

@@ -1,6 +1,11 @@
-"use client";
-
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   RiArrowDownSLine,
   RiArrowLeftLine,
@@ -72,7 +77,7 @@ const PANEL_SCROLLBAR_OPTIONS = {
   },
 } satisfies PartialOptions;
 
-export function GeoCountryStatsPanel({
+export const GeoCountryStatsPanel = memo(function GeoCountryStatsPanel({
   locale,
   messages,
   loading,
@@ -442,4 +447,4 @@ export function GeoCountryStatsPanel({
       </Card>
     </aside>
   );
-}
+});

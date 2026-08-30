@@ -16,24 +16,23 @@ import {
   handleLegacyAuthLogin,
   handleLegacyAuthLogout,
 } from "@/lib/edge/legacy-auth";
-import { handleMapTileRequest } from "@/lib/edge/map-tiles";
+import { handleMapRelayRequest } from "@/lib/edge/map-relay";
 import { handleReleasesCompareRequest } from "@/lib/edge/releases-compare";
-import { handleWikiSummaryRequest } from "@/lib/edge/wiki-summary";
-import { handleWorldCountriesRequest } from "@/lib/edge/world-countries";
-import { adminWsRoutes } from "@/lib/hono/routes/admin-ws";
-import { mapTileRoutes } from "@/lib/hono/routes/map-tiles";
 import { privateAdminRoutes } from "@/lib/hono/routes/private/admin";
 import { privateNotificationRoutes } from "@/lib/hono/routes/private/notifications";
 import { privateRealtimeRoutes } from "@/lib/hono/routes/private/realtime";
 import { privateReleaseRoutes } from "@/lib/hono/routes/private/releases";
 import { privateSessionRoutes } from "@/lib/hono/routes/private/session";
+import { publicResourceRoutes } from "@/lib/hono/routes/public/resources";
 import { publicSessionRoutes } from "@/lib/hono/routes/public/session";
 import { wellKnownRoutes } from "@/lib/hono/routes/well-known";
-import { wikiSummaryRoutes } from "@/lib/hono/routes/wiki-summary";
-import { worldCountriesRoutes } from "@/lib/hono/routes/world-countries";
 
 vi.mock("@/lib/edge/admin-ws", () => ({
   handleAdminWs: vi.fn(),
+}));
+
+vi.mock("@/lib/edge/map-relay", () => ({
+  handleMapRelayRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/edge/admin-users", () => ({
@@ -55,20 +54,8 @@ vi.mock("@/lib/edge/legacy-auth", () => ({
   handleLegacyAuthLogout: vi.fn(),
 }));
 
-vi.mock("@/lib/edge/map-tiles", () => ({
-  handleMapTileRequest: vi.fn(),
-}));
-
 vi.mock("@/lib/edge/releases-compare", () => ({
   handleReleasesCompareRequest: vi.fn(),
-}));
-
-vi.mock("@/lib/edge/wiki-summary", () => ({
-  handleWikiSummaryRequest: vi.fn(),
-}));
-
-vi.mock("@/lib/edge/world-countries", () => ({
-  handleWorldCountriesRequest: vi.fn(),
 }));
 
 const env = { DB: {} };
@@ -81,6 +68,7 @@ describe("thin Hono route modules", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(handleAdminWs).mockResolvedValue(new Response("ws"));
+    vi.mocked(handleMapRelayRequest).mockResolvedValue(new Response("map"));
     vi.mocked(handleLegacyAuthLogin).mockResolvedValue(new Response("login"));
     vi.mocked(handleLegacyAuthLogout).mockResolvedValue(new Response("logout"));
     vi.mocked(handleAuthMeAdmin).mockResolvedValue(new Response("me"));
@@ -100,20 +88,12 @@ describe("thin Hono route modules", () => {
     vi.mocked(handleNotificationRulePreviewAdmin).mockResolvedValue(
       new Response("rule-preview"),
     );
-    vi.mocked(handleMapTileRequest).mockResolvedValue(new Response("tile"));
     vi.mocked(handleReleasesCompareRequest).mockResolvedValue(
       new Response("release"),
     );
-    vi.mocked(handleWikiSummaryRequest).mockResolvedValue(new Response("wiki"));
-    vi.mocked(handleWorldCountriesRequest).mockResolvedValue(
-      new Response("countries"),
-    );
   });
 
-  it("forwards public session, ws, resource, and release routes to edge handlers", async () => {
-    await expect(
-      adminWsRoutes.fetch(request("/api/private/realtime/ws"), env as never),
-    ).resolves.toMatchObject({ status: 200 });
+  it("forwards public session, private realtime, resource, and release routes to edge handlers", async () => {
     await publicSessionRoutes.fetch(
       request("/", { method: "POST" }),
       env as never,
@@ -122,23 +102,21 @@ describe("thin Hono route modules", () => {
       request("/", { method: "DELETE" }),
       env as never,
     );
-    await mapTileRoutes.fetch(request("/1/2/3.png"), env as never);
-    await wikiSummaryRoutes.fetch(request("/wiki-summary"), env as never);
-    await worldCountriesRoutes.fetch(request("/world-countries"), env as never);
     await privateRealtimeRoutes.fetch(request("/ws"), env as never);
     await privateReleaseRoutes.fetch(request("/compare"), env as never);
+    await publicResourceRoutes.fetch(
+      request("/map/v1/styles/light/style.json"),
+      env as never,
+    );
 
-    expect(handleAdminWs).toHaveBeenCalledTimes(2);
+    expect(handleAdminWs).toHaveBeenCalledTimes(1);
     expect(handleLegacyAuthLogin).toHaveBeenCalled();
     expect(handleLegacyAuthLogout).toHaveBeenCalled();
-    expect(handleMapTileRequest).toHaveBeenCalledWith(expect.any(Request), {
-      z: "1",
-      x: "2",
-      y: "3.png",
-    });
-    expect(handleWikiSummaryRequest).toHaveBeenCalled();
-    expect(handleWorldCountriesRequest).toHaveBeenCalled();
     expect(handleReleasesCompareRequest).toHaveBeenCalledWith(
+      expect.any(Request),
+      env,
+    );
+    expect(handleMapRelayRequest).toHaveBeenCalledWith(
       expect.any(Request),
       env,
     );
@@ -273,6 +251,9 @@ describe("thin Hono route modules", () => {
     expect(openapiHead.status).toBe(200);
     expect((await openapi.json()) as unknown).toBeTruthy();
     expect(skillsHead.status).toBe(200);
+    expect(skills.headers.get("content-type")).toContain("application/json");
+    expect(skills.headers.get("access-control-allow-origin")).toBe("*");
+    expect(skills.headers.get("cache-control")).toContain("max-age=3600");
     expect(await skills.text()).toContain("InsightFlare");
     expect(securityHead.status).toBe(200);
     expect(await security.text()).toContain("Contact:");

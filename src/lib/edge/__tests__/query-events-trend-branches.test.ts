@@ -1,23 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type * as QueryCore from "@/lib/edge/query/core";
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import type * as QueryCore from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   type QueryWindow,
   SHARE_TREND_OTHER_KEY,
   SHARE_TREND_OTHER_LABEL,
   SHARE_TREND_OTHER_TOKEN,
-} from "@/lib/edge/query/core";
+} from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   queryEventsTrendFromD1,
   queryEventTypeTrendFromD1,
-} from "@/lib/edge/query/events-trend";
+} from "@/lib/edge/analytics/providers/d1/internal/events-trend";
 import type { Env } from "@/lib/edge/types";
 
 const queryD1AllMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/edge/query/core", async () => {
+vi.mock("@/lib/edge/analytics/providers/d1/internal/core", async () => {
   const actual = await vi.importActual<typeof QueryCore>(
-    "@/lib/edge/query/core",
+    "@/lib/edge/analytics/providers/d1/internal/core",
   );
   return {
     ...actual,
@@ -28,8 +29,8 @@ vi.mock("@/lib/edge/query/core", async () => {
 const env = {} as Env;
 const siteId = "site-1";
 const window: QueryWindow = {
-  fromMs: Date.UTC(2026, 0, 1),
-  toMs: Date.UTC(2026, 0, 1, 2),
+  startMs: Date.UTC(2026, 0, 1),
+  endExclusiveMs: Date.UTC(2026, 0, 1, 2),
   nowMs: Date.UTC(2026, 0, 2),
   timeZone: "UTC",
 };
@@ -62,7 +63,7 @@ describe("edge query events trend defensive branches", () => {
       siteId,
       window,
       "hour",
-      {},
+      EMPTY_FILTER_DOCUMENT,
       1,
     );
 
@@ -106,7 +107,7 @@ describe("edge query events trend defensive branches", () => {
       siteId,
       window,
       "hour",
-      {},
+      EMPTY_FILTER_DOCUMENT,
       "signup",
     );
 

@@ -1,5 +1,3 @@
-"use client";
-
 import { forwardRef, type ReactNode } from "react";
 import type { HTMLMotionProps } from "motion/react";
 

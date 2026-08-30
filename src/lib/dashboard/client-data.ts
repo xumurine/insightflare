@@ -20,10 +20,13 @@ export {
   fetchEventsRecords,
   fetchEventsSummary,
   fetchEventsTrend,
+  fetchEventTypeContextCards,
   fetchEventTypeDetail,
+  fetchEventTypeFields,
   fetchEventTypeFieldValues,
   fetchFunnelDetail,
   fetchFunnels,
+  fetchJourneyEventDetail,
   fetchOverview,
   fetchPages,
   fetchPerformance,
@@ -35,8 +38,8 @@ export {
   fetchVisitors,
 } from "./client-core-data";
 export type {
-  DashboardFilterKey,
   DashboardFilterOptionData,
+  DashboardFilterOptionKey,
   EventRecordSortKey,
   FetchPrivateJsonOptions,
   OverviewClientDimensionTab,
@@ -74,8 +77,8 @@ export {
   fetchUtmTrend,
 } from "./client-referrer-data";
 export {
-  fetchDashboardFilterOptions,
   fetchEventTypesTab,
+  fetchFilterValues,
   fetchOverviewClientDimensionTab,
   fetchOverviewPageCardTab,
   fetchOverviewSourceCardTab,
@@ -89,6 +92,12 @@ export {
   toQueryString,
   withFilters,
 } from "./client-utils";
+export {
+  createSavedFilter,
+  deleteSavedFilter,
+  fetchSavedFilters,
+  updateSavedFilter,
+} from "./saved-filter-data";
 
 export const emptyOverviewClientDimensionTabsData =
   emptyOverviewClientDimensionTabs;

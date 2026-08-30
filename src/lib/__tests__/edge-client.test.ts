@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSessionToken } from "@/lib/auth";
+import { dashboardFilterDocumentFromPresentation } from "@/lib/dashboard/filter-state";
 import {
   addAdminMember,
   createAdminSite,
@@ -47,18 +48,16 @@ import {
   updateNotificationRule,
   upsertAdminSiteConfig,
 } from "@/lib/edge-client";
-import { handleDemoRequest } from "@/lib/realtime/mock";
+import { requestHeader } from "@/lib/request-headers";
 
 vi.mock("@/lib/auth", () => ({
   getSessionToken: vi.fn(),
 }));
 
-vi.mock("@/lib/realtime/mock", () => ({
-  handleDemoRequest: vi.fn(),
-}));
+vi.mock("@/lib/request-headers", () => ({ requestHeader: vi.fn() }));
 
 const getSessionTokenMock = vi.mocked(getSessionToken);
-const handleDemoRequestMock = vi.mocked(handleDemoRequest);
+const requestHeaderMock = vi.mocked(requestHeader);
 
 function fetchMock() {
   return vi.mocked(fetch);
@@ -74,10 +73,11 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 describe("edge client request wrappers", () => {
   beforeEach(() => {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "");
+    vi.stubEnv("VITE_DEMO_MODE", "");
     getSessionTokenMock.mockReset();
     getSessionTokenMock.mockResolvedValue("session-token");
-    handleDemoRequestMock.mockReset();
+    requestHeaderMock.mockReset();
+    requestHeaderMock.mockResolvedValue(null);
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation(() =>
@@ -102,7 +102,6 @@ describe("edge client request wrappers", () => {
   });
 
   afterEach(() => {
-    vi.doUnmock("next/headers");
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -193,35 +192,28 @@ describe("edge client request wrappers", () => {
   });
 
   it("serializes supported public dashboard filters", async () => {
+    const filters = dashboardFilterDocumentFromPresentation({
+      country: "US",
+      device: "desktop",
+      browser: "Chrome",
+      path: "/docs",
+      title: "Docs",
+      hostname: "example.com",
+      entry: "/entry",
+      exit: "/exit",
+      sourceDomain: "search.example",
+      clientBrowser: "Chrome",
+      clientOsVersion: "Windows 11",
+      clientDeviceType: "desktop",
+      clientLanguage: "en-US",
+      clientScreenSize: "1920x1080",
+      geoContinent: "NA",
+      geoTimezone: "America/Los_Angeles",
+    });
     await fetchPublicOverview("slug", {
       from: 1,
       to: 2,
-      filters: {
-        country: "US",
-        device: "desktop",
-        browser: "Chrome",
-        path: "/docs",
-        query: "q=1",
-        title: "Docs",
-        hostname: "example.com",
-        entry: "/entry",
-        exit: "/exit",
-        sourceDomain: "search.example",
-        sourceLink: "https://search.example/?q=docs",
-        clientBrowser: "Chrome",
-        clientOsVersion: "Windows 11",
-        clientDeviceType: "desktop",
-        clientLanguage: "en-US",
-        clientScreenSize: "1920x1080",
-        geo: "US-CA",
-        geoContinent: "NA",
-        geoTimezone: "America/Los_Angeles",
-        geoOrganization: "Example ISP",
-        eventPayloadFilters: [
-          { path: "/plan", operator: "eq", value: "pro" },
-          { path: "/trial", operator: "ne", value: false },
-        ],
-      },
+      filters,
     });
 
     const [url] = lastFetchCall();
@@ -229,59 +221,27 @@ describe("edge client request wrappers", () => {
 
     expect(params.get("from")).toBe("1");
     expect(params.get("to")).toBe("2");
-    expect(params.get("country")).toBe("US");
-    expect(params.get("device")).toBe("desktop");
-    expect(params.get("browser")).toBe("Chrome");
-    expect(params.get("path")).toBe("/docs");
-    expect(params.get("query")).toBe("q=1");
-    expect(params.get("title")).toBe("Docs");
-    expect(params.get("hostname")).toBe("example.com");
-    expect(params.get("entry")).toBe("/entry");
-    expect(params.get("exit")).toBe("/exit");
-    expect(params.get("sourceDomain")).toBe("search.example");
-    expect(params.get("sourceLink")).toBe("https://search.example/?q=docs");
-    expect(params.get("clientBrowser")).toBe("Chrome");
-    expect(params.get("clientOsVersion")).toBe("Windows 11");
-    expect(params.get("clientDeviceType")).toBe("desktop");
-    expect(params.get("clientLanguage")).toBe("en-US");
-    expect(params.get("clientScreenSize")).toBe("1920x1080");
-    expect(params.get("geo")).toBe("US-CA");
-    expect(params.get("geoContinent")).toBe("NA");
-    expect(params.get("geoTimezone")).toBe("America/Los_Angeles");
-    expect(params.get("geoOrganization")).toBe("Example ISP");
-    expect(JSON.parse(params.get("eventPayloadFilters") ?? "[]")).toEqual([
-      { path: "/plan", operator: "eq", value: "pro" },
-      { path: "/trial", operator: "ne", value: false },
-    ]);
+    expect(params.get("filter[geo.country]")).toBe("us");
+    expect(params.get("filter[client.deviceType]")).toBe("desktop");
+    expect(params.get("filter[client.browser]")).toBe("Chrome");
+    expect(params.get("filter[page.path]")).toBe("/docs");
+    expect(params.get("filter[page.title]")).toBe("Docs");
+    expect(params.get("filter[page.hostname]")).toBe("example.com");
+    expect(params.get("filter[session.entryPath]")).toBe("/entry");
+    expect(params.get("filter[session.exitPath]")).toBe("/exit");
+    expect(params.get("filter[referrer.domain]")).toBe("search.example");
+    expect(params.get("filter[client.osVersion]")).toBe("Windows 11");
+    expect(params.get("filter[client.language]")).toBe("en-US");
+    expect(params.get("filter[client.screenSize]")).toBe("1920x1080");
+    expect(params.get("filter[geo.continent]")).toBe("na");
+    expect(params.get("filter[geo.timeZone]")).toBe("America/Los_Angeles");
   });
 
   it("omits blank public dashboard filters", async () => {
     await fetchPublicPages("slug", {
       from: 1,
       to: 2,
-      filters: {
-        country: "",
-        device: "",
-        browser: "",
-        path: "",
-        query: "",
-        title: "",
-        hostname: "",
-        entry: "",
-        exit: "",
-        sourceDomain: "",
-        sourceLink: "",
-        clientBrowser: "",
-        clientOsVersion: "",
-        clientDeviceType: "",
-        clientLanguage: "",
-        clientScreenSize: "",
-        geo: "",
-        geoContinent: "",
-        geoTimezone: "",
-        geoOrganization: "",
-        eventPayloadFilters: [],
-      },
+      filters: dashboardFilterDocumentFromPresentation({}),
     });
 
     const [url] = lastFetchCall();
@@ -521,6 +481,10 @@ describe("edge client request wrappers", () => {
       "http://127.0.0.1:8787/api/private/notifications/preferences",
     );
 
+    const controller = new AbortController();
+    await fetchNotificationPreferences({ signal: controller.signal });
+    expect(lastFetchCall()[1].signal).toBe(controller.signal);
+
     await updateNotificationPreferences({
       email: true,
       attention: { alertsCreateUnread: false },
@@ -562,6 +526,11 @@ describe("edge client request wrappers", () => {
     expect(lastFetchCall()[0]).toBe(
       "http://127.0.0.1:8787/api/private/notifications?teamId=team-1&siteId=site-1&type=report&severity=warning&unread=1&locale=zh&limit=25",
     );
+
+    const controller = new AbortController();
+    fetchMock().mockResolvedValueOnce(jsonResponse({ ok: true, data: null }));
+    await fetchNotificationMessages({ signal: controller.signal });
+    expect(lastFetchCall()[1].signal).toBe(controller.signal);
 
     fetchMock().mockResolvedValueOnce(jsonResponse({ ok: true, data: null }));
     await expect(fetchNotificationMessages({})).resolves.toEqual({
@@ -719,14 +688,11 @@ describe("edge client request wrappers", () => {
   });
 
   it("derives the edge base URL from forwarded server headers", async () => {
-    vi.doMock("next/headers", () => ({
-      headers: vi.fn().mockResolvedValue(
-        new Headers({
-          "x-forwarded-host": "dashboard.example.test",
-          "x-forwarded-proto": "https",
-        }),
-      ),
-    }));
+    requestHeaderMock.mockImplementation(async (name) => {
+      if (name === "x-forwarded-host") return "dashboard.example.test";
+      if (name === "x-forwarded-proto") return "https";
+      return null;
+    });
 
     await fetchAdminUsers();
 
@@ -735,9 +701,9 @@ describe("edge client request wrappers", () => {
   });
 
   it("uses https for non-local server hosts when forwarded proto is absent", async () => {
-    vi.doMock("next/headers", () => ({
-      headers: vi.fn().mockResolvedValue(new Headers({ host: "app.test" })),
-    }));
+    requestHeaderMock.mockImplementation(async (name) =>
+      name === "host" ? "app.test" : null,
+    );
 
     await fetchAdminUsers();
 
@@ -746,9 +712,7 @@ describe("edge client request wrappers", () => {
   });
 
   it("falls back when server headers do not include a host", async () => {
-    vi.doMock("next/headers", () => ({
-      headers: vi.fn().mockResolvedValue(new Headers()),
-    }));
+    requestHeaderMock.mockResolvedValue(null);
 
     await fetchAdminUsers();
 
@@ -757,18 +721,16 @@ describe("edge client request wrappers", () => {
   });
 
   it("uses http for localhost server headers and falls back when headers fail", async () => {
-    vi.doMock("next/headers", () => ({
-      headers: vi
-        .fn()
-        .mockResolvedValueOnce(new Headers({ host: "localhost:3000" }))
-        .mockRejectedValueOnce(new Error("outside request")),
-    }));
+    requestHeaderMock.mockImplementation(async (name) =>
+      name === "host" ? "localhost:3000" : null,
+    );
 
     await fetchAdminUsers();
     expect(lastFetchCall()[0]).toBe(
       "http://localhost:3000/api/private/admin/users",
     );
 
+    requestHeaderMock.mockRejectedValue(new Error("outside request"));
     await fetchAdminUsers();
     expect(lastFetchCall()[0]).toBe(
       "http://127.0.0.1:8787/api/private/admin/users",
@@ -776,11 +738,9 @@ describe("edge client request wrappers", () => {
   });
 
   it("uses http for 127.0.0.1 server hosts when forwarded proto is absent", async () => {
-    vi.doMock("next/headers", () => ({
-      headers: vi
-        .fn()
-        .mockResolvedValue(new Headers({ host: "127.0.0.1:3000" })),
-    }));
+    requestHeaderMock.mockImplementation(async (name) =>
+      name === "host" ? "127.0.0.1:3000" : null,
+    );
 
     await fetchAdminUsers();
 
@@ -789,47 +749,44 @@ describe("edge client request wrappers", () => {
     );
   });
 
-  it("delegates to the realtime demo handler in demo mode", async () => {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
-    handleDemoRequestMock.mockReturnValue({
-      ok: true,
-      data: [{ bucket: 1 }],
-    });
+  it("uses the API for public requests in demo mode", async () => {
+    vi.stubEnv("VITE_DEMO_MODE", "1");
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({ ok: true, data: [{ bucket: 1 }] }),
+    );
 
     const result = await fetchPublicTrend("demo-site", { from: 1, to: 2 });
 
     expect(result).toEqual({ ok: true, data: [{ bucket: 1 }] });
-    expect(handleDemoRequestMock).toHaveBeenCalledWith({
-      path: "/api/public/share/demo-site/trend",
-      method: undefined,
-      params: { from: 1, to: 2, interval: "day" },
-      body: undefined,
-    });
-    expect(fetchMock()).not.toHaveBeenCalled();
+    expect(lastFetchCall()[0]).toBe(
+      "http://127.0.0.1:8787/api/public/share/demo-site/trend?from=1&to=2&interval=day",
+    );
   });
 
-  it("delegates private POST wrappers to the demo handler with method and body", async () => {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
-    handleDemoRequestMock.mockReturnValue({
-      ok: true,
-      data: { id: "team-1", name: "Team" },
-    });
+  it("keeps admin mutations on the server service in demo mode", async () => {
+    vi.stubEnv("VITE_DEMO_MODE", "1");
+    fetchMock().mockResolvedValueOnce(
+      jsonResponse({
+        ok: true,
+        data: { id: "team-1", name: "Team" },
+      }),
+    );
 
     const result = await createAdminTeam({ name: "Team", slug: "team" });
 
     expect(result).toEqual({ id: "team-1", name: "Team" });
-    expect(handleDemoRequestMock).toHaveBeenCalledWith({
-      path: "/api/private/admin/teams",
-      method: "POST",
-      params: undefined,
-      body: { name: "Team", slug: "team" },
-    });
-    expect(fetchMock()).not.toHaveBeenCalled();
-    expect(getSessionTokenMock).not.toHaveBeenCalled();
+    expect(lastFetchCall()).toMatchObject([
+      "http://127.0.0.1:8787/api/private/admin/teams",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Team", slug: "team" }),
+      },
+    ]);
+    expect(getSessionTokenMock).toHaveBeenCalled();
   });
 
   it("fetches notification email previews through the API in demo mode", async () => {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "1");
+    vi.stubEnv("VITE_DEMO_MODE", "1");
     const preview = {
       subject: "Demo",
       html: "<p>Demo</p>",
@@ -854,7 +811,6 @@ describe("edge client request wrappers", () => {
     expect((init.headers as Headers).get("authorization")).toBe(
       "Bearer session-token",
     );
-    expect(handleDemoRequestMock).not.toHaveBeenCalled();
   });
 
   it("wires the edge-client filter helper into at least one exported request wrapper", () => {

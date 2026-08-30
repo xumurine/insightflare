@@ -1,13 +1,5 @@
-"use client";
-
-import {
-  type ReactNode,
-  startTransition,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import dynamic from "next/dynamic";
+import { type ReactNode, useCallback, useMemo } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { GeoCountryStatsPanel } from "@/components/dashboard/geo-country-stats-panel";
 import type { GeoClientMapStageProps } from "@/components/dashboard/site-pages/geo-client-map-stage";
@@ -22,6 +14,11 @@ import {
   fetchOverviewGeoPoints,
   type OverviewGeoTabRows,
 } from "@/lib/dashboard/client-data";
+import {
+  dashboardFilterFingerprint,
+  serializeDashboardSearchParams,
+  setDashboardFilterValue,
+} from "@/lib/dashboard/filter-state";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import {
   buildLocalityLocationValue,
@@ -44,9 +41,11 @@ import {
   matchesGeoLabelRecord,
   pickLocaleGeoLabel,
   resolveGeoStateTranslation,
+  resolveGeoTranslationApiLocale,
 } from "@/lib/dashboard/geo-translation";
-import type { DashboardFilters } from "@/lib/dashboard/query-state";
+import dynamic from "@/lib/dynamic";
 import type { OverviewGeoPointsData } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import { resolveCountryLabel } from "@/lib/i18n/code-labels";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -360,12 +359,8 @@ function normalizeCountryCode(value: string | null | undefined): string | null {
   return normalized;
 }
 
-function dashboardFilterSignature(filters: DashboardFilters): string {
-  const entries = Object.entries(filters)
-    .map(([key, value]) => [key, String(value ?? "").trim()] as const)
-    .filter(([, value]) => value.length > 0)
-    .sort(([left], [right]) => left.localeCompare(right));
-  return JSON.stringify(entries);
+function dashboardFilterSignature(filters: FilterDocument): string {
+  return dashboardFilterFingerprint(filters);
 }
 
 function parseCoordinate(
@@ -733,15 +728,22 @@ function buildLocalityGeoInvestigation(
   };
 }
 
-async function fetchLocaleCountryCodes(): Promise<string[] | null> {
-  return fetchGeoCountryCodes(GEO_TRANSLATION_DATA_LOCALE);
+function resolveGeoDataLocale(locale: Locale): string {
+  return resolveGeoTranslationApiLocale(locale) ?? GEO_TRANSLATION_DATA_LOCALE;
+}
+
+async function fetchLocaleCountryCodes(
+  locale: Locale,
+): Promise<string[] | null> {
+  return fetchGeoCountryCodes(resolveGeoDataLocale(locale));
 }
 
 async function fetchLocaleCountryPayload(
   countryCode: string,
+  locale: Locale,
 ): Promise<LocaleCountryPayload | null> {
   return fetchGeoCountryTranslationPayload(
-    GEO_TRANSLATION_DATA_LOCALE,
+    resolveGeoDataLocale(locale),
     countryCode,
   );
 }
@@ -749,9 +751,10 @@ async function fetchLocaleCountryPayload(
 async function fetchLocaleStatePayload(
   countryCode: string,
   stateCode: string,
+  locale: Locale,
 ): Promise<LocaleStatePayload | null> {
   return fetchGeoStateTranslationPayload(
-    GEO_TRANSLATION_DATA_LOCALE,
+    resolveGeoDataLocale(locale),
     countryCode,
     stateCode,
   );
@@ -931,8 +934,10 @@ async function fetchGeoLocaleBundle(
   directoryEntries: GeoDirectoryEntry[];
   investigation: GeoInvestigationInfo | null;
 }> {
+  const apiLocale = resolveGeoDataLocale(locale);
+
   if (!location) {
-    const countryCodes = await fetchLocaleCountryCodes();
+    const countryCodes = await fetchLocaleCountryCodes(locale);
     return {
       focus: null,
       directoryEntries: dedupeGeoDirectoryEntries(
@@ -948,6 +953,7 @@ async function fetchGeoLocaleBundle(
   if (location.level === "country") {
     const countryPayload = await fetchLocaleCountryPayload(
       location.countryCode,
+      locale,
     );
     const stateCodes = Array.isArray(countryPayload?.states)
       ? countryPayload.states
@@ -960,7 +966,7 @@ async function fetchGeoLocaleBundle(
       : [];
     const statePayloads = await Promise.all(
       stateCodes.map((stateCode) =>
-        fetchLocaleStatePayload(location.countryCode, stateCode),
+        fetchLocaleStatePayload(location.countryCode, stateCode, locale),
       ),
     );
 
@@ -996,7 +1002,7 @@ async function fetchGeoLocaleBundle(
   }
 
   const stateResolution = await resolveGeoStateTranslation(
-    GEO_TRANSLATION_DATA_LOCALE,
+    apiLocale,
     location.countryCode,
     location.regionCode ?? "",
     {
@@ -1011,8 +1017,12 @@ async function fetchGeoLocaleBundle(
   );
   const statePayload =
     stateResolution?.statePayload ??
-    (location.regionCode
-      ? await fetchLocaleStatePayload(location.countryCode, location.regionCode)
+    (!stateResolution && location.regionCode
+      ? await fetchLocaleStatePayload(
+          location.countryCode,
+          location.regionCode,
+          locale,
+        )
       : null);
 
   if (!statePayload) {
@@ -1171,130 +1181,88 @@ export function GeoClientPage({
     () => parseGeoLocationValue(searchParams.get("location")),
     [searchParams],
   );
-  const requestFilters = useMemo<DashboardFilters>(
-    () => ({
-      ...filters,
-      ...(requestedLocation?.canonical
-        ? { geo: requestedLocation.canonical }
-        : {}),
-    }),
+  const requestFilters = useMemo<FilterDocument>(
+    () =>
+      requestedLocation?.canonical
+        ? setDashboardFilterValue(filters, "geo", requestedLocation.canonical)
+        : filters,
     [filters, requestedLocation?.canonical],
   );
   const requestFiltersKey = useMemo(
     () => dashboardFilterSignature(requestFilters),
     [requestFilters],
   );
-  const [loading, setLoading] = useState(true);
-  const [geoPointsData, setGeoPointsData] = useState<OverviewGeoPointsData>(
-    emptyOverviewGeoPoints(),
-  );
-  const [geoTabRows, setGeoTabRows] = useState<OverviewGeoTabRows>([]);
-  const [activeLocation, setActiveLocation] =
-    useState<ParsedGeoLocation | null>(null);
-  const [locationFocus, setLocationFocus] =
-    useState<GeoLocationFocusResponse | null>(null);
-  const [geoInvestigation, setGeoInvestigation] =
-    useState<GeoInvestigationInfo | null>(null);
-  const [geoWikiSummary, setGeoWikiSummary] = useState<GeoWikiSummary | null>(
-    null,
-  );
-  const [geoDirectoryEntries, setGeoDirectoryEntries] = useState<
-    GeoDirectoryEntry[] | null
-  >(null);
-
-  useEffect(() => {
-    let active = true;
-    const wikidataId = geoInvestigation?.wikidataId ?? null;
-
-    if (!wikidataId || !activeLocation || activeLocation.level === "country") {
-      setGeoWikiSummary(null);
-      return () => {
-        active = false;
+  const { data: geoData, isFetching: loading } = useQuery({
+    queryKey: [
+      "dashboard",
+      "geo",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      locale,
+      requestedLocation?.canonical ?? "",
+      requestFiltersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const dimensionTab = !requestedLocation
+        ? null
+        : requestedLocation.level === "country"
+          ? "region"
+          : "city";
+      const [geoPointsData, geoTabRows, geoLocaleBundle] = await Promise.all([
+        fetchOverviewGeoPoints(siteId, window, requestFilters, {
+          limit: 5000,
+          applyGeoFilter: Boolean(requestedLocation?.canonical),
+          signal,
+        }),
+        dimensionTab
+          ? fetchOverviewGeoDimensionTab(
+              siteId,
+              window,
+              dimensionTab,
+              requestFilters,
+              {
+                limit: dimensionTab === "city" ? 600 : 400,
+                signal,
+              },
+            )
+          : Promise.resolve([] as OverviewGeoTabRows),
+        fetchGeoLocaleBundle(
+          requestedLocation,
+          locale,
+          messages.common.unknown,
+          geoMessages,
+        ),
+      ]);
+      return {
+        geoPointsData,
+        geoTabRows,
+        activeLocation: requestedLocation,
+        locationFocus: geoLocaleBundle.focus,
+        geoInvestigation: geoLocaleBundle.investigation,
+        geoDirectoryEntries: geoLocaleBundle.directoryEntries,
       };
-    }
-
-    setGeoWikiSummary(null);
-
-    fetchGeoWikiSummary(wikidataId, locale).then((summary) => {
-      if (!active) return;
-      setGeoWikiSummary(summary);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activeLocation?.canonical,
-    activeLocation?.level,
-    geoInvestigation?.wikidataId,
-    locale,
-  ]);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    const dimensionTab = !requestedLocation
-      ? null
-      : requestedLocation?.level === "country"
-        ? "region"
-        : "city";
-
-    Promise.all([
-      fetchOverviewGeoPoints(siteId, window, requestFilters, {
-        limit: 5000,
-        applyGeoFilter: Boolean(requestedLocation?.canonical),
-      }),
-      dimensionTab
-        ? fetchOverviewGeoDimensionTab(
-            siteId,
-            window,
-            dimensionTab,
-            requestFilters,
-            {
-              limit: dimensionTab === "city" ? 600 : 400,
-            },
-          )
-        : Promise.resolve([] as OverviewGeoTabRows),
-      fetchGeoLocaleBundle(
-        requestedLocation,
-        locale,
-        messages.common.unknown,
-        geoMessages,
-      ),
-    ])
-      .then(([nextGeoPoints, nextGeoTabRows, nextGeoLocaleBundle]) => {
-        if (!active) return;
-        startTransition(() => {
-          setGeoPointsData(nextGeoPoints);
-          setGeoTabRows(nextGeoTabRows);
-          setLocationFocus(nextGeoLocaleBundle.focus);
-          setGeoInvestigation(nextGeoLocaleBundle.investigation);
-          setGeoDirectoryEntries(nextGeoLocaleBundle.directoryEntries);
-          setActiveLocation(requestedLocation);
-          setLoading(false);
-        });
-      })
-      .catch(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    locale,
-    requestedLocation?.canonical,
-    requestFilters,
-    requestFiltersKey,
-    messages.common.unknown,
-    geoMessages,
-    siteId,
-    window.from,
-    window.interval,
-    window.to,
-  ]);
+    },
+    placeholderData: keepPreviousData,
+    enabled: typeof window !== "undefined",
+  });
+  const geoPointsData = geoData?.geoPointsData ?? emptyOverviewGeoPoints();
+  const geoTabRows = geoData?.geoTabRows ?? [];
+  const activeLocation = geoData?.activeLocation ?? null;
+  const locationFocus = geoData?.locationFocus ?? null;
+  const geoInvestigation = geoData?.geoInvestigation ?? null;
+  const geoDirectoryEntries = geoData?.geoDirectoryEntries ?? null;
+  const wikidataId = geoInvestigation?.wikidataId ?? "";
+  const { data: geoWikiSummary } = useQuery({
+    queryKey: ["dashboard", "geo-wiki-summary", locale, wikidataId],
+    queryFn: () => fetchGeoWikiSummary(wikidataId, locale),
+    enabled:
+      typeof window !== "undefined" &&
+      Boolean(wikidataId) &&
+      activeLocation?.level !== "country",
+  });
 
   const points = useMemo(
     () => resolveGeoPoints(geoPointsData, activeLocation),
@@ -1477,24 +1445,36 @@ export function GeoClientPage({
       : geoMessages.cityLabel
     : geoMessages.countryLabel;
 
-  function updateLocation(nextLocation: string | null) {
-    if (typeof globalThis.window === "undefined") return;
-    const nextParams = new URLSearchParams(searchParams.toString());
-    if (nextLocation) {
-      nextParams.set("location", nextLocation);
-    } else {
-      nextParams.delete("location");
-    }
-    const query = nextParams.toString();
-    const nextTarget = `${globalThis.window.location.pathname}${query ? `?${query}` : ""}${globalThis.window.location.hash}`;
-    pushUrlWithoutNavigation(nextTarget);
-  }
+  const updateLocation = useCallback(
+    (nextLocation: string | null) => {
+      if (typeof globalThis.window === "undefined") return;
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (nextLocation) {
+        nextParams.set("location", nextLocation);
+      } else {
+        nextParams.delete("location");
+      }
+      const query = serializeDashboardSearchParams(nextParams);
+      const nextTarget = `${globalThis.window.location.pathname}${query ? `?${query}` : ""}${globalThis.window.location.hash}`;
+      pushUrlWithoutNavigation(nextTarget);
+    },
+    [searchParams],
+  );
 
-  const handleBack = activeLocation
-    ? () => updateLocation(parentGeoLocationValue(activeLocation))
-    : undefined;
-  const handleSelectEntry =
-    statsEntries.length > 0 ? (key: string) => updateLocation(key) : undefined;
+  const handleBack = useMemo(
+    () =>
+      activeLocation
+        ? () => updateLocation(parentGeoLocationValue(activeLocation))
+        : undefined,
+    [activeLocation, updateLocation],
+  );
+  const handleSelectEntry = useMemo(
+    () =>
+      statsEntries.length > 0
+        ? (key: string) => updateLocation(key)
+        : undefined,
+    [statsEntries.length, updateLocation],
+  );
 
   const statsPanel = (
     <GeoCountryStatsPanel

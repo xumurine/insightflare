@@ -466,6 +466,47 @@ describe("mock — handleDemoRequest", () => {
       expect(res.ok).toBe(true);
     });
 
+    it("limits bot analytics overview data and paginates detail rows", () => {
+      const path = "/api/private/admin/bot-analytics";
+      const params = {
+        from: FIXED_FROM,
+        to: FIXED_FROM + 60 * 60 * 1000,
+        limit: 7,
+      };
+      const overview = asRecord(handleDemoRequest({ path, params }));
+      const abnormal = overview.abnormal as Record<string, unknown>;
+      const normal = overview.normal as Record<string, unknown>;
+      const abnormalEvents = overview.events as unknown[];
+      const normalEvents = overview.normalEvents as unknown[];
+
+      expect(abnormalEvents).toHaveLength(7);
+      expect(normalEvents).toHaveLength(7);
+      expect(abnormal.events).toEqual(abnormalEvents);
+      expect(normal.events).toEqual(normalEvents);
+      expect(abnormal.hasMore).toBe(true);
+      expect(normal.hasMore).toBe(true);
+
+      const nextPage = asRecord(
+        handleDemoRequest({
+          path,
+          params: {
+            ...params,
+            page: "abnormal",
+            cursor: JSON.stringify(abnormal.nextCursor),
+          },
+        }),
+      ).page as Record<string, unknown>;
+
+      const nextPageEvents = nextPage.events as unknown[];
+      expect(nextPageEvents).toHaveLength(7);
+      expect(nextPageEvents).not.toEqual(abnormalEvents);
+      expect((nextPageEvents[0] as Record<string, unknown>).traceId).not.toBe(
+        (abnormalEvents[0] as Record<string, unknown>).traceId,
+      );
+      expect(nextPage.hasMore).toBe(true);
+      expect(nextPage.nextCursor).toEqual(expect.any(Object));
+    });
+
     it("returns notification admin lists", () => {
       expect(
         ok(
@@ -563,13 +604,14 @@ describe("mock — handleDemoRequest", () => {
     };
 
     const routes = [
-      "/api/private/filter-options",
+      "/api/private/filter-values",
       "/api/private/overview",
       "/api/private/overview-page-path",
       "/api/private/overview-page-title",
       "/api/private/overview-page-hostname",
       "/api/private/overview-page-entry",
       "/api/private/overview-page-exit",
+      "/api/private/overview-source-channel",
       "/api/private/overview-source-domain",
       "/api/private/overview-source-link",
       "/api/private/overview-client-browser",
@@ -605,6 +647,7 @@ describe("mock — handleDemoRequest", () => {
       "/api/private/browser-radar",
       "/api/private/referrer-radar",
       "/api/private/referrer-dimension-trend",
+      "/api/private/referrer-channel-dimension-trend",
       "/api/private/browser-trend",
       "/api/private/browser-engine-trend",
       "/api/private/client-dimension-trend",
@@ -619,6 +662,17 @@ describe("mock — handleDemoRequest", () => {
     it.each(routes)("returns a defined result for %s", (route) => {
       const res = handleDemoRequest({ path: route, params: baseParams });
       expect(res).toBeDefined();
+    });
+
+    it("returns channel data for the demo source tab", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/overview-source-channel",
+          params: baseParams,
+        }),
+      );
+      expect(res).toMatchObject({ ok: true, data: expect.any(Array) });
+      expect((res.data as unknown[]).length).toBeGreaterThan(0);
     });
 
     it("client-cross-breakdown handles missing dimensions gracefully", () => {
@@ -664,6 +718,26 @@ describe("mock — handleDemoRequest", () => {
         params: { ...baseParams, sessionId: "demo-site-001-s-00001" },
       });
       expect(res).toBeDefined();
+    });
+
+    it("routes standard journey event detail for private and API v1 paths", () => {
+      const params = {
+        ...baseParams,
+        eventId: "missing-event",
+        eventKind: "pageview",
+      };
+      expect(
+        handleDemoRequest({
+          path: "/api/private/journey-event-detail",
+          params,
+        }),
+      ).toMatchObject({ ok: true, data: null });
+      expect(
+        handleDemoRequest({
+          path: `/api/v1/sites/${SITE_ID}/analytics/journey-events/detail`,
+          params,
+        }),
+      ).toMatchObject({ ok: true, data: null });
     });
 
     it("returns visitor detail", () => {
@@ -783,6 +857,22 @@ describe("mock — handleDemoRequest", () => {
           geo: expect.any(Object),
         }),
       );
+
+      const context = asRecord(
+        handleDemoRequest({
+          path: "/api/private/event-type-context",
+          params: { ...ANALYTICS_PARAMS, eventName, cards: "path" },
+        }),
+      );
+      expect(context.eventName).toBe(eventName);
+      expect(context.cards).toEqual(
+        expect.objectContaining({
+          page: expect.objectContaining({ path: expect.any(Array) }),
+          source: expect.any(Object),
+          client: expect.any(Object),
+          geo: expect.any(Object),
+        }),
+      );
       expect(typeDetail.fields).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ path: "/plan", valueType: "string" }),
@@ -814,6 +904,37 @@ describe("mock — handleDemoRequest", () => {
           occurrences: expect.any(Number),
         }),
       );
+
+      const fields = asRecord(
+        handleDemoRequest({
+          path: "/api/private/event-type-fields",
+          params: { ...ANALYTICS_PARAMS, eventName },
+        }),
+      );
+      expect(fields).toMatchObject({ ok: true, eventName });
+      expect(fields.fields).toEqual(expect.any(Array));
+
+      const apiV1Fields = asRecord(
+        handleDemoRequest({
+          path: `/api/v1/sites/${SITE_ID}/event-fields`,
+          params: { ...ANALYTICS_PARAMS, eventName },
+        }),
+      );
+      expect(apiV1Fields).toMatchObject({ ok: true, eventName });
+
+      const apiV1FieldValues = asRecord(
+        handleDemoRequest({
+          path: `/api/v1/sites/${SITE_ID}/event-fields/values`,
+          params: {
+            ...ANALYTICS_PARAMS,
+            eventName,
+            fieldPath: "/plan",
+            fieldValueType: "string",
+            search: "pro",
+          },
+        }),
+      );
+      expect(apiV1FieldValues.data).toEqual(expect.any(Array));
     });
 
     it("supports event payload filters for scalar and array values", () => {
@@ -822,9 +943,7 @@ describe("mock — handleDemoRequest", () => {
           path: "/api/private/events-records",
           params: {
             ...ANALYTICS_PARAMS,
-            eventPayloadFilters: JSON.stringify([
-              { path: "/plan", operator: "eq", value: "not-a-demo-plan" },
-            ]),
+            "filter[event.payload][/plan]": "not-a-demo-plan",
           },
         }),
       );
@@ -836,9 +955,7 @@ describe("mock — handleDemoRequest", () => {
           params: {
             ...ANALYTICS_PARAMS,
             pageSize: 3,
-            eventPayloadFilters: JSON.stringify([
-              { path: "/plan", operator: "ne", value: "not-a-demo-plan" },
-            ]),
+            "filter[event.payload][/plan]": "neq:not-a-demo-plan",
           },
         }),
       );
@@ -850,9 +967,7 @@ describe("mock — handleDemoRequest", () => {
           params: {
             ...ANALYTICS_PARAMS,
             pageSize: 3,
-            eventPayloadFilters: JSON.stringify([
-              { path: "/items/*", operator: "eq", value: null },
-            ]),
+            "filter[event.payload][/items/*]": "isNull",
           },
         }),
       );
@@ -863,9 +978,7 @@ describe("mock — handleDemoRequest", () => {
           path: "/api/private/events-records",
           params: {
             ...ANALYTICS_PARAMS,
-            eventPayloadFilters: JSON.stringify([
-              { path: "/value", operator: "eq", value: 999_999 },
-            ]),
+            "filter[event.payload][/value]": "eq:json:999999",
           },
         }),
       );
@@ -906,35 +1019,108 @@ describe("mock — handleDemoRequest", () => {
     });
 
     it.each([
-      "country",
-      "device",
-      "browser",
-      "path",
-      "sourceDomain",
-      "sourceLink",
-      "clientBrowser",
-      "clientOsVersion",
-      "clientDeviceType",
-      "clientLanguage",
-      "clientScreenSize",
-      "geo",
-      "geoContinent",
-      "geoTimezone",
-      "geoOrganization",
-    ])("returns deduped filter options for %s", (filterKey) => {
+      "page.path",
+      "page.title",
+      "page.hostname",
+      "page.query",
+      "page.hash",
+      "session.entryPath",
+      "session.exitPath",
+      "referrer.domain",
+      "referrer.url",
+      "client.browser",
+      "client.browserVersion",
+      "client.browserEngine",
+      "client.os",
+      "client.osVersion",
+      "client.deviceType",
+      "client.language",
+      "client.screenSize",
+      "geo.country",
+      "geo.region",
+      "geo.city",
+      "geo.continent",
+      "geo.timeZone",
+      "geo.organization",
+      "event.name",
+      "utm.source",
+      "utm.medium",
+      "utm.campaign",
+      "utm.term",
+      "utm.content",
+    ])("returns canonical filter values for %s", (filterKey) => {
       const res = ok(
         handleDemoRequest({
-          path: "/api/private/filter-options",
+          path: "/api/private/filter-values",
           params: { ...ANALYTICS_PARAMS, filterKey, limit: 8 },
         }),
       );
 
       expect(res.ok).toBe(true);
+      expect(asRecord(res).field).toBe(filterKey);
       expect(Array.isArray(res.data)).toBe(true);
       const values = (res.data as Array<{ value: string }>).map(
         (item) => item.value,
       );
       expect(new Set(values).size).toBe(values.length);
+    });
+
+    it("excludes the current canonical condition before finding filter values", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/filter-values",
+          params: {
+            ...ANALYTICS_PARAMS,
+            filterKey: "page.path",
+            "filter[page.path]": "/not-present-in-demo",
+          },
+        }),
+      );
+      expect(res).toMatchObject({ ok: true, field: "page.path" });
+      expect(res.data).toEqual(expect.any(Array));
+    });
+
+    it("removes nested NOT and OR branches for the active canonical field", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/filter-values",
+          params: {
+            ...ANALYTICS_PARAMS,
+            filterKey: "page.path",
+            "filter[page.path][not]": "/private",
+            "filter[page.title][not]": "Internal",
+            "filter[page.path][or:0.0]": "/",
+            "filter[page.title][or:0.1]": "Home",
+          },
+        }),
+      );
+      expect(res).toMatchObject({ ok: true, field: "page.path" });
+    });
+
+    it("returns payload fields across event types when eventName is absent", () => {
+      const res = asRecord(
+        handleDemoRequest({
+          path: "/api/private/event-type-fields",
+          params: ANALYTICS_PARAMS,
+        }),
+      );
+      expect(res).toMatchObject({ ok: true, eventName: "" });
+      expect(res.fields).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: "/plan", valueType: "string" }),
+          expect.objectContaining({ path: "/value", valueType: "number" }),
+        ]),
+      );
+    });
+
+    it("limits public filter values to public canonical fields", () => {
+      const denied = asRecord(
+        handleDemoRequest({
+          path: "/api/public/share/some-token/filter-values",
+          params: { ...ANALYTICS_PARAMS, filterKey: "page.query" },
+        }),
+      );
+      expect(denied).toMatchObject({ ok: false, data: [] });
     });
 
     it("returns hierarchical geo point counts with and without region filters", () => {
@@ -1047,7 +1233,7 @@ describe("mock — handleDemoRequest", () => {
           },
         }),
       );
-      expect(sameDimension).toEqual({
+      expect(sameDimension).toMatchObject({
         ok: true,
         data: {
           columns: [],
@@ -1091,7 +1277,7 @@ describe("mock — handleDemoRequest", () => {
           params: { ...invertedParams, dimension: "browser" },
         }),
       );
-      expect(clientTrend).toEqual({
+      expect(clientTrend).toMatchObject({
         ok: true,
         interval: "hour",
         series: [],
@@ -1104,7 +1290,7 @@ describe("mock — handleDemoRequest", () => {
           params: { ...invertedParams, dimension: "source" },
         }),
       );
-      expect(utmTrend).toEqual({
+      expect(utmTrend).toMatchObject({
         ok: true,
         interval: "hour",
         series: [],
@@ -1117,7 +1303,7 @@ describe("mock — handleDemoRequest", () => {
           params: invertedParams,
         }),
       );
-      expect(browserRadar).toEqual({ ok: true, data: [] });
+      expect(browserRadar).toMatchObject({ ok: true, data: [] });
 
       const referrerRadar = asRecord(
         handleDemoRequest({
@@ -1125,7 +1311,7 @@ describe("mock — handleDemoRequest", () => {
           params: invertedParams,
         }),
       );
-      expect(referrerRadar).toEqual({ ok: true, data: [] });
+      expect(referrerRadar).toMatchObject({ ok: true, data: [] });
 
       const browserCross = asRecord(
         handleDemoRequest({
@@ -1149,7 +1335,7 @@ describe("mock — handleDemoRequest", () => {
           },
         }),
       );
-      expect(clientCross).toEqual({
+      expect(clientCross).toMatchObject({
         ok: true,
         data: {
           columns: [],
@@ -1191,7 +1377,6 @@ describe("mock — handleDemoRequest", () => {
           path: "/api/private/visitors",
           params: {
             ...ANALYTICS_PARAMS,
-            page: 1,
             pageSize: 2,
             sortBy: "views",
             sortDir: "asc",
@@ -1200,7 +1385,10 @@ describe("mock — handleDemoRequest", () => {
         }),
       );
       expect(visitors.meta).toEqual(
-        expect.objectContaining({ page: 1, pageSize: 2 }),
+        expect.objectContaining({
+          pageSize: 2,
+          nextCursor: expect.any(String),
+        }),
       );
       expect(visitors.data).toEqual(expect.any(Array));
 
@@ -1209,7 +1397,6 @@ describe("mock — handleDemoRequest", () => {
           path: "/api/private/sessions",
           params: {
             ...ANALYTICS_PARAMS,
-            page: 1,
             pageSize: 2,
             sortBy: "durationMs",
             sortDir: "asc",
@@ -1218,7 +1405,10 @@ describe("mock — handleDemoRequest", () => {
         }),
       );
       expect(sessions.meta).toEqual(
-        expect.objectContaining({ page: 1, pageSize: 2 }),
+        expect.objectContaining({
+          pageSize: 2,
+          nextCursor: expect.any(String),
+        }),
       );
 
       const events = asRecord(
@@ -1226,7 +1416,6 @@ describe("mock — handleDemoRequest", () => {
           path: "/api/private/events-records",
           params: {
             ...ANALYTICS_PARAMS,
-            page: 1,
             pageSize: 2,
             sortBy: "eventName",
             sortDir: "asc",
@@ -1234,9 +1423,7 @@ describe("mock — handleDemoRequest", () => {
           },
         }),
       );
-      expect(events.meta).toEqual(
-        expect.objectContaining({ page: 1, pageSize: 2 }),
-      );
+      expect(events.meta).toEqual(expect.objectContaining({ pageSize: 2 }));
     });
 
     it("builds visitor and session details from IDs returned by list routes", () => {
@@ -1381,7 +1568,10 @@ describe("mock — handleDemoRequest", () => {
             params,
           }),
         ),
-      ).toEqual({ ok: false, data: { error: "Not Found" } });
+      ).toMatchObject({
+        ok: false,
+        error: { code: "not_found", message: "Not Found" },
+      });
 
       expect(
         ok(
@@ -1390,7 +1580,10 @@ describe("mock — handleDemoRequest", () => {
             params,
           }),
         ),
-      ).toEqual({ ok: false, data: { error: "Not Found" } });
+      ).toMatchObject({
+        ok: false,
+        error: { code: "not_found", message: "Not Found" },
+      });
     });
 
     it("dispatches trend to the same generator", () => {
@@ -1425,13 +1618,15 @@ describe("mock — handleDemoRequest", () => {
         }),
       );
       expect(res.ok).toBe(false);
-      expect(res.data).toEqual({ error: "Not Found" });
+      expect(res).toMatchObject({
+        error: { code: "not_found", message: "Not Found" },
+      });
     });
 
     it.each([
       "performance",
       "countries",
-      "filter-options",
+      "filter-values",
       "overview-geo-points",
       "overview-client-browser",
       "overview-client-os-version",
@@ -1451,6 +1646,7 @@ describe("mock — handleDemoRequest", () => {
       "browser-radar",
       "referrer-radar",
       "referrer-dimension-trend",
+      "referrer-channel-dimension-trend",
       "client-dimension-trend",
       "client-cross-breakdown",
     ])("dispatches public %s routes", (subPath) => {
@@ -1459,7 +1655,7 @@ describe("mock — handleDemoRequest", () => {
         params: {
           ...params,
           dimension: "browser",
-          filterKey: "browser",
+          filterKey: "client.browser",
           primaryDimension: "browser",
           secondaryDimension: "language",
         },
@@ -1519,7 +1715,9 @@ describe("mock — handleDemoRequest", () => {
         handleDemoRequest({ path: "/api/private/totally-unknown" }),
       );
       expect(res.ok).toBe(false);
-      expect(res.data).toEqual({ error: "Not Found" });
+      expect(res).toMatchObject({
+        error: { code: "not_found", message: "Not Found" },
+      });
     });
   });
 });

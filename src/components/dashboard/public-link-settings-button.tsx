@@ -1,10 +1,8 @@
-"use client";
-
-import { useRouter } from "next/navigation";
 import { RiSettings3Line } from "@remixicon/react";
 
 import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface PublicLinkSettingsButtonProps {
   href: string;

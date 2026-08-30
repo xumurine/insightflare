@@ -1,29 +1,43 @@
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+
 import { describe, expect, it, vi } from "vitest";
 
-import type { DashboardFilters, QueryWindow } from "@/lib/edge/query/core";
+import { handleFilterValuesContract } from "@/lib/edge/analytics/composition/protocol/filter-values-contract-adapter";
 import {
-  handleFilterOptions,
-  handleOverview,
-  handleOverviewClientTab,
-  handleOverviewGeoPoints,
-  handleOverviewGeoTab,
-  handleOverviewPageTab,
-  handleOverviewSourceTab,
-  handleTrend,
+  handleOverviewContract as handleOverview,
+  handleTrendContract as handleTrend,
+} from "@/lib/edge/analytics/composition/protocol/overview-contract-adapter";
+import { handleOverviewGeoPointsContract as handleOverviewGeoPoints } from "@/lib/edge/analytics/composition/protocol/overview-extras-contract-adapter";
+import { handleOverviewTabContract } from "@/lib/edge/analytics/composition/protocol/overview-tabs-contract-adapter";
+import {
+  handlePagesContract as handlePages,
+  handlePagesDashboardContract as handlePagesDashboard,
+  handleReferrersContract as handleReferrers,
+} from "@/lib/edge/analytics/composition/protocol/pages-contract-adapter";
+import type { FilterDocument } from "@/lib/edge/analytics/contract";
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import {
+  mapDimensionRows,
+  type QueryWindow,
+} from "@/lib/edge/analytics/providers/d1/internal/core";
+import { queryRetentionFromD1 } from "@/lib/edge/analytics/providers/d1/internal/journey-retention";
+import {
+  queryLatestSiteActivity,
   queryOverviewFromD1,
   queryTrendFromD1,
-} from "@/lib/edge/query/overview";
+} from "@/lib/edge/analytics/providers/d1/internal/overview";
 import {
-  handleDimension,
-  handlePages,
-  handlePagesDashboard,
-  handleReferrers,
+  queryDimensionAggregate,
   queryPageCardMetricsFromD1,
   queryPageCardTitlesFromD1,
   queryPageCardTrendFromD1,
   queryTopPagesFromD1,
-} from "@/lib/edge/query/pages";
+} from "@/lib/edge/analytics/providers/d1/internal/pages";
 import type { Env } from "@/lib/edge/types";
+
+import { filterFixture } from "./filter-fixtures";
+import { installVisitSiteIdentityFixture } from "./site-identity-fixture";
 
 type D1Row = Record<string, unknown>;
 type QueryBinding = string | number | null;
@@ -36,13 +50,16 @@ interface QueryCall {
 const siteId = "site-pages";
 const baseMs = Date.UTC(2026, 0, 2, 1);
 const window: QueryWindow = {
-  fromMs: baseMs,
-  toMs: baseMs + 2 * 60 * 60 * 1000,
+  startMs: baseMs,
+  endExclusiveMs: baseMs + 2 * 60 * 60 * 1000,
   nowMs: baseMs + 3 * 60 * 60 * 1000,
   timeZone: "UTC",
 };
 
-function createD1Env(resultSets: D1Row[][]): {
+function createD1Env(
+  resultSets: D1Row[][],
+  rowsRead?: number,
+): {
   env: Env;
   calls: QueryCall[];
   prepare: ReturnType<typeof vi.fn>;
@@ -53,7 +70,10 @@ function createD1Env(resultSets: D1Row[][]): {
     bind: vi.fn((...bindings: QueryBinding[]) => ({
       all: vi.fn(async () => {
         calls.push({ sql, bindings });
-        return { results: pendingResults.shift() ?? [] };
+        return {
+          results: pendingResults.shift() ?? [],
+          ...(rowsRead === undefined ? {} : { meta: { rows_read: rowsRead } }),
+        };
       }),
     })),
   }));
@@ -70,7 +90,7 @@ function createD1Env(resultSets: D1Row[][]): {
 }
 
 function visitBindings(targetWindow = window): QueryBinding[] {
-  return [siteId, targetWindow.fromMs, targetWindow.toMs];
+  return [siteId, targetWindow.startMs, targetWindow.endExclusiveMs];
 }
 
 function url(path: string, params: Record<string, string | number | boolean>) {
@@ -96,11 +116,18 @@ describe("edge pages D1 queries", () => {
     ]);
 
     await expect(
-      queryTopPagesFromD1(env, siteId, window, 15, true, {
-        country: "US",
-        hostname: "Example.COM",
-        path: "/pricing",
-      }),
+      queryTopPagesFromD1(
+        env,
+        siteId,
+        window,
+        15,
+        true,
+        filterFixture({
+          country: "US",
+          hostname: "Example.COM",
+          path: "/pricing",
+        }),
+      ),
     ).resolves.toEqual([
       {
         pathname: "/pricing",
@@ -118,8 +145,8 @@ describe("edge pages D1 queries", () => {
     expect(calls[0].bindings).toEqual([
       ...visitBindings(),
       "us",
-      "/pricing",
       "example.com",
+      "/pricing",
       15,
     ]);
   });
@@ -128,7 +155,7 @@ describe("edge pages D1 queries", () => {
     const { env, calls } = createD1Env([[{ pathname: "/docs", views: 3 }]]);
 
     await expect(
-      queryTopPagesFromD1(env, siteId, window, 5, false, {}),
+      queryTopPagesFromD1(env, siteId, window, 5, false, EMPTY_FILTER_DOCUMENT),
     ).resolves.toEqual([
       { pathname: "/docs", query: "", hash: "", views: 3, sessions: 0 },
     ]);
@@ -152,7 +179,7 @@ describe("edge pages D1 queries", () => {
     ]);
 
     await expect(
-      queryTopPagesFromD1(env, siteId, window, 1, true, {}),
+      queryTopPagesFromD1(env, siteId, window, 1, true, EMPTY_FILTER_DOCUMENT),
     ).resolves.toEqual([
       { pathname: "", query: "", hash: "", views: 0, sessions: 0 },
     ]);
@@ -177,7 +204,7 @@ describe("edge pages D1 queries", () => {
         env,
         siteId,
         window,
-        { browser: "Chrome" },
+        filterFixture({ browser: "Chrome" }),
         {
           pathnames: [" /pricing ", "/pricing", "", "/docs"],
           limit: 10,
@@ -225,7 +252,13 @@ describe("edge pages D1 queries", () => {
     ]);
 
     await expect(
-      queryPageCardMetricsFromD1(env, siteId, window, {}, undefined),
+      queryPageCardMetricsFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        undefined,
+      ),
     ).resolves.toEqual([
       {
         pathname: "",
@@ -241,14 +274,159 @@ describe("edge pages D1 queries", () => {
     expect(calls[0].bindings).toEqual(visitBindings());
   });
 
+  it("materializes page-card visits once while preserving path-level bounces", async () => {
+    const database = new DatabaseSync(":memory:");
+    for (const migration of [
+      "migrations/0008_rebuild_analytics.sql",
+      "migrations/0013_add_visit_performance_metrics.sql",
+    ]) {
+      database.exec(readFileSync(migration, "utf8"));
+    }
+    installVisitSiteIdentityFixture(database);
+    const calls: QueryCall[] = [];
+    const env = {
+      DB: {
+        prepare: (sql: string) => ({
+          bind: (...bindings: QueryBinding[]) => {
+            const call = { sql, bindings };
+            calls.push(call);
+            return {
+              all: async () => ({
+                results: database.prepare(sql).all(...bindings) as D1Row[],
+              }),
+            };
+          },
+        }),
+      } as unknown as D1Database,
+    } as Env;
+    const insert = database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, status, started_at,
+        last_activity_at, pathname, hostname, duration_ms
+      ) VALUES (?, ?, ?, ?, 'closed', ?, ?, ?, 'example.test', ?)
+    `);
+
+    try {
+      insert.run(
+        "root-first",
+        siteId,
+        "visitor-1",
+        "session-1",
+        baseMs,
+        baseMs,
+        "/",
+        100,
+      );
+      insert.run(
+        "root-last",
+        siteId,
+        "visitor-1",
+        "session-1",
+        baseMs + 1,
+        baseMs + 1,
+        "/",
+        200,
+      );
+      insert.run(
+        "pricing-first",
+        siteId,
+        "visitor-1",
+        "session-2",
+        baseMs + 2,
+        baseMs + 2,
+        "/pricing",
+        50,
+      );
+      insert.run(
+        "pricing-second",
+        siteId,
+        "visitor-2",
+        "session-3",
+        baseMs + 3,
+        baseMs + 3,
+        "/pricing",
+        null,
+      );
+      insert.run(
+        "outside-window",
+        siteId,
+        "visitor-3",
+        "session-4",
+        window.endExclusiveMs,
+        window.endExclusiveMs,
+        "/pricing",
+        999,
+      );
+
+      await expect(
+        queryPageCardMetricsFromD1(
+          env,
+          siteId,
+          window,
+          EMPTY_FILTER_DOCUMENT,
+          undefined,
+        ),
+      ).resolves.toEqual([
+        {
+          pathname: "/pricing",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
+          bounces: 2,
+          totalDuration: 50,
+          durationViews: 0,
+        },
+        {
+          pathname: "/",
+          views: 2,
+          sessions: 1,
+          visitors: 1,
+          bounces: 0,
+          totalDuration: 300,
+          durationViews: 0,
+        },
+      ]);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.sql).toContain("filtered_visits AS MATERIALIZED");
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${calls[0]?.sql ?? "SELECT 1"}`)
+        .all(...(calls[0]?.bindings ?? [])) as Array<{ detail: string }>;
+      expect(
+        plan.filter((row) => row.detail.includes("SEARCH visits USING INDEX")),
+      ).toHaveLength(1);
+      expect(
+        plan.some((row) =>
+          row.detail.includes("idx_visits_site_pk_started_at"),
+        ),
+      ).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+
   it("returns empty title and trend queries without touching D1 when pathnames are empty", async () => {
     const { env, prepare } = createD1Env([]);
 
     await expect(
-      queryPageCardTitlesFromD1(env, siteId, window, {}, ["", "  "], 3),
+      queryPageCardTitlesFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        ["", "  "],
+        3,
+      ),
     ).resolves.toEqual([]);
     await expect(
-      queryPageCardTrendFromD1(env, siteId, window, "hour", {}, []),
+      queryPageCardTrendFromD1(
+        env,
+        siteId,
+        window,
+        "hour",
+        EMPTY_FILTER_DOCUMENT,
+        [],
+      ),
     ).resolves.toEqual([]);
 
     expect(prepare).not.toHaveBeenCalled();
@@ -271,7 +449,7 @@ describe("edge pages D1 queries", () => {
         env,
         siteId,
         window,
-        { clientDeviceType: "desktop" },
+        filterFixture({ clientDeviceType: "desktop" }),
         ["/pricing"],
         2,
       ),
@@ -285,7 +463,7 @@ describe("edge pages D1 queries", () => {
         siteId,
         window,
         "hour",
-        { clientDeviceType: "desktop" },
+        filterFixture({ clientDeviceType: "desktop" }),
         ["/pricing"],
       ),
     ).resolves.toEqual([
@@ -339,10 +517,24 @@ describe("edge pages D1 queries", () => {
     ]);
 
     await expect(
-      queryPageCardTitlesFromD1(env, siteId, window, {}, ["/pricing"], 3),
+      queryPageCardTitlesFromD1(
+        env,
+        siteId,
+        window,
+        EMPTY_FILTER_DOCUMENT,
+        ["/pricing"],
+        3,
+      ),
     ).resolves.toEqual([{ pathname: "", title: "", views: 0 }]);
     await expect(
-      queryPageCardTrendFromD1(env, siteId, window, "hour", {}, ["/pricing"]),
+      queryPageCardTrendFromD1(
+        env,
+        siteId,
+        window,
+        "hour",
+        EMPTY_FILTER_DOCUMENT,
+        ["/pricing"],
+      ),
     ).resolves.toEqual([
       {
         pathname: "",
@@ -361,28 +553,60 @@ describe("edge pages handlers", () => {
       [{ pathname: "/home", queryValue: "x=1", hashValue: "", views: 7 }],
       [
         {
-          visitorId: "visitor-1",
-          sessionId: "session-1",
-          startedAt: window.fromMs,
-          pathname: "/home",
-          title: "Home",
-          hostname: "example.com",
+          cardType: "path",
+          value: "/home",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
         },
         {
-          visitorId: "visitor-1",
-          sessionId: "session-1",
-          startedAt: window.fromMs + 1,
-          pathname: "/pricing",
-          title: "Pricing",
-          hostname: "example.com",
+          cardType: "path",
+          value: "/pricing",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
         },
         {
-          visitorId: "visitor-2",
-          sessionId: "session-2",
-          startedAt: window.fromMs + 2,
-          pathname: "/home",
-          title: "Home",
-          hostname: "example.com",
+          cardType: "title",
+          value: "Home",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
+        },
+        {
+          cardType: "title",
+          value: "Pricing",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+        {
+          cardType: "hostname",
+          value: "example.com",
+          views: 3,
+          sessions: 2,
+          visitors: 2,
+        },
+        {
+          cardType: "entry",
+          value: "/home",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
+        },
+        {
+          cardType: "exit",
+          value: "/home",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+        {
+          cardType: "exit",
+          value: "/pricing",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
         },
       ],
     ]);
@@ -391,10 +615,10 @@ describe("edge pages handlers", () => {
       env,
       siteId,
       url("/pages", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         details: true,
-        country: "US",
+        "filter[geo.country]": "US",
         limit: 5,
       }),
       true,
@@ -432,7 +656,8 @@ describe("edge pages handlers", () => {
     });
     expect(calls).toHaveLength(2);
     expect(calls[0].bindings).toEqual([...visitBindings(), "us", 5]);
-    expect(calls[1].bindings).toEqual([...visitBindings(), "us"]);
+    expect(calls[1].bindings).toEqual([...visitBindings(), "us", 5]);
+    expect(calls[1].sql).toContain("ranked_cards AS");
   });
 
   it("maps referrer handler rows with full URL mode and filters", async () => {
@@ -451,10 +676,10 @@ describe("edge pages handlers", () => {
       env,
       siteId,
       url("/referrers", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         fullUrl: true,
-        browser: "Chrome",
+        "filter[client.browser]": "Chrome",
         limit: 7,
       }),
     );
@@ -473,7 +698,7 @@ describe("edge pages handlers", () => {
     expect(calls[0].bindings).toEqual([...visitBindings(), "Chrome", 7]);
   });
 
-  it("maps dimension handler rows and can ignore geo filters", async () => {
+  it("maps dimension aggregate rows and drops geo filters before querying", async () => {
     const { env, calls } = createD1Env([
       [
         {
@@ -485,31 +710,24 @@ describe("edge pages handlers", () => {
       ],
     ]);
 
-    const response = await handleDimension(
+    const rows = await queryDimensionAggregate(
       env,
       siteId,
-      url("/dimension", {
-        from: window.fromMs,
-        to: window.toMs,
-        geo: "US::CA::California",
-        device: "desktop",
-        limit: 4,
-      }),
+      window,
+      filterFixture({ device: "desktop" }),
+      4,
       "browser",
-      { ignoreGeo: true },
     );
 
-    await expect(response.json()).resolves.toEqual({
-      ok: true,
-      data: [
-        {
-          label: "Chrome",
-          views: 5,
-          sessions: 3,
-          visitors: 2,
-        },
-      ],
-    });
+    expect(mapDimensionRows(rows)).toEqual([
+      {
+        value: "Chrome",
+        label: "Chrome",
+        views: 5,
+        sessions: 3,
+        visitors: 2,
+      },
+    ]);
     expect(calls[0].sql).toContain("COALESCE(browser, '') AS value");
     expect(calls[0].bindings).toEqual([...visitBindings(), "desktop", 4]);
   });
@@ -521,8 +739,8 @@ describe("edge pages handlers", () => {
       env,
       siteId,
       url("/pages/dashboard", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         page: 2,
         pageSize: 4,
         interval: "hour",
@@ -543,6 +761,24 @@ describe("edge pages handlers", () => {
     });
     expect(calls).toHaveLength(1);
     expect(calls[0].bindings).toEqual([...visitBindings(), 5, 4]);
+  });
+
+  it("rejects deep dashboard pages before querying D1", async () => {
+    const { env, calls } = createD1Env([]);
+
+    const response = await handlePagesDashboard(
+      env,
+      siteId,
+      url("/pages/dashboard", {
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        page: 10_000,
+        pageSize: 24,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(calls).toHaveLength(0);
   });
 
   it("maps dashboard cards, titles, trends, previous changes, and hasMore pagination", async () => {
@@ -585,13 +821,33 @@ describe("edge pages handlers", () => {
         },
       ],
       [
-        { pathname: "/pricing", title: " Pricing ", views: 8 },
-        { pathname: "/pricing", title: "Pricing", views: 2 },
-        { pathname: "/docs", title: "Docs", views: 4 },
-      ],
-      [
-        { pathname: "/pricing", bucket: 0, views: 6, visitors: 3 },
-        { pathname: "/docs", bucket: 1, views: 4, visitors: 2 },
+        {
+          rowKind: "title",
+          pathname: "/pricing",
+          title: " Pricing ",
+          views: 8,
+        },
+        {
+          rowKind: "title",
+          pathname: "/pricing",
+          title: "Pricing",
+          views: 2,
+        },
+        { rowKind: "title", pathname: "/docs", title: "Docs", views: 4 },
+        {
+          rowKind: "trend",
+          pathname: "/pricing",
+          bucket: 0,
+          views: 6,
+          visitors: 3,
+        },
+        {
+          rowKind: "trend",
+          pathname: "/docs",
+          bucket: 1,
+          views: 4,
+          visitors: 2,
+        },
       ],
     ]);
 
@@ -599,8 +855,8 @@ describe("edge pages handlers", () => {
       env,
       siteId,
       url("/pages/dashboard", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         page: 1,
         pageSize: 2,
         interval: "hour",
@@ -675,12 +931,12 @@ describe("edge pages handlers", () => {
         },
       ],
     });
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(3);
     expect(calls[0].bindings).toEqual([...visitBindings(), 3, 0]);
     expect(calls[1].bindings).toEqual([
       siteId,
-      Math.max(window.fromMs - 1 - (window.toMs - window.fromMs), 0),
-      window.fromMs - 1,
+      Math.max(window.startMs - (window.endExclusiveMs - window.startMs), 0),
+      window.startMs,
       "/pricing",
       "/docs",
     ]);
@@ -690,23 +946,46 @@ describe("edge pages handlers", () => {
       "/docs",
       3,
     ]);
-    expect(calls[3].bindings).toEqual([
-      ...visitBindings(),
-      "/pricing",
-      "/docs",
-    ]);
+    expect(calls[2].sql).toContain("filtered_visits AS MATERIALIZED");
   });
 });
 
 describe("edge overview D1 queries and handlers", () => {
+  it("reads the latest filtered site activity without turning an absent value into epoch", async () => {
+    const { env, calls } = createD1Env([
+      [{ lastActivityAt: 123 }],
+      [{ lastActivityAt: null }],
+      [{ lastActivityAt: "not-a-time" }],
+    ]);
+    const filters = filterFixture({ country: "US" });
+
+    await expect(
+      queryLatestSiteActivity(env, siteId, window, filters),
+    ).resolves.toBe(123);
+    await expect(
+      queryLatestSiteActivity(env, siteId, window, filters),
+    ).resolves.toBeNull();
+    await expect(
+      queryLatestSiteActivity(env, siteId, window, filters),
+    ).resolves.toBeNull();
+    expect(calls).toHaveLength(3);
+    expect(calls[0]?.sql).toContain("MAX(last_activity_at)");
+    expect(calls[0]?.bindings).toEqual([...visitBindings(), "us"]);
+  });
+
   it("maps overview aggregate fallback values and applies filters", async () => {
     const { env, calls } = createD1Env([[]]);
 
     await expect(
-      queryOverviewFromD1(env, siteId, window, {
-        country: "US",
-        clientBrowser: "Chrome",
-      }),
+      queryOverviewFromD1(
+        env,
+        siteId,
+        window,
+        filterFixture({
+          country: "US",
+          clientBrowser: "Chrome",
+        }),
+      ),
     ).resolves.toEqual({
       views: 0,
       sessions: 0,
@@ -717,14 +996,317 @@ describe("edge overview D1 queries and handlers", () => {
     });
 
     expect(calls[0].sql).toContain("session_rollup AS");
-    expect(calls[0].bindings).toEqual([...visitBindings(), "us", "Chrome"]);
+    expect(calls[0].bindings).toEqual([...visitBindings(), "Chrome", "us"]);
+  });
+
+  it("materializes filtered overview visits once while preserving aggregates", async () => {
+    const database = new DatabaseSync(":memory:");
+    for (const migration of [
+      "migrations/0008_rebuild_analytics.sql",
+      "migrations/0013_add_visit_performance_metrics.sql",
+    ]) {
+      database.exec(readFileSync(migration, "utf8"));
+    }
+    installVisitSiteIdentityFixture(database);
+    const calls: QueryCall[] = [];
+    const env = {
+      DB: {
+        prepare: (sql: string) => ({
+          bind: (...bindings: QueryBinding[]) => {
+            const call = { sql, bindings };
+            calls.push(call);
+            return {
+              all: async () => ({
+                results: database.prepare(sql).all(...bindings) as D1Row[],
+              }),
+            };
+          },
+        }),
+      } as unknown as D1Database,
+    } as Env;
+    const insert = database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, status, started_at,
+        last_activity_at, pathname, hostname, country, browser, duration_ms
+      ) VALUES (?, ?, ?, ?, 'closed', ?, ?, ?, 'example.test', ?, ?, ?)
+    `);
+
+    try {
+      insert.run(
+        "first-session-first-visit",
+        siteId,
+        "visitor-1",
+        "session-1",
+        baseMs,
+        baseMs,
+        "/",
+        "US",
+        "Chrome",
+        100,
+      );
+      insert.run(
+        "first-session-second-visit",
+        siteId,
+        "visitor-1",
+        "session-1",
+        baseMs + 1,
+        baseMs + 1,
+        "/docs",
+        "US",
+        "Chrome",
+        null,
+      );
+      insert.run(
+        "second-session-visit",
+        siteId,
+        "visitor-1",
+        "session-2",
+        baseMs + 2,
+        baseMs + 2,
+        "/pricing",
+        "US",
+        "Chrome",
+        50,
+      );
+      insert.run(
+        "excluded-country",
+        siteId,
+        "visitor-2",
+        "session-3",
+        baseMs + 3,
+        baseMs + 3,
+        "/",
+        "CA",
+        "Chrome",
+        999,
+      );
+
+      await expect(
+        queryOverviewFromD1(
+          env,
+          siteId,
+          window,
+          filterFixture({ path: "/docs" }),
+        ),
+      ).resolves.toEqual({
+        views: 2,
+        sessions: 1,
+        visitors: 1,
+        bounces: 0,
+        totalDuration: 100,
+        durationViews: 1,
+      });
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.sql).toContain("filtered_visits AS MATERIALIZED");
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${calls[0]?.sql ?? "SELECT 1"}`)
+        .all(...(calls[0]?.bindings ?? [])) as Array<{ detail: string }>;
+      expect(
+        plan.filter((row) => row.detail.includes("SEARCH visits USING INDEX")),
+      ).toHaveLength(1);
+      expect(
+        plan.some((row) =>
+          row.detail.includes("idx_visits_site_pk_started_at"),
+        ),
+      ).toBe(true);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("filters overview visits by each session's entry path", async () => {
+    const database = new DatabaseSync(":memory:");
+    for (const migration of [
+      "migrations/0008_rebuild_analytics.sql",
+      "migrations/0013_add_visit_performance_metrics.sql",
+    ]) {
+      database.exec(readFileSync(migration, "utf8"));
+    }
+    installVisitSiteIdentityFixture(database);
+    const calls: QueryCall[] = [];
+    const env = {
+      DB: {
+        prepare: (sql: string) => ({
+          bind: (...bindings: QueryBinding[]) => {
+            const call = { sql, bindings };
+            calls.push(call);
+            return {
+              all: async () => ({
+                results: database.prepare(sql).all(...bindings) as D1Row[],
+              }),
+            };
+          },
+        }),
+      } as unknown as D1Database,
+    } as Env;
+    const insert = database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, status, started_at,
+        last_activity_at, pathname, hostname, duration_ms
+      ) VALUES (?, ?, ?, ?, 'closed', ?, ?, ?, 'example.test', ?)
+    `);
+
+    try {
+      insert.run(
+        "matching-entry",
+        siteId,
+        "visitor-1",
+        "matching-session",
+        baseMs,
+        baseMs,
+        "/landing",
+        20,
+      );
+      insert.run(
+        "matching-follow-up",
+        siteId,
+        "visitor-1",
+        "matching-session",
+        baseMs + 1,
+        baseMs + 1,
+        "/pricing",
+        30,
+      );
+      insert.run(
+        "different-entry",
+        siteId,
+        "visitor-2",
+        "other-session",
+        baseMs + 2,
+        baseMs + 2,
+        "/docs",
+        99,
+      );
+      insert.run(
+        "empty-session",
+        siteId,
+        "visitor-3",
+        "",
+        baseMs + 3,
+        baseMs + 3,
+        "/landing",
+        999,
+      );
+
+      await expect(
+        queryOverviewFromD1(
+          env,
+          siteId,
+          window,
+          filterFixture({
+            entry: "/landing",
+            exit: "/pricing",
+          }),
+        ),
+      ).resolves.toEqual({
+        views: 2,
+        sessions: 1,
+        visitors: 1,
+        bounces: 0,
+        totalDuration: 50,
+        durationViews: 2,
+      });
+
+      expect(calls).toHaveLength(1);
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${calls[0]?.sql ?? "SELECT 1"}`)
+        .all(...(calls[0]?.bindings ?? [])) as Array<{ detail: string }>;
+      expect(
+        plan.some((row) => row.detail.includes("CORRELATED SCALAR SUBQUERY")),
+      ).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("uses filtered visits to select retention visitors, then counts their later visits", async () => {
+    const database = new DatabaseSync(":memory:");
+    for (const migration of [
+      "migrations/0008_rebuild_analytics.sql",
+      "migrations/0013_add_visit_performance_metrics.sql",
+    ]) {
+      database.exec(readFileSync(migration, "utf8"));
+    }
+    installVisitSiteIdentityFixture(database);
+    const env = {
+      DB: {
+        prepare: (sql: string) => ({
+          bind: (...bindings: QueryBinding[]) => ({
+            all: async () => ({
+              results: database.prepare(sql).all(...bindings) as D1Row[],
+            }),
+          }),
+        }),
+      } as unknown as D1Database,
+    } as Env;
+    const insert = database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, status, started_at,
+        last_activity_at, pathname, hostname
+      ) VALUES (?, ?, ?, ?, 'closed', ?, ?, ?, 'example.test')
+    `);
+
+    try {
+      insert.run(
+        "retention-match",
+        siteId,
+        "visitor-match",
+        "retention-session",
+        baseMs + 100,
+        baseMs + 100,
+        "/match",
+      );
+      insert.run(
+        "retention-return",
+        siteId,
+        "visitor-match",
+        "retention-session",
+        baseMs + 60 * 60 * 1000 + 100,
+        baseMs + 60 * 60 * 1000 + 100,
+        "/return",
+      );
+      insert.run(
+        "retention-other",
+        siteId,
+        "visitor-other",
+        "other-session",
+        baseMs + 100,
+        baseMs + 100,
+        "/other",
+      );
+
+      await expect(
+        queryRetentionFromD1(
+          env,
+          siteId,
+          window,
+          filterFixture({ path: "/match" }),
+          "hour",
+        ),
+      ).resolves.toEqual({
+        granularity: "hour",
+        cohorts: [
+          {
+            bucket: baseMs,
+            size: 1,
+            periods: [
+              { index: 0, visitors: 1, rate: 1 },
+              { index: 1, visitors: 1, rate: 1 },
+            ],
+          },
+        ],
+      });
+    } finally {
+      database.close();
+    }
   });
 
   it("maps trend rows, bucket timestamps, and filter bindings", async () => {
-    const filters: DashboardFilters = {
+    const filters: FilterDocument = filterFixture({
       sourceDomain: "Ref.Example",
       clientDeviceType: "mobile",
-    };
+    });
     const { env, calls } = createD1Env([
       [
         {
@@ -778,14 +1360,130 @@ describe("edge overview D1 queries and handlers", () => {
     expect(calls[0].sql).toContain("CASE WHEN started_at >=");
     expect(calls[0].bindings).toEqual([
       ...visitBindings(),
-      "ref.example",
       "mobile",
+      "ref.example",
     ]);
+  });
+
+  it("materializes filtered trend visits once while preserving bucket metrics", async () => {
+    const database = new DatabaseSync(":memory:");
+    for (const migration of [
+      "migrations/0008_rebuild_analytics.sql",
+      "migrations/0013_add_visit_performance_metrics.sql",
+    ]) {
+      database.exec(readFileSync(migration, "utf8"));
+    }
+    installVisitSiteIdentityFixture(database);
+    const calls: QueryCall[] = [];
+    const env = {
+      DB: {
+        prepare: (sql: string) => ({
+          bind: (...bindings: QueryBinding[]) => {
+            const call = { sql, bindings };
+            calls.push(call);
+            return {
+              all: async () => ({
+                results: database.prepare(sql).all(...bindings) as D1Row[],
+              }),
+            };
+          },
+        }),
+      } as unknown as D1Database,
+    } as Env;
+    const insert = database.prepare(`
+      INSERT INTO visits (
+        visit_id, site_id, visitor_id, session_id, status, started_at,
+        last_activity_at, pathname, hostname, country, duration_ms
+      ) VALUES (?, ?, ?, ?, 'closed', ?, ?, ?, 'example.test', ?, ?)
+    `);
+
+    try {
+      insert.run(
+        "first-hour",
+        siteId,
+        "visitor-1",
+        "session-1",
+        baseMs + 100,
+        baseMs + 100,
+        "/",
+        "US",
+        100,
+      );
+      insert.run(
+        "second-hour-first",
+        siteId,
+        "visitor-1",
+        "session-2",
+        baseMs + 60 * 60 * 1000 + 100,
+        baseMs + 60 * 60 * 1000 + 100,
+        "/docs",
+        "US",
+        200,
+      );
+      insert.run(
+        "second-hour-last",
+        siteId,
+        "visitor-1",
+        "session-2",
+        baseMs + 60 * 60 * 1000 + 200,
+        baseMs + 60 * 60 * 1000 + 200,
+        "/pricing",
+        "US",
+        300,
+      );
+      insert.run(
+        "excluded-country",
+        siteId,
+        "visitor-2",
+        "session-3",
+        baseMs + 300,
+        baseMs + 300,
+        "/",
+        "CA",
+        999,
+      );
+
+      await expect(
+        queryTrendFromD1(
+          env,
+          siteId,
+          window,
+          "hour",
+          filterFixture({ path: "/docs" }),
+        ),
+      ).resolves.toEqual([
+        {
+          bucket: 1,
+          timestampMs: baseMs + 60 * 60 * 1000,
+          views: 2,
+          visitors: 1,
+          sessions: 1,
+          bounces: 0,
+          totalDuration: 500,
+          durationViews: 2,
+        },
+      ]);
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.sql).toContain("filtered_visits AS MATERIALIZED");
+      const plan = database
+        .prepare(`EXPLAIN QUERY PLAN ${calls[0]?.sql ?? "SELECT 1"}`)
+        .all(...(calls[0]?.bindings ?? [])) as Array<{ detail: string }>;
+      expect(
+        plan.filter((row) => row.detail.includes("SEARCH visits USING INDEX")),
+      ).toHaveLength(1);
+      expect(
+        plan.some((row) =>
+          row.detail.includes("idx_visits_site_pk_started_at"),
+        ),
+      ).toBe(true);
+    } finally {
+      database.close();
+    }
   });
 
   it("returns overview metrics with previous change rates and detail trend mapping", async () => {
     const { env, calls } = createD1Env([
-      [],
       [
         {
           views: 10,
@@ -796,7 +1494,6 @@ describe("edge overview D1 queries and handlers", () => {
           durationViews: 10,
         },
       ],
-      [],
       [
         {
           views: 5,
@@ -807,7 +1504,6 @@ describe("edge overview D1 queries and handlers", () => {
           durationViews: 5,
         },
       ],
-      [],
       [
         {
           bucket: 0,
@@ -825,11 +1521,12 @@ describe("edge overview D1 queries and handlers", () => {
       env,
       siteId,
       url("/overview", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         interval: "hour",
         includeChange: true,
         includeDetail: true,
+        "filter[page.path]": "/pricing",
       }),
     );
 
@@ -880,17 +1577,19 @@ describe("edge overview D1 queries and handlers", () => {
         ],
       },
     });
-    expect(calls).toHaveLength(6);
-    expect(calls[0].sql).toContain("visit_hourly_aggregation_state");
-    expect(calls[1].bindings).toEqual(visitBindings());
-    expect(calls[2].sql).toContain("visit_hourly_aggregation_state");
-    expect(calls[3].bindings).toEqual([
+    expect(response.headers.get("x-insightflare-data-source")).toBe("raw");
+    expect(response.headers.get("x-insightflare-d1-rows-read")).toBe(
+      "unavailable",
+    );
+    expect(calls).toHaveLength(3);
+    expect(calls[0].bindings).toEqual([...visitBindings(), "/pricing"]);
+    expect(calls[1].bindings).toEqual([
       siteId,
-      Math.max(window.fromMs - 1 - (window.toMs - window.fromMs), 0),
-      window.fromMs - 1,
+      Math.max(window.startMs - (window.endExclusiveMs - window.startMs), 0),
+      window.startMs,
+      "/pricing",
     ]);
-    expect(calls[4].sql).toContain("visit_hourly_aggregation_state");
-    expect(calls[5].bindings).toEqual(visitBindings());
+    expect(calls[2].bindings).toEqual([...visitBindings(), "/pricing"]);
   });
 
   it("maps trend handler rows without optional overview change payload", async () => {
@@ -912,10 +1611,10 @@ describe("edge overview D1 queries and handlers", () => {
       env,
       siteId,
       url("/trend", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         interval: "hour",
-        sourceDomain: "Ref.Example",
+        "filter[referrer.domain]": "Ref.Example",
       }),
     );
 
@@ -940,101 +1639,102 @@ describe("edge overview D1 queries and handlers", () => {
   });
 
   it("maps overview page, source, client, and geo tab handlers", async () => {
-    const { env, calls } = createD1Env([
+    const { env, calls } = createD1Env(
       [
-        {
-          visitorId: "visitor-1",
-          sessionId: "session-1",
-          startedAt: window.fromMs,
-          pathname: "/home",
-          title: "Home",
-          hostname: "example.com",
-        },
+        [
+          {
+            value: "/home",
+            views: "1",
+            sessions: "1",
+            visitors: "1",
+          },
+        ],
+        [
+          {
+            referrer: "",
+            views: "4",
+            sessions: "2",
+            visitors: "2",
+          },
+        ],
+        [
+          {
+            channel: "organic_search",
+            views: "3",
+            sessions: "2",
+            visitors: "2",
+          },
+        ],
+        [
+          {
+            value: "1440x900",
+            views: "2",
+            sessions: "2",
+            visitors: "2",
+          },
+        ],
+        [
+          {
+            value: "US",
+            views: "1",
+            sessions: "1",
+            visitors: "1",
+          },
+        ],
       ],
-      [
-        {
-          referrer: "",
-          views: "4",
-          sessions: "2",
-          visitors: "2",
-        },
-      ],
-      [
-        {
-          sessionId: "session-1",
-          browser: "Chrome",
-          os: "macOS",
-          osVersion: "14",
-          deviceType: "desktop",
-          language: "en-US",
-          screenWidth: 1440,
-          screenHeight: 900,
-        },
-        {
-          sessionId: "session-2",
-          browser: "Chrome",
-          os: "macOS",
-          osVersion: "14",
-          deviceType: "desktop",
-          language: "en-US",
-          screenWidth: 1440,
-          screenHeight: 900,
-        },
-      ],
-      [
-        {
-          sessionId: "session-1",
-          visitorId: "visitor-1",
-          country: "US",
-          region: "US::CA::California",
-          city: "US::CA::California::San Francisco",
-          continent: "NA",
-          timezone: "America/Los_Angeles",
-          asOrganization: "Example ISP",
-        },
-      ],
-    ]);
+      37,
+    );
 
-    const pageTab = await handleOverviewPageTab(
+    const pageTab = await handleOverviewTabContract(
       env,
       siteId,
       url("/overview/page-tab", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         limit: 2,
       }),
-      "path",
+      "page.path",
     );
-    const sourceTab = await handleOverviewSourceTab(
+    const sourceTab = await handleOverviewTabContract(
       env,
       siteId,
       url("/overview/source-tab", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         limit: 3,
       }),
-      "domain",
+      "source.domain",
     );
-    const clientTab = await handleOverviewClientTab(
+    const sourceChannelTab = await handleOverviewTabContract(
+      env,
+      siteId,
+      url("/overview/source-channel-tab", {
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        limit: 3,
+      }),
+      "source.channel",
+    );
+    const clientTab = await handleOverviewTabContract(
       env,
       siteId,
       url("/overview/client-tab", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         limit: 3,
       }),
-      "screenSize",
+      "client.screenSize",
     );
-    const geoTab = await handleOverviewGeoTab(
+    const geoTab = await handleOverviewTabContract(
       env,
       siteId,
       url("/overview/geo-tab", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         geo: "US::CA::California",
         limit: 3,
       }),
-      "country",
+      "geo.country",
     );
 
     await expect(pageTab.json()).resolves.toEqual({
@@ -1044,6 +1744,17 @@ describe("edge overview D1 queries and handlers", () => {
     await expect(sourceTab.json()).resolves.toEqual({
       ok: true,
       data: [{ label: "", views: 4, sessions: 2, visitors: 2 }],
+    });
+    await expect(sourceChannelTab.json()).resolves.toEqual({
+      ok: true,
+      data: [
+        {
+          label: "organic_search",
+          views: 3,
+          sessions: 2,
+          visitors: 2,
+        },
+      ],
     });
     await expect(clientTab.json()).resolves.toEqual({
       ok: true,
@@ -1062,11 +1773,17 @@ describe("edge overview D1 queries and handlers", () => {
       ],
     });
     expect(calls.map((call) => call.bindings)).toEqual([
-      visitBindings(),
+      [...visitBindings(), 2],
       [...visitBindings(), 3],
-      visitBindings(),
-      visitBindings(),
+      [...visitBindings(), 3],
+      [...visitBindings(), 3],
+      [...visitBindings(), 3],
     ]);
+    expect(calls[2].sql).toContain("channel_rollup AS");
+    for (const call of [calls[0], calls[3], calls[4]]) {
+      expect(call.sql).toContain("GROUP BY value");
+      expect(call.sql).toContain("WHERE TRIM(value) != ''");
+    }
   });
 
   it("maps filter option branches across page, source, client, geo, and scalar keys", async () => {
@@ -1081,12 +1798,11 @@ describe("edge overview D1 queries and handlers", () => {
       ],
       [
         {
-          visitorId: "visitor-1",
-          sessionId: "session-1",
-          startedAt: window.fromMs,
-          pathname: "/home",
-          title: "Home",
-          hostname: "example.com",
+          cardType: "path",
+          value: "/home",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
         },
       ],
       [
@@ -1099,154 +1815,137 @@ describe("edge overview D1 queries and handlers", () => {
       ],
       [
         {
-          sessionId: "session-1",
-          browser: "Chrome",
-          os: "macOS",
-          osVersion: "14",
-          deviceType: "desktop",
-          language: "en-US",
-          screenWidth: 390,
-          screenHeight: 844,
+          cardType: "screenSize",
+          value: "390x844",
+          views: 1,
+          sessions: 1,
         },
       ],
       [
         {
-          sessionId: "session-1",
-          visitorId: "visitor-1",
-          country: "US",
-          region: "US::CA::California",
-          city: "US::CA::California::San Francisco",
-          continent: "NA",
-          timezone: "America/Los_Angeles",
-          asOrganization: "Example ISP",
+          cardType: "country",
+          value: "US",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
         },
-      ],
-      [
         {
-          sessionId: "session-1",
-          visitorId: "visitor-1",
-          country: "US",
-          region: "US::CA::California",
-          city: "US::CA::California::San Francisco",
-          continent: "NA",
-          timezone: "America/Los_Angeles",
-          asOrganization: "Example ISP",
-        },
-      ],
-    ]);
-
-    const scalar = await handleFilterOptions(
-      env,
-      siteId,
-      url("/filter-options", {
-        filterKey: "country",
-        country: "US",
-        browser: "Chrome",
-        from: window.fromMs,
-        to: window.toMs,
-        limit: 4,
-      }),
-    );
-    const page = await handleFilterOptions(
-      env,
-      siteId,
-      url("/filter-options", {
-        filterKey: "path",
-        path: "/home",
-        from: window.fromMs,
-        to: window.toMs,
-        limit: 4,
-      }),
-    );
-    const source = await handleFilterOptions(
-      env,
-      siteId,
-      url("/filter-options", {
-        filterKey: "sourceDomain",
-        sourceDomain: "__direct__",
-        from: window.fromMs,
-        to: window.toMs,
-        limit: 4,
-      }),
-    );
-    const client = await handleFilterOptions(
-      env,
-      siteId,
-      url("/filter-options", {
-        filterKey: "clientScreenSize",
-        clientScreenSize: "390x844",
-        from: window.fromMs,
-        to: window.toMs,
-        limit: 4,
-      }),
-    );
-    const geo = await handleFilterOptions(
-      env,
-      siteId,
-      url("/filter-options", {
-        filterKey: "geo",
-        geo: "US::CA::California",
-        from: window.fromMs,
-        to: window.toMs,
-        limit: 4,
-      }),
-    );
-    const geoOrganization = await handleFilterOptions(
-      env,
-      siteId,
-      url("/filter-options", {
-        filterKey: "geoOrganization",
-        geoOrganization: "Example ISP",
-        from: window.fromMs,
-        to: window.toMs,
-        limit: 4,
-      }),
-    );
-
-    await expect(scalar.json()).resolves.toEqual({
-      ok: true,
-      data: [{ value: "US", label: "US" }],
-    });
-    await expect(page.json()).resolves.toEqual({
-      ok: true,
-      data: [{ value: "/home", label: "/home" }],
-    });
-    await expect(source.json()).resolves.toEqual({
-      ok: true,
-      data: [{ value: "__direct__", label: "__direct__" }],
-    });
-    await expect(client.json()).resolves.toEqual({
-      ok: true,
-      data: [{ value: "390x844", label: "390x844" }],
-    });
-    await expect(geo.json()).resolves.toEqual({
-      ok: true,
-      data: [
-        { value: "US", label: "US", group: "country" },
-        {
+          cardType: "region",
           value: "US::CA::California",
-          label: "California",
-          group: "region",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
         },
         {
+          cardType: "city",
           value: "US::CA::California::San Francisco",
-          label: "San Francisco",
-          group: "city",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
         },
       ],
-    });
-    await expect(geoOrganization.json()).resolves.toEqual({
-      ok: true,
-      data: [{ value: "Example ISP", label: "Example ISP" }],
-    });
-    expect(calls.map((call) => call.bindings)).toEqual([
-      [...visitBindings(), "Chrome", 4],
-      visitBindings(),
-      [...visitBindings(), 4],
-      visitBindings(),
-      visitBindings(),
-      visitBindings(),
+      [],
+      [],
+      [
+        {
+          cardType: "organization",
+          value: "Example ISP",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+      ],
     ]);
+
+    const scalar = await handleFilterValuesContract(
+      env,
+      siteId,
+      url("/filter-values", {
+        filterKey: "geo.country",
+        "filter[geo.country]": "US",
+        "filter[client.browser]": "Chrome",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        limit: 4,
+      }),
+    );
+    const page = await handleFilterValuesContract(
+      env,
+      siteId,
+      url("/filter-values", {
+        filterKey: "page.path",
+        "filter[page.path]": "/home",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        limit: 4,
+      }),
+    );
+    const source = await handleFilterValuesContract(
+      env,
+      siteId,
+      url("/filter-values", {
+        filterKey: "referrer.domain",
+        "filter[referrer.domain]": "__direct__",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        limit: 4,
+      }),
+    );
+    const client = await handleFilterValuesContract(
+      env,
+      siteId,
+      url("/filter-values", {
+        filterKey: "client.screenSize",
+        "filter[client.screenSize]": "390x844",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        limit: 4,
+      }),
+    );
+    const geo = await handleFilterValuesContract(
+      env,
+      siteId,
+      url("/filter-values", {
+        filterKey: "geo.region",
+        "filter[geo.country]": "US",
+        "filter[geo.region]": "California",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        limit: 4,
+      }),
+    );
+    const geoOrganization = await handleFilterValuesContract(
+      env,
+      siteId,
+      url("/filter-values", {
+        filterKey: "geo.organization",
+        "filter[geo.organization]": "Example ISP",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        limit: 4,
+      }),
+    );
+
+    const responses = [
+      [scalar, "geo.country"],
+      [page, "page.path"],
+      [source, "referrer.domain"],
+      [client, "client.screenSize"],
+      [geo, "geo.region"],
+      [geoOrganization, "geo.organization"],
+    ] as const;
+    for (const [response, field] of responses) {
+      await expect(response.json()).resolves.toMatchObject({
+        ok: true,
+        field,
+        data: expect.any(Array),
+      });
+    }
+    expect(calls[0]?.bindings).toEqual([...visitBindings(), "Chrome", 4]);
+    expect(calls.every((call) => call.bindings.at(-1) === 4)).toBe(true);
+    expect(calls.flatMap((call) => call.bindings)).toEqual(
+      expect.arrayContaining(["us"]),
+    );
   });
 
   it("maps device and browser filter option scalar branches", async () => {
@@ -1269,41 +1968,43 @@ describe("edge overview D1 queries and handlers", () => {
       ],
     ]);
 
-    const device = await handleFilterOptions(
+    const device = await handleFilterValuesContract(
       env,
       siteId,
-      url("/filter-options", {
-        filterKey: "device",
-        device: "desktop",
-        browser: "Chrome",
-        from: window.fromMs,
-        to: window.toMs,
+      url("/filter-values", {
+        filterKey: "client.deviceType",
+        "filter[client.deviceType]": "desktop",
+        "filter[client.browser]": "Chrome",
+        from: window.startMs,
+        to: window.endExclusiveMs,
         limit: 4,
       }),
     );
-    const browser = await handleFilterOptions(
+    const browser = await handleFilterValuesContract(
       env,
       siteId,
-      url("/filter-options", {
-        filterKey: "browser",
-        browser: "Chrome",
-        country: "US",
-        from: window.fromMs,
-        to: window.toMs,
+      url("/filter-values", {
+        filterKey: "client.browser",
+        "filter[client.browser]": "Chrome",
+        "filter[geo.country]": "US",
+        from: window.startMs,
+        to: window.endExclusiveMs,
         limit: 4,
       }),
     );
 
     await expect(device.json()).resolves.toEqual({
       ok: true,
-      data: [{ value: "desktop", label: "desktop" }],
+      field: "client.deviceType",
+      data: [{ value: "desktop", label: "desktop", occurrences: 6 }],
     });
     await expect(browser.json()).resolves.toEqual({
       ok: true,
-      data: [{ value: "Chrome", label: "Chrome" }],
+      field: "client.browser",
+      data: [{ value: "Chrome", label: "Chrome", occurrences: 5 }],
     });
-    expect(calls[0].sql).toContain("COALESCE(device_type, '') AS value");
-    expect(calls[1].sql).toContain("COALESCE(browser, '') AS value");
+    expect(calls[0].sql).toContain("TRIM(COALESCE(device_type, ''))");
+    expect(calls[1].sql).toContain("TRIM(COALESCE(browser, ''))");
     expect(calls.map((call) => call.bindings)).toEqual([
       [...visitBindings(), "Chrome", 4],
       [...visitBindings(), "us", 4],
@@ -1316,7 +2017,7 @@ describe("edge overview D1 queries and handlers", () => {
         {
           latitude: "37.7",
           longitude: "-122.4",
-          timestampMs: String(window.fromMs),
+          timestampMs: String(window.startMs),
           country: "US",
           region: "California",
           regionCode: "CA",
@@ -1349,9 +2050,10 @@ describe("edge overview D1 queries and handlers", () => {
       env,
       siteId,
       url("/overview/geo-points", {
-        from: window.fromMs,
-        to: window.toMs,
-        geo: "US::CA::California",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        "filter[geo.country]": "US",
+        "filter[geo.region]": "California",
         limit: 9,
       }),
     );
@@ -1359,9 +2061,10 @@ describe("edge overview D1 queries and handlers", () => {
       env,
       siteId,
       url("/overview/geo-points", {
-        from: window.fromMs,
-        to: window.toMs,
-        geo: "US::CA::California",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+        "filter[geo.country]": "US",
+        "filter[geo.region]": "California",
         applyGeoFilter: true,
         limit: 10,
       }),
@@ -1373,7 +2076,7 @@ describe("edge overview D1 queries and handlers", () => {
         {
           latitude: 37.7,
           longitude: -122.4,
-          timestampMs: window.fromMs,
+          timestampMs: window.startMs,
           country: "US",
           region: "California",
           regionCode: "CA",
@@ -1404,8 +2107,7 @@ describe("edge overview D1 queries and handlers", () => {
     expect(calls[2].bindings).toEqual([
       ...visitBindings(),
       "us",
-      "CA",
-      "CALIFORNIA",
+      "california",
       10,
     ]);
   });

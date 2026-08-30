@@ -3,6 +3,7 @@ import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
 const NUMBER_LOCALES = {
   en: "en-US",
   zh: "zh-CN",
+  ja: "ja-JP",
 } satisfies Record<Locale, string>;
 
 function normalizedLocale(locale: Locale | undefined): Locale {
@@ -41,12 +42,14 @@ export function formatNotificationDateTime(
     {
       timeZone: normalizedTimeZone(timeZone),
       year: "numeric",
-      month: locale === "zh" ? "numeric" : "short",
+      month: locale === "zh" || locale === "ja" ? "numeric" : "short",
       day: "numeric",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     },
   );
-  return formatter.format(date).replace(",", locale === "zh" ? "" : ",");
+  return formatter
+    .format(date)
+    .replace(",", locale === "zh" || locale === "ja" ? "" : ",");
 }

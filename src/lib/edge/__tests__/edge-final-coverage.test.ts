@@ -1,5 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  geoTabLabel,
+  mapEventField,
+  mapGeoRowsToFilterOptions,
+} from "@/lib/edge/analytics/providers/d1/internal/core-mappers";
+import {
+  customEventJsonTypeCode,
+  customEventJsonTypeLabel,
+  parseEventRecordSort,
+  parseFilterOptionKey,
+  parseListSearch,
+  parseSessionListSort,
+} from "@/lib/edge/analytics/providers/d1/internal/core-parsers";
 import { withDashboardCache } from "@/lib/edge/dashboard-cache";
 import { insertVisit } from "@/lib/edge/ingest-buffer-store";
 import { flushCustomEventRowIndividually } from "@/lib/edge/ingest-custom-event-flush";
@@ -9,23 +22,6 @@ import type {
   BufferedCustomEventRow,
   BufferedVisitRow,
 } from "@/lib/edge/ingest-types";
-import {
-  geoTabLabel,
-  mapEventField,
-  mapGeoRowsToFilterOptions,
-} from "@/lib/edge/query/core-mappers";
-import {
-  customEventJsonTypeCode,
-  customEventJsonTypeLabel,
-  normalizeEventPayloadFilterPath,
-  normalizeEventPayloadFilterValue,
-  parseEventPayloadFilters,
-  parseEventRecordSort,
-  parseFilterOptionKey,
-  parseFilters,
-  parseListSearch,
-  parseSessionListSort,
-} from "@/lib/edge/query/core-parsers";
 import {
   readSiteScriptSettings,
   readSiteTrackingConfig,
@@ -49,6 +45,7 @@ function pageview(overrides: Partial<NormalizedPageview> = {}) {
     visitorId: "visitor-1",
     sessionId: "session-1",
     previousVisitId: "",
+    previousVisitStartedAt: null,
     startedAt: NOW - 1_000,
     pathname: "/docs",
     queryString: "",
@@ -187,6 +184,7 @@ function flushContext(
       } as unknown as D1Database,
     },
     dictionaryIds: new Map(),
+    sitePks: new Map([["site-1", 1]]),
     sqlAll: vi
       .fn()
       .mockReturnValueOnce(visitRows)
@@ -298,7 +296,7 @@ describe("edge ingest flush edge coverage", () => {
     vi.restoreAllMocks();
   });
 
-  it("logs and rethrows buffered pageview insert failures", async () => {
+  it("rethrows buffered pageview insert failures without a standalone log", async () => {
     const error = new Error("insert failed");
     const context = {
       sqlRun: vi.fn(() => {
@@ -307,9 +305,7 @@ describe("edge ingest flush edge coverage", () => {
     };
 
     await expect(insertVisit(context, pageview())).rejects.toThrow(error);
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining("do_pageview_insert_failed"),
-    );
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("deletes custom events when dictionary ids cannot be resolved", async () => {
@@ -328,6 +324,13 @@ describe("edge ingest flush edge coverage", () => {
       prepare,
       batch: vi.fn(async () => []),
     } as unknown as D1Database;
+    const observability = {
+      increment: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    context.observability = observability;
 
     await expect(
       flushCustomEventRowIndividually(context, bufferedCustomEvent()),
@@ -337,10 +340,9 @@ describe("edge ingest flush edge coverage", () => {
       "DELETE FROM buffered_custom_events WHERE event_id IN (?)",
       "event-1",
     );
-    expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "Failed to resolve custom event name dictionary id",
-      ),
+    expect(observability.increment).toHaveBeenCalledWith("failedStatements", 1);
+    expect(observability.error).toHaveBeenCalledWith(
+      "do.flush.custom_event_failed",
     );
   });
 
@@ -390,60 +392,5 @@ describe("edge query parser and mapper edge coverage", () => {
       ),
     ).toEqual([{ value: "::::", label: "::::", group: "city" }]);
     expect(geoTabLabel("unknown", "organization")).toBe("unknown");
-  });
-
-  it("parses list sorting, searches, filters, and custom event value types defensively", () => {
-    expect(parseSessionListSort(url({ sortBy: "startedAt" }))).toEqual({
-      key: "startedAt",
-      direction: "desc",
-    });
-    expect(
-      parseSessionListSort(url({ sortBy: "views", sortDir: "asc" })),
-    ).toEqual({
-      key: "views",
-      direction: "asc",
-    });
-    expect(parseEventRecordSort(url({ sortBy: "eventName" }))).toEqual({
-      key: "eventName",
-      direction: "desc",
-    });
-    expect(
-      parseEventRecordSort(url({ sortBy: "pathname", sortDir: "asc" })),
-    ).toEqual({
-      key: "pathname",
-      direction: "asc",
-    });
-    expect(parseEventRecordSort(url({ sortBy: "bad" }))).toEqual({
-      key: "occurredAt",
-      direction: "desc",
-    });
-    expect(parseListSearch(url({ search: "  " }))).toBeUndefined();
-    expect(
-      parseListSearch(url({ search: ` ${"x".repeat(200)} ` })),
-    ).toHaveLength(160);
-    expect(parseFilterOptionKey(url({}))).toBeNull();
-    expect(parseFilterOptionKey(url({ filterKey: "bad" }))).toBeNull();
-    expect(
-      parseFilters(
-        url({
-          geoCity: "US::CA::California::San Francisco",
-          eventPayloadFilters: "not json",
-        }),
-      ),
-    ).toMatchObject({
-      geo: "US::CA::California::San Francisco",
-      eventPayloadFilters: undefined,
-    });
-    expect(parseEventPayloadFilters("{}")).toBeUndefined();
-    expect(
-      parseEventPayloadFilters(JSON.stringify([{ path: "/", value: 1 }])),
-    ).toBeUndefined();
-    expect(normalizeEventPayloadFilterPath("items[12].sku")).toBe(
-      "/items/*/sku",
-    );
-    expect(normalizeEventPayloadFilterValue(null)).toBeNull();
-    expect(customEventJsonTypeLabel(99)).toBe("null");
-    expect(customEventJsonTypeCode("array")).toBe(5);
-    expect(customEventJsonTypeCode("bad")).toBeNull();
   });
 });

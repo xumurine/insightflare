@@ -1,19 +1,19 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
 import { RiCopyrightLine, RiMapPin2Line } from "@remixicon/react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import {
   type GeoPointsMapCountryCount,
   GeoPointsMapIsland,
   type GeoPointsMapPoint,
 } from "@/components/dashboard/geo-points-map-island";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import {
   emptyOverviewGeoPointsData,
   fetchOverviewGeoPoints,
 } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -22,12 +22,12 @@ interface OverviewGeoPointsMapCardProps {
   messages: AppMessages;
   siteId: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
   selectedCountryCode?: string | null;
   onCountrySelect?: (countryCode: string | null) => void;
 }
 
-function dashboardFilterSignature(filters: DashboardFilters): string {
+function dashboardFilterSignature(filters: FilterDocument): string {
   const entries = Object.entries(filters)
     .map(([key, value]) => [key, String(value ?? "").trim()] as const)
     .filter(([, value]) => value.length > 0)
@@ -35,7 +35,7 @@ function dashboardFilterSignature(filters: DashboardFilters): string {
   return JSON.stringify(entries);
 }
 
-export function OverviewGeoPointsMapCard({
+export const OverviewGeoPointsMapCard = memo(function OverviewGeoPointsMapCard({
   locale,
   messages,
   siteId,
@@ -44,11 +44,8 @@ export function OverviewGeoPointsMapCard({
   selectedCountryCode,
   onCountrySelect,
 }: OverviewGeoPointsMapCardProps) {
-  const [loading, setLoading] = useState(true);
-  const [geoPointsData, setGeoPointsData] = useState(
-    emptyOverviewGeoPointsData(),
-  );
-  const requestFilters = useMemo<DashboardFilters>(
+  const emptyGeoPointsData = useMemo(() => emptyOverviewGeoPointsData(), []);
+  const requestFilters = useMemo<FilterDocument>(
     () => ({
       ...filters,
       country: undefined,
@@ -64,28 +61,29 @@ export function OverviewGeoPointsMapCard({
     [requestFilters],
   );
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    fetchOverviewGeoPoints(siteId, window, requestFilters, { limit: 5000 })
-      .then((next) => {
-        if (!active) return;
-        setGeoPointsData(next);
-      })
-      .catch(() => {
-        if (!active) return;
-        setGeoPointsData(emptyOverviewGeoPointsData());
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [requestFiltersKey, siteId, window.from, window.interval, window.to]);
+  const {
+    data: geoPointsData = emptyGeoPointsData,
+    isFetching,
+    isPending,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "overview-geo-points",
+      siteId,
+      window.from,
+      window.to,
+      window.interval,
+      window.timeZone,
+      requestFiltersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchOverviewGeoPoints(siteId, window, requestFilters, {
+        limit: 5000,
+        signal,
+      }),
+    enabled: typeof window !== "undefined",
+    placeholderData: keepPreviousData,
+  });
 
   const points = useMemo<GeoPointsMapPoint[]>(
     () =>
@@ -109,33 +107,35 @@ export function OverviewGeoPointsMapCard({
   );
 
   return (
-    <Card className="overflow-hidden">
-      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
+    <Card className="gap-0 overflow-hidden py-0">
+      <div className="border-b">
+        <div className="flex min-h-10 items-center justify-between gap-2 px-3">
           <CardTitle className="inline-flex items-center gap-2">
             <RiMapPin2Line className="size-4" />
             {messages.geo.mapTitle}
           </CardTitle>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <RiCopyrightLine aria-hidden="true" size="1em" />
+            <span>OpenStreetMap contributors</span>
+            <span aria-hidden="true">·</span>
+            <RiCopyrightLine aria-hidden="true" size="1em" />
+            <span>CARTO</span>
+          </div>
         </div>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <RiCopyrightLine aria-hidden="true" size="1em" />
-          <span>OpenStreetMap contributors</span>
-          <span aria-hidden="true">·</span>
-          <RiCopyrightLine aria-hidden="true" size="1em" />
-          <span>CARTO</span>
-        </div>
-      </CardHeader>
-      <CardContent className="pt-0">
+      </div>
+      <div className="relative min-h-0">
         <GeoPointsMapIsland
           locale={locale}
           messages={messages}
-          loading={loading}
+          loading={isPending || isFetching}
           points={points}
           countryCounts={countryCounts}
           selectedCountryCode={selectedCountryCode}
           onCountrySelect={onCountrySelect}
+          heightClassName="h-[460px]"
+          bordered={false}
         />
-      </CardContent>
+      </div>
     </Card>
   );
-}
+});

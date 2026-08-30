@@ -1,4 +1,7 @@
 export const FALLBACK_TIME_ZONE = "UTC";
+export const REPORTING_TIME_ZONE_COOKIE = "insightflare-reporting-time-zone";
+
+const REPORTING_TIME_ZONE_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
 export const COMMON_TIME_ZONES = [
   "UTC",
@@ -22,6 +25,8 @@ export const COMMON_TIME_ZONES = [
 
 const partsFormatterCache = new Map<string, Intl.DateTimeFormat>();
 const timeZoneNameFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const timeZoneValidityCache = new Map<string, boolean>();
+const MAX_TIME_ZONE_VALIDITY_CACHE_ENTRIES = 128;
 
 export interface ZonedDateTimeParts {
   year: number;
@@ -55,12 +60,22 @@ function getPartsFormatter(timeZone: string): Intl.DateTimeFormat {
 export function isValidTimeZone(value: string): boolean {
   const timeZone = value.trim();
   if (!timeZone) return false;
+  if (timeZone.length > 128) return false;
+  const cached = timeZoneValidityCache.get(timeZone);
+  if (cached !== undefined) return cached;
+
+  let valid = false;
   try {
     new Intl.DateTimeFormat("en-US", { timeZone }).format(0);
-    return true;
+    valid = true;
   } catch {
-    return false;
+    valid = false;
   }
+  if (timeZoneValidityCache.size >= MAX_TIME_ZONE_VALIDITY_CACHE_ENTRIES) {
+    timeZoneValidityCache.clear();
+  }
+  timeZoneValidityCache.set(timeZone, valid);
+  return valid;
 }
 
 export function normalizeTimeZone(value: string | null | undefined): string {
@@ -87,6 +102,15 @@ export function browserTimeZone(): string {
   } catch {
     return "";
   }
+}
+
+/** Persists the effective reporting time zone without causing a navigation. */
+export function writeReportingTimeZoneCookie(timeZone: string): void {
+  if (typeof document === "undefined") return;
+  const resolved = normalizeTimeZone(timeZone);
+  if (!resolved) return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${REPORTING_TIME_ZONE_COOKIE}=${encodeURIComponent(resolved)}; Path=/; Max-Age=${REPORTING_TIME_ZONE_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secure}`;
 }
 
 export function supportedTimeZones(): string[] {

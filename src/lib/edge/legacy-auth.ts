@@ -1,6 +1,8 @@
 import { SESSION_COOKIE, SESSION_DURATION_SECONDS } from "@/lib/constants";
 import { handleAuthLoginAdmin } from "@/lib/edge/admin-users";
+import { appNow } from "@/lib/edge/e2e-clock";
 import { readLoginTurnstileRuntimeConfig } from "@/lib/edge/login-turnstile-runtime";
+import { getInvocationLogger } from "@/lib/edge/observability-bindings";
 import { decryptLoginTurnstileSecret } from "@/lib/edge/secret-encryption";
 import { verifyTurnstileToken } from "@/lib/edge/turnstile-siteverify";
 import type { Env } from "@/lib/edge/types";
@@ -80,12 +82,15 @@ async function createSessionTokenForEnv(
   },
   maxAgeSeconds: number,
 ): Promise<string> {
-  const secret =
-    (await dashboardSessionSecret(env)) ||
-    "insightflare-session-secret-change-me";
+  const secret = await dashboardSessionSecret(env);
+  if (!secret) {
+    throw new Error(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for sessions",
+    );
+  }
   const payload = {
     ...claims,
-    exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
+    exp: Math.floor(appNow() / 1000) + maxAgeSeconds,
   };
   const encodedPayload = base64UrlEncode(bytes(JSON.stringify(payload)));
   const signature = await hmacSha256(encodedPayload, secret);
@@ -159,10 +164,16 @@ export async function handleLegacyAuthLogin(
     }
 
     const result = await verifyTurnstileToken({
+      requireSiteverifyUrl: env.INSIGHTFLARE_E2E === "1",
       secret,
       token: turnstileToken,
       remoteIp: requestRemoteIp(request),
       expectedHostname: requestHostname(request),
+      siteverifyUrl:
+        env.INSIGHTFLARE_E2E === "1"
+          ? env.INSIGHTFLARE_E2E_TURNSTILE_SITEVERIFY_URL
+          : undefined,
+      logger: getInvocationLogger(env),
     });
     if (!result.ok) {
       return bad(

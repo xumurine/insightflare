@@ -1,12 +1,11 @@
-"use client";
-
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { RiAddLine, RiFileList3Line, RiLineChartLine } from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
+import { PageHeading } from "@/components/dashboard/page-heading";
 import { TableActionButton } from "@/components/dashboard/table-action-button";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Button } from "@/components/ui/button";
@@ -21,23 +20,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { requestAdminService } from "@/lib/admin-service-client";
 import { shortDateTime } from "@/lib/dashboard/format";
 import type { SiteData, TeamData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import { useRouter } from "@/lib/router";
 
 interface AdminSitesManagementClientProps {
   locale: Locale;
   messages: AppMessages;
   activeTeam: TeamData;
-}
-
-interface ApiResponse<T> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
+  initialSites?: readonly SiteData[] | null;
 }
 
 function safeSlug(value: string): string {
@@ -55,68 +50,51 @@ function siteSlug(site: SiteData): string {
   return site.id.slice(0, 8);
 }
 
-async function fetchSites(teamId: string): Promise<SiteData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: "/api/private/admin/sites",
-      params: { teamId },
-    }) as ApiResponse<SiteData[]>;
-    return Array.isArray(result.data) ? result.data : [];
-  }
-  const response = await fetch(
-    `/api/private/admin/sites?teamId=${encodeURIComponent(teamId)}`,
-    {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    },
-  );
-  const payload = (await response.json()) as ApiResponse<SiteData[]>;
-  if (!response.ok || !payload.ok || !Array.isArray(payload.data)) {
-    throw new Error(payload.message || payload.error || "load_sites_failed");
-  }
-  return payload.data;
+async function fetchSites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<SiteData[]> {
+  return requestAdminService<SiteData[]>("sites", {
+    params: { teamId },
+    signal,
+  });
 }
 
 export function AdminSitesManagementClient({
   locale,
   messages,
   activeTeam,
+  initialSites = null,
 }: AdminSitesManagementClientProps) {
   const { timeZone } = useDashboardQueryControls();
   const router = useRouter();
   const t = messages.adminSites;
-  const [sites, setSites] = useState<SiteData[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [publicSlug, setPublicSlug] = useState("");
+  const sitesQuery = useQuery({
+    queryKey: ["dashboard", "admin-sites", activeTeam.id],
+    queryFn: ({ signal }) => fetchSites(activeTeam.id, signal),
+    initialData: initialSites ?? undefined,
+    enabled: typeof window !== "undefined" && Boolean(activeTeam.id),
+  });
+  const sites = sitesQuery.data ?? [];
+  const loading = sitesQuery.isPending;
 
   useEffect(() => {
-    if (!activeTeam.id) return;
-    let active = true;
-    setLoading(true);
-    fetchSites(activeTeam.id)
-      .then((data) => {
-        if (!active) return;
-        setSites(data);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [activeTeam.id, t.loadFailed]);
+    if (!sitesQuery.isError) return;
+    const message =
+      sitesQuery.error instanceof Error
+        ? sitesQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    sitesQuery.error,
+    sitesQuery.errorUpdatedAt,
+    sitesQuery.isError,
+    t.loadFailed,
+  ]);
 
   async function handleCreateSite() {
     const team = activeTeam;
@@ -128,30 +106,22 @@ export function AdminSitesManagementClient({
 
     setSubmitting(true);
     try {
-      const response = await fetch("/api/private/admin/sites", {
+      const data = await requestAdminService<SiteData>("sites", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
+        body: {
           teamId: team.id,
           name: name.trim(),
           domain: domain.trim(),
           publicSlug: publicSlug.trim() || undefined,
-        }),
+        },
       });
-      const payload = (await response.json()) as ApiResponse<SiteData>;
-      if (!response.ok || !payload.ok || !payload.data) {
-        throw new Error(payload.message || payload.error || t.createFailed);
-      }
       setName("");
       setDomain("");
       setPublicSlug("");
       toast.success(t.createSuccess);
       navigateWithTransition(
         router,
-        `/${locale}/app/${team.slug}/${siteSlug(payload.data)}/settings`,
+        `/${locale}/app/${team.slug}/${siteSlug(data)}/settings`,
       );
       router.refresh();
     } catch (error) {
@@ -166,10 +136,7 @@ export function AdminSitesManagementClient({
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-base font-semibold tracking-tight">{t.title}</h2>
-        <p className="text-sm text-muted-foreground">{t.subtitle}</p>
-      </div>
+      <PageHeading title={t.title} subtitle={t.subtitle} />
 
       <Card className="max-w-3xl">
         <CardHeader>

@@ -1,9 +1,8 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, memo, useMemo } from "react";
 import { RiGlobalLine } from "@remixicon/react";
-import { Cell, Pie, PieChart } from "recharts";
+import { useQuery } from "@tanstack/react-query";
 
+import { DonutChart } from "@/components/dashboard/charts/donut-chart";
 import { ContentSwitch } from "@/components/dashboard/content-switch";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
@@ -13,20 +12,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  type ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-} from "@/components/ui/chart";
 import { Spinner } from "@/components/ui/spinner";
 import { fetchBrowserVersionBreakdown } from "@/lib/dashboard/client-data";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   BrowserVersionBreakdownBrowser,
   BrowserVersionBreakdownData,
   BrowserVersionSlice,
 } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -45,7 +40,7 @@ interface BrowserVersionBreakdownGridProps {
   messages: AppMessages;
   siteId: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
 }
 
 interface BrowserVersionSliceDisplay extends BrowserVersionSlice {
@@ -92,7 +87,7 @@ function buildVersionCardData(
   }));
 }
 
-function BrowserVersionDonutCard({
+const BrowserVersionDonutCard = memo(function BrowserVersionDonutCard({
   locale,
   messages,
   browser,
@@ -101,15 +96,15 @@ function BrowserVersionDonutCard({
   messages: AppMessages;
   browser: BrowserVersionBrowserDisplay;
 }) {
-  const chartConfig = useMemo(
+  const chartData = useMemo(
     () =>
-      browser.versions.reduce((config, version) => {
-        config[version.key] = {
-          label: version.displayLabel,
-          color: version.color,
-        };
-        return config;
-      }, {} as ChartConfig),
+      browser.versions.map((version) => ({
+        key: version.key,
+        label: version.displayLabel,
+        value: version.visitors,
+        share: version.share,
+        color: version.color,
+      })),
     [browser.versions],
   );
 
@@ -126,53 +121,14 @@ function BrowserVersionDonutCard({
       <CardContent>
         <div className="grid gap-4 sm:grid-cols-[156px_minmax(0,1fr)] sm:items-center">
           <div className="relative mx-auto flex size-[156px] items-center justify-center">
-            <ChartContainer
-              className="size-[156px] [&_.recharts-tooltip-wrapper]:z-20"
-              config={chartConfig}
-            >
-              <PieChart accessibilityLayer>
-                <ChartTooltip
-                  cursor={false}
-                  content={({ active, payload }) => {
-                    const item = payload?.[0]?.payload as
-                      | BrowserVersionSliceDisplay
-                      | undefined;
-                    if (!active || !item) return null;
-
-                    return (
-                      <div className="grid min-w-[12rem] gap-1.5 rounded-none border border-border/50 bg-background px-2.5 py-1.5 text-xs shadow-xl">
-                        <div className="font-medium">{item.displayLabel}</div>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-muted-foreground">
-                            {numberFormat(locale, item.visitors)}{" "}
-                            {messages.common.visitors}
-                          </span>
-                          <span className="font-mono font-medium tabular-nums text-foreground">
-                            {percentFormat(locale, item.share)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }}
-                />
-                <Pie
-                  data={browser.versions}
-                  dataKey="visitors"
-                  nameKey="displayLabel"
-                  innerRadius={44}
-                  outerRadius={66}
-                  paddingAngle={2}
-                  stroke="var(--background)"
-                  strokeWidth={1}
-                  startAngle={90}
-                  endAngle={-270}
-                >
-                  {browser.versions.map((version) => (
-                    <Cell key={version.key} fill={version.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ChartContainer>
+            <DonutChart
+              data={chartData}
+              locale={locale}
+              valueLabel={messages.common.visitors}
+              innerRadius={44}
+              outerRadius={66}
+              className="size-[156px]"
+            />
 
             <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center">
               <span className="text-base font-medium tabular-nums text-foreground">
@@ -186,11 +142,8 @@ function BrowserVersionDonutCard({
 
           <div className="grid grid-cols-[minmax(0,1fr)_max-content_max-content] items-center gap-x-3 gap-y-2">
             {browser.versions.map((version) => (
-              <>
-                <div
-                  key={version.key}
-                  className="inline-flex min-w-0 items-center gap-2 overflow-hidden"
-                >
+              <Fragment key={version.key}>
+                <div className="inline-flex min-w-0 items-center gap-2 overflow-hidden">
                   <span
                     className="h-2.5 w-2.5 shrink-0 rounded-[2px]"
                     style={{ backgroundColor: version.color }}
@@ -208,109 +161,113 @@ function BrowserVersionDonutCard({
                 <span className="text-right font-mono text-[11px] text-muted-foreground tabular-nums">
                   {percentFormat(locale, version.share)}
                 </span>
-              </>
+              </Fragment>
             ))}
           </div>
         </div>
       </CardContent>
     </Card>
   );
+});
+
+function emptyBreakdownUnlessAborted(
+  error: unknown,
+): BrowserVersionBreakdownData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyBrowserVersionBreakdown();
 }
 
-export function BrowserVersionBreakdownGrid({
-  locale,
-  messages,
-  siteId,
-  window,
-  filters,
-}: BrowserVersionBreakdownGridProps) {
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-  const [breakdownData, setBreakdownData] =
-    useState<BrowserVersionBreakdownData>(() => emptyBrowserVersionBreakdown());
+export const BrowserVersionBreakdownGrid = memo(
+  function BrowserVersionBreakdownGrid({
+    locale,
+    messages,
+    siteId,
+    window,
+    filters,
+  }: BrowserVersionBreakdownGridProps) {
+    const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+    const { data, isFetching, isPending } = useQuery({
+      queryKey: [
+        "dashboard",
+        "browser-version-breakdown",
+        siteId,
+        window.from,
+        window.to,
+        window.timeZone,
+        filtersKey,
+      ],
+      queryFn: ({ signal }) =>
+        fetchBrowserVersionBreakdown(siteId, window, filters, {
+          browserLimit: 0,
+          versionLimit: 5,
+          signal,
+        }).catch(emptyBreakdownUnlessAborted),
+      enabled: !import.meta.env.SSR,
+    });
+    const breakdownData = useMemo(
+      () => data ?? emptyBrowserVersionBreakdown(),
+      [data],
+    );
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
+    const browsers = useMemo(
+      () => buildVersionCardData(breakdownData, messages),
+      [breakdownData, messages],
+    );
+    const showOverlayLoading = isFetching && data !== undefined;
 
-    fetchBrowserVersionBreakdown(siteId, window, filters, {
-      browserLimit: 0,
-      versionLimit: 5,
-    })
-      .catch(() => emptyBrowserVersionBreakdown())
-      .then((nextData) => {
-        if (!active) return;
-        setBreakdownData(nextData);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setHydrated(true);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [filters, siteId, window.from, window.to]);
-
-  const browsers = useMemo(
-    () => buildVersionCardData(breakdownData, messages),
-    [breakdownData, messages],
-  );
-  const showOverlayLoading = loading && hydrated;
-
-  return (
-    <section className="space-y-4">
-      <div className="px-1">
-        <h2 className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-          <RiGlobalLine className="size-4 shrink-0" />
-          {messages.browsers.versionBreakdownTitle}
-        </h2>
-      </div>
-
-      <ContentSwitch
-        loading={loading && !hydrated}
-        hasContent={browsers.length > 0}
-        loadingLabel={messages.common.loading}
-        emptyContent={<p>{messages.common.noData}</p>}
-        minHeightClassName="min-h-[240px]"
-      >
-        <div className="relative">
-          <div className="grid gap-4 md:grid-cols-2">
-            {browsers.map((browser) => (
-              <BrowserVersionDonutCard
-                key={browser.browser}
-                locale={locale}
-                messages={messages}
-                browser={browser}
-              />
-            ))}
-          </div>
-
-          <AutoTransition
-            type="fade"
-            duration={0.22}
-            className="pointer-events-none absolute top-0 right-0"
-          >
-            {showOverlayLoading ? (
-              <span
-                key="browser-version-overlay-loading"
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-none border border-border/50 bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm",
-                )}
-              >
-                <Spinner className="size-3.5" />
-                {messages.common.loading}
-              </span>
-            ) : (
-              <div
-                key="browser-version-overlay-idle"
-                className="h-0 w-0 overflow-hidden"
-              />
-            )}
-          </AutoTransition>
+    return (
+      <section className="space-y-4">
+        <div className="px-1">
+          <h2 className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
+            <RiGlobalLine className="size-4 shrink-0" />
+            {messages.browsers.versionBreakdownTitle}
+          </h2>
         </div>
-      </ContentSwitch>
-    </section>
-  );
-}
+
+        <ContentSwitch
+          loading={isPending}
+          hasContent={browsers.length > 0}
+          loadingLabel={messages.common.loading}
+          emptyContent={<p>{messages.common.noData}</p>}
+          minHeightClassName="min-h-[240px]"
+        >
+          <div className="relative">
+            <div className="grid gap-4 md:grid-cols-2">
+              {browsers.map((browser) => (
+                <BrowserVersionDonutCard
+                  key={browser.browser}
+                  locale={locale}
+                  messages={messages}
+                  browser={browser}
+                />
+              ))}
+            </div>
+
+            <AutoTransition
+              type="fade"
+              duration={0.22}
+              className="pointer-events-none absolute top-0 right-0"
+            >
+              {showOverlayLoading ? (
+                <span
+                  key="browser-version-overlay-loading"
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-none border border-border/50 bg-background/90 px-2 py-1 text-xs text-muted-foreground shadow-sm",
+                  )}
+                >
+                  <Spinner className="size-3.5" />
+                  {messages.common.loading}
+                </span>
+              ) : (
+                <div
+                  key="browser-version-overlay-idle"
+                  className="h-0 w-0 overflow-hidden"
+                />
+              )}
+            </AutoTransition>
+          </div>
+        </ContentSwitch>
+      </section>
+    );
+  },
+);

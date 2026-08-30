@@ -311,7 +311,12 @@ describe("public account link handler", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(insertMember.bind).toHaveBeenCalledWith("team-1", "user-1", "admin");
+    expect(insertMember.bind).toHaveBeenCalledWith(
+      "team-1",
+      "user-1",
+      "admin",
+      "[]",
+    );
     expect(markAccountActionTokenUsedMock).toHaveBeenCalledWith(
       expect.anything(),
       { tokenId: "invite-1", usedByUserId: "user-1" },
@@ -404,6 +409,7 @@ describe("public account link handler", () => {
       "team-1",
       "00000000-0000-4000-8000-000000000123",
       "member",
+      "[]",
     );
   });
 

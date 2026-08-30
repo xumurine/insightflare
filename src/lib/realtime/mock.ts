@@ -1,4 +1,9 @@
+import {
+  defaultBotAnalyticsConfig,
+  redactBotAnalyticsConfig,
+} from "@/lib/bot-analytics-config";
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
+import type { NotificationPreferencesData } from "@/lib/edge-client";
 import type {
   NotificationMessageData,
   NotificationRuleData,
@@ -57,33 +62,47 @@ import {
   generateDemoReferrerRadar,
 } from "@/lib/realtime/mock/browser-client";
 import {
+  demoBadRequest,
+  demoNotFound,
+  demoOk,
+  extractErrorMessage,
+  isErrorEnvelope,
+} from "@/lib/realtime/mock/envelope";
+import {
+  generateDemoEventFields,
   generateDemoEventRecordDetail,
   generateDemoEventsRecords,
   generateDemoEventsSummary,
   generateDemoEventsTrend,
+  generateDemoEventTypeContext,
   generateDemoEventTypeDetail,
   generateDemoEventTypeFieldValues,
 } from "@/lib/realtime/mock/events";
+import { parseDemoInterval } from "@/lib/realtime/mock/filters";
 import {
   createDemoFunnel,
   deleteDemoFunnel,
   generateDemoFunnels,
 } from "@/lib/realtime/mock/funnels";
 import {
+  generateDemoJourneyEventDetail,
   generateDemoSessionDetail,
   generateDemoSessions,
   generateDemoVisitorDetail,
   generateDemoVisitors,
 } from "@/lib/realtime/mock/journeys";
+import { generateDemoRequestObservationData } from "@/lib/realtime/mock/request-observation";
+import { handleDemoSavedFilters } from "@/lib/realtime/mock/saved-filters";
 import {
   generateDemoBrowserEngineTrend,
   generateDemoBrowserTrend,
+  generateDemoChannelTrend,
   generateDemoClientDimensionTrend,
   generateDemoReferrerTrend,
 } from "@/lib/realtime/mock/share-trends";
 import { generateDemoTeamDashboard } from "@/lib/realtime/mock/team-dashboard";
 import {
-  generateDemoFilterOptions,
+  generateDemoFilterValues,
   generateDemoGeoPoints,
   generateDemoOverviewClientTab,
   generateDemoOverviewGeoTab,
@@ -100,7 +119,18 @@ import {
 export type { RealtimeSocketLike } from "@/lib/realtime/mock/socket";
 export { createMockRealtimeSocket } from "@/lib/realtime/mock/socket";
 
-const DEMO_NOT_FOUND_RESPONSE = { ok: false, data: { error: "Not Found" } };
+const demoNotFoundResponse = () => demoNotFound();
+
+const demoNotificationPreferences: NotificationPreferencesData = {
+  inApp: true,
+  email: true,
+  webPush: false,
+  attention: {
+    reportsCreateUnread: false,
+    milestonesCreateUnread: false,
+    alertsCreateUnread: true,
+  },
+};
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
@@ -128,12 +158,12 @@ function demoLocale(value: unknown): Locale {
 }
 
 function demoSiteDomain(siteId: string | null | undefined): string {
-  if (!siteId) return "demo.insightflare.app";
+  if (!siteId) return "demo.insightflare.net";
   for (const team of getDemoTeams()) {
     const site = getDemoSites(team.id).find((item) => item.id === siteId);
     if (site) return site.domain;
   }
-  return "demo.insightflare.app";
+  return "demo.insightflare.net";
 }
 
 function demoLoginTurnstileConfig(body?: Record<string, unknown>) {
@@ -456,7 +486,7 @@ function generateDemoNotificationRuleRun(
 //  Route dispatcher — the single entry point for demo mode
 // ---------------------------------------------------------------------------
 
-export function handleDemoRequest(options: {
+function handleDemoRequestInner(options: {
   path: string;
   method?: string;
   params?: Record<string, string | number>;
@@ -467,8 +497,12 @@ export function handleDemoRequest(options: {
   const publicSiteProfile = publicRouteMatch
     ? findSiteProfileByPublicSlug(publicRouteMatch[1] || "")
     : null;
+  const apiV1SiteMatch = path.match(/\/api\/v1\/sites\/([^/]+)/);
   const siteId = String(
-    params.siteId || publicSiteProfile?.id || "demo-site-001",
+    params.siteId ||
+      apiV1SiteMatch?.[1] ||
+      publicSiteProfile?.id ||
+      "demo-site-001",
   );
   const teamId = String(params.teamId || "");
   const bodyRecord =
@@ -477,6 +511,10 @@ export function handleDemoRequest(options: {
       : {};
   const locale = demoLocale(params.locale ?? bodyRecord.locale);
 
+  if (path.startsWith("/api/private/saved-filters")) {
+    return handleDemoSavedFilters({ path, method, siteId, body: options.body });
+  }
+
   // Write operations → read-only stub
   if (
     method === "POST" ||
@@ -484,6 +522,21 @@ export function handleDemoRequest(options: {
     method === "PUT" ||
     method === "DELETE"
   ) {
+    if (path.includes("/admin/bot-analytics-config")) {
+      const body = bodyRecord as {
+        accountId?: unknown;
+        apiToken?: unknown;
+        clearApiToken?: unknown;
+      };
+      const config = defaultBotAnalyticsConfig();
+      config.accountId = String(body.accountId ?? "").trim();
+      config.configured =
+        body.clearApiToken !== true &&
+        String(body.apiToken ?? "").trim() !== "";
+      config.apiTokenHint = config.configured ? "••••demo" : "";
+      config.updatedAt = Date.now();
+      return { ok: true, data: redactBotAnalyticsConfig(config) };
+    }
     if (path.includes("/funnels")) {
       if (method === "DELETE") return deleteDemoFunnel(siteId, params);
       return createDemoFunnel(siteId, options.body);
@@ -576,13 +629,36 @@ export function handleDemoRequest(options: {
       const now = nowSeconds();
       const team = String(keyBody.teamId || teamId || getDemoTeams()[0].id);
       const keys = generateDemoApiKeys(team);
+      if (!keyBody.keyId) {
+        const createdName = String(keyBody.name ?? "").trim();
+        if (createdName.length < 2) return demoBadRequest("name is required");
+        if (!Array.isArray(keyBody.scopes) || keyBody.scopes.length === 0) {
+          return demoBadRequest("at least one scope is required");
+        }
+      }
       if (keyBody.keyId) {
-        const key = keys.find((item) => item.id === keyBody.keyId) ?? keys[0];
-        if (method === "PATCH" && key) {
+        const key = keys.find((item) => item.id === keyBody.keyId);
+        if (method === "PATCH") {
           return {
             ok: true,
             data: {
-              ...key,
+              ...(key ?? {
+                id: String(keyBody.keyId),
+                teamId: team,
+                name: "API key",
+                prefix: "",
+                scopes: [],
+                siteIds: [],
+                createdByUserId: "",
+                expiresAt: 0,
+                revokedAt: null,
+                revokedByUserId: "",
+                rotatedFromKeyId: "",
+                lastUsedAt: null,
+                createdAt: now,
+                updatedAt: now,
+                status: "active",
+              }),
               status: "revoked",
               revokedAt: now,
               revokedByUserId: getDemoUser().id,
@@ -616,7 +692,17 @@ export function handleDemoRequest(options: {
       const inviteTeamId = String(
         bodyRecord.teamId || teamId || getDemoTeams()[0].id,
       );
-      const role = bodyRecord.role === "admin" ? "admin" : "member";
+      const rawRole = String(bodyRecord.role || "").toLowerCase();
+      if (rawRole && rawRole !== "member" && rawRole !== "admin") {
+        return demoBadRequest("Invite role must be member or admin");
+      }
+      const role = rawRole === "admin" ? "admin" : "member";
+      const email = String(bodyRecord.email || "").trim();
+      if (!email) return demoBadRequest("A valid email is required");
+      const siteIds =
+        role === "member" && Array.isArray(bodyRecord.siteIds)
+          ? bodyRecord.siteIds
+          : [];
       const token = `demo_created_${role}_${now.toString(36)}`;
       return {
         ok: true,
@@ -626,10 +712,10 @@ export function handleDemoRequest(options: {
             type: "team_invite",
             teamId: inviteTeamId,
             userId: "",
-            email: String(bodyRecord.email || ""),
-            payload: { teamRole: role, siteAccess: { mode: "all" } },
+            email,
+            payload: { teamRole: role, siteIds },
             code: token,
-            url: `https://demo.insightflare.app/invite#token=${token}`,
+            url: `https://demo.insightflare.net/invite#token=${token}`,
             createdByUserId: getDemoUser().id,
             createdAt: now,
             expiresAt: now + Number(bodyRecord.expiresInHours || 72) * 60 * 60,
@@ -638,7 +724,7 @@ export function handleDemoRequest(options: {
             revokedAt: null,
             status: "active",
           },
-          url: `https://demo.insightflare.app/invite#token=${token}`,
+          url: `https://demo.insightflare.net/invite#token=${token}`,
         },
       };
     }
@@ -650,6 +736,9 @@ export function handleDemoRequest(options: {
     }
     if (path === "/api/private/notifications") {
       return { ok: true, data: { updated: 1 } };
+    }
+    if (path === "/api/private/notifications/preferences") {
+      return { ok: true, data: demoNotificationPreferences };
     }
     const notificationReadMatch = path.match(
       /^\/api\/private\/notifications\/([^/]+)$/,
@@ -766,6 +855,48 @@ export function handleDemoRequest(options: {
         },
       };
     }
+    if (path.includes("/admin/teams")) {
+      const teamId = String(params.teamId || bodyRecord.teamId || "").trim();
+      if (!teamId) return demoBadRequest("teamId is required");
+      const existing =
+        getDemoTeams().find((team) => team.id === teamId) ?? getDemoTeams()[0];
+      const intent = String(bodyRecord.intent ?? "").toLowerCase();
+      if (intent === "remove" || intent === "delete") {
+        return {
+          ok: true,
+          data: {
+            teams: getDemoTeams().filter((team) => team.id !== teamId),
+          },
+        };
+      }
+      const name = String(bodyRecord.name ?? "").trim();
+      if (name.length < 2) return demoBadRequest("Team name is required");
+      return { ok: true, data: { ...existing, name } };
+    }
+    if (path.includes("/admin/members")) {
+      const teamId = String(params.teamId || bodyRecord.teamId || "").trim();
+      const userId = String(
+        params.userId || bodyRecord.userId || bodyRecord.user || "",
+      ).trim();
+      if (!teamId) return demoBadRequest("teamId is required");
+      if (!userId)
+        return demoBadRequest("teamId and user identifier are required");
+      return { ok: true, data: { teamId, members: getDemoMembers(teamId) } };
+    }
+    if (path.includes("/admin/users")) {
+      const userId = String(
+        params.userId || bodyRecord.userId || bodyRecord.id || "",
+      ).trim();
+      const teamId = String(params.teamId || bodyRecord.teamId || "").trim();
+      const user = getDemoUsers()[0];
+      return {
+        ok: true,
+        data: {
+          user: { ...user, id: userId || user.id },
+          ...(teamId ? { teamId } : {}),
+        },
+      };
+    }
     // Generic write → return empty success
     return { ok: true, data: {} };
   }
@@ -802,6 +933,13 @@ export function handleDemoRequest(options: {
     const tid = teamId || getDemoTeams()[0].id;
     return { ok: true, data: generateDemoApiKeys(tid) };
   }
+  if (path.includes("/admin/bot-analytics-config")) {
+    const config = defaultBotAnalyticsConfig();
+    return { ok: true, data: redactBotAnalyticsConfig(config) };
+  }
+  if (path.includes("/admin/bot-analytics")) {
+    return demoBotAnalyticsResponse(params);
+  }
   if (path.includes("/admin/notification-rules")) {
     return {
       ok: true,
@@ -822,6 +960,9 @@ export function handleDemoRequest(options: {
         ).length,
       },
     };
+  }
+  if (path === "/api/private/notifications/preferences") {
+    return { ok: true, data: demoNotificationPreferences };
   }
   if (path.includes("/admin/notification-email")) {
     return {
@@ -858,7 +999,7 @@ export function handleDemoRequest(options: {
   if (publicSiteMatch) {
     const slug = decodeURIComponent(publicSiteMatch[1] || "demo-site");
     const profile = publicSiteProfile ?? findSiteProfileByPublicSlug(slug);
-    if (!profile) return DEMO_NOT_FOUND_RESPONSE;
+    if (!profile) return demoNotFoundResponse();
     return {
       ok: true,
       data: {
@@ -871,8 +1012,16 @@ export function handleDemoRequest(options: {
   }
 
   // Analytics query routes
-  if (path.includes("/filter-options")) {
-    return generateDemoFilterOptions(siteId, params);
+  if (path.includes("/filter-values")) {
+    return generateDemoFilterValues(
+      siteId,
+      params,
+      path.includes("/api/public/")
+        ? "public-share"
+        : path.includes("/api/v1/")
+          ? "api-v1"
+          : "private-dashboard",
+    );
   }
   if (path.includes("/overview-page-path")) {
     return generateDemoOverviewPageTab(siteId, params, "path");
@@ -888,6 +1037,9 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/overview-page-exit")) {
     return generateDemoOverviewPageTab(siteId, params, "exit");
+  }
+  if (path.includes("/overview-source-channel")) {
+    return generateDemoOverviewSourceTab(siteId, params, "channel");
   }
   if (path.includes("/overview-source-domain")) {
     return generateDemoOverviewSourceTab(siteId, params, "domain");
@@ -931,11 +1083,30 @@ export function handleDemoRequest(options: {
   if (path.includes("/overview-geo-points")) {
     return generateDemoGeoPoints(siteId, params);
   }
+  if (
+    path.includes("/journey-event-detail") ||
+    path.includes("/journey-events/detail")
+  ) {
+    return generateDemoJourneyEventDetail(siteId, params);
+  }
   if (path.includes("/event-record-detail")) {
     return generateDemoEventRecordDetail(siteId, params);
   }
-  if (path.includes("/event-type-field-values")) {
+  if (
+    (path.includes("/api/private/") || path.includes("/api/v1/")) &&
+    (path.includes("/event-type-field-values") ||
+      path.includes("/event-fields/values"))
+  ) {
     return generateDemoEventTypeFieldValues(siteId, params);
+  }
+  if (
+    (path.includes("/api/private/") || path.includes("/api/v1/")) &&
+    (path.includes("/event-type-fields") || path.endsWith("/event-fields"))
+  ) {
+    return generateDemoEventFields(siteId, params);
+  }
+  if (path.includes("/event-type-context")) {
+    return generateDemoEventTypeContext(siteId, params);
   }
   if (path.includes("/event-type-detail")) {
     return generateDemoEventTypeDetail(siteId, params);
@@ -979,6 +1150,14 @@ export function handleDemoRequest(options: {
   }
   if (path.includes("/referrer-radar")) {
     return generateDemoReferrerRadar(siteId, params);
+  }
+  if (path.includes("/referrer-channel-dimension-trend")) {
+    return {
+      ok: true,
+      interval: parseDemoInterval(params.interval),
+      source: generateDemoReferrerTrend(siteId, params),
+      channel: generateDemoChannelTrend(siteId, params),
+    };
   }
   if (path.includes("/referrer-dimension-trend")) {
     return generateDemoReferrerTrend(siteId, params);
@@ -1053,7 +1232,7 @@ export function handleDemoRequest(options: {
   // Public routes — delegate to same generators
   const publicMatch = path.match(/\/api\/public\/share\/[^/]+\/(.*)/);
   if (publicMatch) {
-    if (!publicSiteProfile) return DEMO_NOT_FOUND_RESPONSE;
+    if (!publicSiteProfile) return demoNotFoundResponse();
     const subPath = publicMatch[1];
     if (subPath === "overview") return generateDemoOverview(siteId, params);
     if (subPath === "trend") return generateDemoTrend(siteId, params);
@@ -1063,8 +1242,8 @@ export function handleDemoRequest(options: {
       return generateDemoPerformance(siteId, params);
     if (subPath === "countries")
       return generateDemoDimension(siteId, "countries", params);
-    if (subPath === "filter-options")
-      return generateDemoFilterOptions(siteId, params);
+    if (subPath === "filter-values")
+      return generateDemoFilterValues(siteId, params, "public-share");
     if (subPath === "overview-geo-points")
       return generateDemoGeoPoints(siteId, params);
     if (subPath.startsWith("overview-client-")) {
@@ -1109,15 +1288,241 @@ export function handleDemoRequest(options: {
       return generateDemoBrowserRadar(siteId, params);
     if (subPath === "referrer-radar")
       return generateDemoReferrerRadar(siteId, params);
+    if (subPath === "referrer-channel-dimension-trend")
+      return {
+        ok: true,
+        interval: parseDemoInterval(params.interval),
+        source: generateDemoReferrerTrend(siteId, params),
+        channel: generateDemoChannelTrend(siteId, params),
+      };
     if (subPath === "referrer-dimension-trend")
       return generateDemoReferrerTrend(siteId, params);
     if (subPath === "client-dimension-trend")
       return generateDemoClientDimensionTrend(siteId, params);
     if (subPath === "client-cross-breakdown")
       return generateDemoClientCrossBreakdown(siteId, params);
-    return DEMO_NOT_FOUND_RESPONSE;
+    return demoNotFoundResponse();
   }
 
   // Fallback
-  return DEMO_NOT_FOUND_RESPONSE;
+  return demoNotFoundResponse();
+}
+
+function demoBotAnalyticsResponse(
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const from = Number(params.from);
+  const to = Number(params.to);
+  const requestedMinutes =
+    Number.isFinite(from) && Number.isFinite(to) && to > from
+      ? Math.ceil((to - from) / 60_000)
+      : 60;
+  const minutes =
+    requestedMinutes <= 60
+      ? 60
+      : requestedMinutes <= 1440
+        ? 1440
+        : requestedMinutes <= 10080
+          ? 10080
+          : 43200;
+  const data = generateDemoRequestObservationData(
+    minutes,
+    Number.isFinite(to) && to > 0 ? to : undefined,
+  ) as unknown as {
+    ok: true;
+    configured: boolean;
+    generatedAt: number;
+    events: Array<Record<string, unknown>>;
+    normal?: { events?: Array<Record<string, unknown>> };
+  } & Record<string, unknown>;
+
+  if (params.detail === "1") {
+    const traceId = String(params.traceId || "");
+    const rayId = String(params.rayId || "");
+    const detail = data.events.find(
+      (event) => event.traceId === traceId || event.rayId === rayId,
+    );
+    return {
+      ok: true,
+      configured: data.configured,
+      generatedAt: data.generatedAt,
+      detail: detail ?? null,
+    };
+  }
+
+  const source = params.page === "normal" ? "normal" : "abnormal";
+  const events =
+    source === "normal" ? (data.normal?.events ?? []) : data.events;
+  if (params.page === "normal" || params.page === "abnormal") {
+    const page = paginateDemoBotEvents(
+      events,
+      parseDemoBotAnalyticsLimit(params.limit),
+      params.cursor,
+    );
+    return {
+      ok: true,
+      configured: data.configured,
+      generatedAt: data.generatedAt,
+      page: {
+        source,
+        ...page,
+      },
+    };
+  }
+
+  if (params.dimensionTab) {
+    const key = String(params.dimensionTab);
+    const counts = new Map<string, { count: number; highConfidence: number }>();
+    for (const event of events) {
+      const value = String(event[key] ?? "Unknown");
+      const current = counts.get(value) ?? { count: 0, highConfidence: 0 };
+      current.count += 1;
+      if (event.confidence === "high") current.highConfidence += 1;
+      counts.set(value, current);
+    }
+    return {
+      ok: true,
+      dimension: {
+        rows: [...counts.entries()]
+          .map(([key, value]) => ({ key, label: key, ...value }))
+          .sort((left, right) => right.count - left.count)
+          .slice(0, 30),
+      },
+    };
+  }
+
+  const abnormalPage = paginateDemoBotEvents(
+    data.events,
+    parseDemoBotAnalyticsLimit(params.limit),
+  );
+  const normalPage = paginateDemoBotEvents(
+    data.normal?.events ?? [],
+    parseDemoBotAnalyticsLimit(params.limit),
+  );
+
+  return {
+    ...data,
+    events: abnormalPage.events,
+    normalEvents: normalPage.events,
+    abnormal: data.abnormal
+      ? {
+          ...data.abnormal,
+          events: abnormalPage.events,
+          hasMore: abnormalPage.hasMore,
+          nextCursor: abnormalPage.nextCursor,
+        }
+      : data.abnormal,
+    normal: data.normal
+      ? {
+          ...data.normal,
+          events: normalPage.events,
+          hasMore: normalPage.hasMore,
+          nextCursor: normalPage.nextCursor,
+        }
+      : data.normal,
+  };
+}
+
+const DEMO_BOT_ANALYTICS_DEFAULT_LIMIT = 50;
+
+function parseDemoBotAnalyticsLimit(value: unknown): number {
+  const parsed = Number(value);
+  return Math.max(
+    1,
+    Math.min(
+      100,
+      Number.isFinite(parsed)
+        ? Math.trunc(parsed)
+        : DEMO_BOT_ANALYTICS_DEFAULT_LIMIT,
+    ),
+  );
+}
+
+function parseDemoBotAnalyticsCursor(
+  value: unknown,
+): { timestamp: string; receivedAt: number } | null {
+  if (typeof value !== "string" || !value) return null;
+  try {
+    const parsed = JSON.parse(value) as {
+      timestamp?: unknown;
+      receivedAt?: unknown;
+    };
+    const timestamp = String(parsed.timestamp || "");
+    const receivedAt = Number(parsed.receivedAt);
+    if (!timestamp || !Number.isFinite(receivedAt)) return null;
+    return { timestamp, receivedAt };
+  } catch {
+    return null;
+  }
+}
+
+function paginateDemoBotEvents(
+  events: Array<Record<string, unknown>>,
+  limit: number,
+  cursorValue?: unknown,
+): {
+  events: Array<Record<string, unknown>>;
+  hasMore: boolean;
+  nextCursor: { timestamp: string; receivedAt: number } | null;
+} {
+  const cursor = parseDemoBotAnalyticsCursor(cursorValue);
+  const startIndex = cursor
+    ? Math.max(
+        0,
+        events.findIndex(
+          (event) =>
+            String(event.timestamp || "") === cursor.timestamp &&
+            Number(event.receivedAt) === cursor.receivedAt,
+        ) + 1,
+      )
+    : 0;
+  const pageEvents = events.slice(startIndex, startIndex + limit);
+  const hasMore = startIndex + pageEvents.length < events.length;
+  const lastEvent = pageEvents[pageEvents.length - 1];
+  const nextCursor =
+    hasMore && lastEvent
+      ? {
+          timestamp: String(lastEvent.timestamp || ""),
+          receivedAt: Number(lastEvent.receivedAt),
+        }
+      : null;
+
+  return { events: pageEvents, hasMore, nextCursor };
+}
+
+/**
+ * Standalone entry point. Runs the dispatcher, then normalizes any success
+ * envelope to the standard `{ ok:true, requestId, timestamp, ... }` shape so
+ * demo responses are compatible with the real private/public API. Failures are
+ * already emitted in the standard `{ ok:false, error:{ code, message } }` shape
+ * by the dispatcher and pass through untouched.
+ */
+export function handleDemoRequest(
+  options: Parameters<typeof handleDemoRequestInner>[0],
+): unknown {
+  const result: unknown = handleDemoRequestInner(options);
+  if (
+    result &&
+    typeof result === "object" &&
+    (result as { ok?: unknown }).ok === true &&
+    typeof (result as { requestId?: unknown }).requestId !== "string"
+  ) {
+    return demoOk({ ...(result as Record<string, unknown>) });
+  }
+  return result;
+}
+
+/**
+ * Demo request entry point with failure detection. Mirrors the real fetch
+ * branches: a standard failure envelope throws an Error whose message is the
+ * server-style error message, so demo consumers land in the same catch path.
+ */
+export function demoRequest(
+  options: Parameters<typeof handleDemoRequest>[0],
+): unknown {
+  const result = handleDemoRequest(options);
+  if (isErrorEnvelope(result)) {
+    throw new Error(extractErrorMessage(result));
+  }
+  return result;
 }

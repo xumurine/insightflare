@@ -1,27 +1,26 @@
-"use client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RiSearchLine } from "@remixicon/react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import dynamic from "next/dynamic";
-import { RiSearchLine } from "@remixicon/react";
-
+  type AnalyticsTableColumnDefinition,
+  AnalyticsTableColumnSettings,
+  useAnalyticsTableColumns,
+} from "@/components/dashboard/analytics-table-column-settings";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import {
   type SessionSortKey,
   type SessionSortState,
   SessionsTableCard,
+  type SessionTableColumnId,
 } from "@/components/dashboard/sessions-table-card";
 import {
   DETAIL_QUERY_PARAM,
   DetailDrawer,
 } from "@/components/dashboard/site-pages/detail-query-modal";
+import { SessionDetailClientPage } from "@/components/dashboard/site-pages/session-detail-client-page";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import { VisitorDetailClientPage } from "@/components/dashboard/site-pages/visitor-detail-client-page";
 import { Input } from "@/components/ui/input";
 import {
   pushUrlWithoutNavigation,
@@ -29,8 +28,10 @@ import {
   useLiveSearchParams,
 } from "@/lib/client-history";
 import { fetchSessions } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
-import type { JourneySession, SessionsMeta } from "@/lib/edge-client";
+import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
+import type { JourneySession } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -41,33 +42,18 @@ interface SessionsClientPageProps {
   pathname: string;
 }
 
-const SESSION_PAGE_SIZE = 80;
-const SESSION_SKELETON_ROWS = 8;
-
-const SessionDetailClientPage = dynamic(
-  () =>
-    import("@/components/dashboard/site-pages/session-detail-client-page").then(
-      (module) => module.SessionDetailClientPage,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="p-6 text-sm text-muted-foreground">Loading...</div>
-    ),
-  },
-);
+const SESSION_PAGE_SIZE = 50;
+const SESSION_SKELETON_ROWS = 25;
 
 const DEFAULT_SESSION_SORT: SessionSortState = {
   key: "startedAt",
   direction: "desc",
 };
 
-const INITIAL_SESSION_META: SessionsMeta = {
-  page: 1,
-  pageSize: SESSION_PAGE_SIZE,
-  returned: 0,
-  hasMore: false,
-  nextPage: null,
+type NestedJourneyDetail = {
+  kind: "session" | "visitor";
+  id: string;
+  stackKey: string;
 };
 
 function appendUniqueSessions(
@@ -89,7 +75,7 @@ function detailQueryTarget(
   params.set(DETAIL_QUERY_PARAM, detailId);
   params.delete("visitorId");
   params.delete("sessionId");
-  const query = params.toString();
+  const query = serializeDashboardSearchParams(params);
   return query ? `${pathname}?${query}` : pathname;
 }
 
@@ -100,50 +86,45 @@ export function SessionsClientPage({
   pathname,
 }: SessionsClientPageProps) {
   const labels = messages.sessions;
+  const sessionColumnDefinitions = useMemo<
+    readonly AnalyticsTableColumnDefinition<SessionTableColumnId>[]
+  >(
+    () => [
+      { id: "visitor", label: labels.visitor, required: true },
+      { id: "sessionId", label: labels.sessionId, required: true },
+      { id: "started", label: labels.started },
+      { id: "duration", label: labels.duration },
+      { id: "pageViews", label: labels.pageViews },
+      { id: "customEvents", label: labels.customEvents },
+      { id: "referrer", label: labels.referrer },
+      { id: "location", label: labels.location },
+      { id: "os", label: labels.os },
+      { id: "browser", label: labels.browser },
+      { id: "device", label: labels.device },
+      { id: "entryPage", label: labels.entryPage },
+      { id: "exitPage", label: labels.exitPage },
+      { id: "screenSize", label: labels.screenSize },
+      { id: "exitTime", label: labels.exitTime },
+    ],
+    [labels],
+  );
+  const sessionColumns = useAnalyticsTableColumns({
+    storageKey: "insightflare:analytics-table-columns:sessions",
+    columns: sessionColumnDefinitions,
+  });
   const { filters, window: timeWindow } = useDashboardQuery() as {
-    filters: DashboardFilters;
+    filters: FilterDocument;
     window: TimeWindow;
   };
-  const [rows, setRows] = useState<JourneySession[]>([]);
-  const [meta, setMeta] = useState<SessionsMeta>(INITIAL_SESSION_META);
-  const [loadingInitial, setLoadingInitial] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState(false);
-  const [appendError, setAppendError] = useState(false);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sort, setSort] = useState<SessionSortState>(DEFAULT_SESSION_SORT);
-  const [sentinelNode, setSentinelNode] = useState<HTMLTableRowElement | null>(
-    null,
-  );
   const searchParams = useLiveSearchParams();
   const detailSessionId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
+  const [nestedDetails, setNestedDetails] = useState<NestedJourneyDetail[]>([]);
+  const nestedDetailKeyRef = useRef(0);
   const openedDetailFromListRef = useRef(false);
-  const latestRequestKeyRef = useRef("");
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestKey = useMemo(
-    () =>
-      [
-        siteId,
-        timeWindow.from,
-        timeWindow.to,
-        filtersKey,
-        debouncedQuery,
-        sort.key,
-        sort.direction,
-      ].join(":"),
-    [
-      debouncedQuery,
-      filtersKey,
-      siteId,
-      sort.direction,
-      sort.key,
-      timeWindow.from,
-      timeWindow.to,
-    ],
-  );
-  const replacingRows =
-    loadingInitial || latestRequestKeyRef.current !== requestKey;
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -155,135 +136,66 @@ export function SessionsClientPage({
   useEffect(() => {
     if (!detailSessionId) {
       openedDetailFromListRef.current = false;
+      setNestedDetails([]);
     }
   }, [detailSessionId]);
 
-  const loadPage = useEffectEvent(
-    async (page: number, mode: "replace" | "append") => {
-      const capturedRequestKey = latestRequestKeyRef.current;
-
-      if (mode === "replace") {
-        setLoadingInitial(true);
-        setError(false);
-        setAppendError(false);
-      } else {
-        setLoadingMore(true);
-        setAppendError(false);
-      }
-
-      try {
-        const payload = await fetchSessions(siteId, timeWindow, filters, {
-          page,
-          pageSize: SESSION_PAGE_SIZE,
-          sortBy: sort.key,
-          sortDir: sort.direction,
-          search: debouncedQuery,
-        });
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-
-        setRows((current) =>
-          mode === "append"
-            ? appendUniqueSessions(current, payload.data)
-            : payload.data,
-        );
-        setMeta(payload.meta);
-        setError(false);
-        setAppendError(false);
-      } catch {
-        if (latestRequestKeyRef.current !== capturedRequestKey) return;
-        if (mode === "replace") {
-          setRows([]);
-          setMeta(INITIAL_SESSION_META);
-          setError(true);
-          setAppendError(false);
-        } else {
-          setAppendError(true);
-        }
-      } finally {
-        if (latestRequestKeyRef.current === capturedRequestKey) {
-          if (mode === "replace") {
-            setLoadingInitial(false);
-          } else {
-            setLoadingMore(false);
-          }
-        }
-      }
-    },
-  );
-
-  const loadNextPage = useEffectEvent(() => {
-    if (
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      !meta.hasMore ||
-      meta.nextPage === null
-    ) {
-      return;
-    }
-    void loadPage(meta.nextPage, "append");
+  const {
+    data,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchNextPageError,
+    isFetching,
+    isFetchingNextPage,
+    isPending,
+  } = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "sessions",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+      debouncedQuery,
+      sort.key,
+      sort.direction,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchSessions(siteId, timeWindow, filters, {
+        cursor: pageParam,
+        pageSize: SESSION_PAGE_SIZE,
+        sortBy: sort.key,
+        sortDir: sort.direction,
+        search: debouncedQuery,
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.meta.hasMore ? lastPage.meta.nextCursor : undefined,
+    enabled: typeof window !== "undefined",
   });
+  const rows = useMemo(
+    () =>
+      data?.pages.reduce<JourneySession[]>(
+        (current, page) => appendUniqueSessions(current, page.data),
+        [],
+      ) ?? [],
+    [data?.pages],
+  );
+  const loadingInitial = isPending;
+  const loadingMore = isFetchingNextPage;
+  const error = Boolean(queryError) && rows.length === 0;
+  const appendError = isFetchNextPageError;
+  const replacingRows = isPending || (isFetching && !isFetchingNextPage);
+  const hasMore = hasNextPage ?? false;
+  const loadNextPage = useCallback(() => {
+    if (loadingInitial || loadingMore || appendError || !hasMore) return;
+    void fetchNextPage();
+  }, [appendError, fetchNextPage, hasMore, loadingInitial, loadingMore]);
 
-  useEffect(() => {
-    latestRequestKeyRef.current = requestKey;
-    setRows([]);
-    setMeta(INITIAL_SESSION_META);
-    setError(false);
-    setAppendError(false);
-    void loadPage(1, "replace");
-  }, [requestKey]);
-
-  useEffect(() => {
-    const target = sentinelNode;
-    if (
-      !target ||
-      loadingInitial ||
-      loadingMore ||
-      appendError ||
-      error ||
-      !meta.hasMore ||
-      typeof IntersectionObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (entry?.isIntersecting) {
-          loadNextPage();
-        }
-      },
-      {
-        root: null,
-        rootMargin: "360px 0px",
-        threshold: 0.01,
-      },
-    );
-
-    observer.observe(target);
-    const frameId = window.requestAnimationFrame(() => {
-      const rect = target.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 480 && rect.bottom >= -480) {
-        loadNextPage();
-      }
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-      observer.disconnect();
-    };
-  }, [
-    appendError,
-    error,
-    loadingInitial,
-    loadingMore,
-    meta.hasMore,
-    meta.nextPage,
-    sentinelNode,
-  ]);
-
-  const toggleSort = (key: SessionSortKey) => {
+  const toggleSort = useCallback((key: SessionSortKey) => {
     setSort((current) =>
       current.key === key
         ? {
@@ -292,7 +204,7 @@ export function SessionsClientPage({
           }
         : { key, direction: "desc" },
     );
-  };
+  }, []);
 
   const openSessionDetail = useCallback(
     (sessionId: string) => {
@@ -303,6 +215,11 @@ export function SessionsClientPage({
     },
     [pathname, searchParams],
   );
+  const openSessionDetailRef = useRef(openSessionDetail);
+  openSessionDetailRef.current = openSessionDetail;
+  const stableOpenSessionDetail = useCallback((sessionId: string) => {
+    openSessionDetailRef.current(sessionId);
+  }, []);
 
   const closeSessionDetail = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
@@ -315,42 +232,93 @@ export function SessionsClientPage({
     }
 
     params.delete(DETAIL_QUERY_PARAM);
-    const query = params.toString();
+    const query = serializeDashboardSearchParams(params);
     replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
   }, [pathname]);
+  const visitorsPathname = useMemo(
+    () => pathname.replace(/\/sessions(?:\/detail)?$/, "/visitors"),
+    [pathname],
+  );
+  const openNestedDetail = useCallback(
+    (kind: NestedJourneyDetail["kind"], id: string) => {
+      const normalizedId = id.trim();
+      if (!normalizedId) return;
+
+      setNestedDetails((current) => {
+        const topDetail = current.at(-1);
+        if (topDetail?.kind === kind && topDetail.id === normalizedId) {
+          return current;
+        }
+        nestedDetailKeyRef.current += 1;
+        return [
+          ...current,
+          {
+            kind,
+            id: normalizedId,
+            stackKey: `${kind}:${normalizedId}:${nestedDetailKeyRef.current}`,
+          },
+        ];
+      });
+    },
+    [],
+  );
+  const openVisitorDetail = useCallback(
+    (visitorId: string) => openNestedDetail("visitor", visitorId),
+    [openNestedDetail],
+  );
+  const closeNestedDetail = useCallback((stackKey: string) => {
+    setNestedDetails((current) => {
+      const index = current.findIndex((item) => item.stackKey === stackKey);
+      return index < 0 ? current : current.slice(0, index);
+    });
+  }, []);
 
   return (
     <div className="space-y-6">
       <PageHeading
         title={messages.sessions.title}
         subtitle={messages.sessions.subtitle}
+        actions={
+          <div className="flex w-full items-center justify-end gap-2">
+            <div className="relative min-w-0 flex-1 sm:w-80 sm:flex-none">
+              <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={labels.search}
+                className="pl-8"
+              />
+            </div>
+            <AnalyticsTableColumnSettings
+              columns={sessionColumnDefinitions}
+              orderedIds={sessionColumns.orderedIds}
+              visibleIds={sessionColumns.visibleIds}
+              onOrderChange={sessionColumns.setOrder}
+              onVisibilityChange={sessionColumns.setVisible}
+              onReset={sessionColumns.reset}
+              labels={messages.common.tableColumns}
+            />
+          </div>
+        }
       />
-
-      <div className="relative w-full sm:max-w-xs">
-        <RiSearchLine className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={labels.search}
-          className="pl-8"
-        />
-      </div>
 
       <SessionsTableCard
         locale={locale}
         messages={messages}
         labels={labels}
         rows={rows}
-        onOpenSession={openSessionDetail}
+        onOpenSession={stableOpenSessionDetail}
+        onOpenVisitor={openVisitorDetail}
         sort={sort}
         onSort={toggleSort}
         loadingRows={replacingRows}
         loadingMore={loadingMore}
         error={error}
         appendError={appendError}
-        hasMore={meta.hasMore}
+        hasMore={hasMore}
         skeletonRows={SESSION_SKELETON_ROWS}
-        sentinelRef={setSentinelNode}
+        onLoadMore={loadNextPage}
+        visibleColumnIds={sessionColumns.visibleIds}
       />
 
       {detailSessionId ? (
@@ -359,7 +327,10 @@ export function SessionsClientPage({
           drawerKey={`session:${detailSessionId}`}
           open={Boolean(detailSessionId)}
           onOpenChange={(nextOpen) => {
-            if (!nextOpen) closeSessionDetail();
+            if (!nextOpen) {
+              setNestedDetails([]);
+              closeSessionDetail();
+            }
           }}
         >
           <SessionDetailClientPage
@@ -368,9 +339,52 @@ export function SessionsClientPage({
             siteId={siteId}
             pathname={pathname}
             sessionId={detailSessionId}
+            onOpenVisitor={(visitorId) =>
+              openNestedDetail("visitor", visitorId)
+            }
           />
         </DetailDrawer>
       ) : null}
+
+      {nestedDetails.map((nestedDetail) => (
+        <DetailDrawer
+          key={nestedDetail.stackKey}
+          ariaLabel={
+            nestedDetail.kind === "visitor"
+              ? messages.visitors.title
+              : messages.sessionDetail.visitDetailsTitle
+          }
+          drawerKey={nestedDetail.stackKey}
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) closeNestedDetail(nestedDetail.stackKey);
+          }}
+        >
+          {nestedDetail.kind === "visitor" ? (
+            <VisitorDetailClientPage
+              locale={locale}
+              messages={messages}
+              siteId={siteId}
+              pathname={visitorsPathname}
+              visitorId={nestedDetail.id}
+              onOpenSession={(sessionId) =>
+                openNestedDetail("session", sessionId)
+              }
+            />
+          ) : (
+            <SessionDetailClientPage
+              locale={locale}
+              messages={messages}
+              siteId={siteId}
+              pathname={pathname}
+              sessionId={nestedDetail.id}
+              onOpenVisitor={(visitorId) =>
+                openNestedDetail("visitor", visitorId)
+              }
+            />
+          )}
+        </DetailDrawer>
+      ))}
     </div>
   );
 }

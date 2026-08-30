@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { env as cloudflareEnv } from "cloudflare:workers";
 
 import type { Env } from "./types";
 
@@ -11,12 +11,16 @@ interface EdgeRuntimeContext {
 
 export async function resolveEdgeRuntime(
   request: Request,
+  options?: {
+    env?: Env;
+    ctx?: ExecutionContext;
+    cf?: unknown;
+  },
 ): Promise<EdgeRuntimeContext> {
-  const { env, ctx, cf } = await getCloudflareContext({ async: true });
   const nextRequest = new Request(request.url, request);
   try {
     Object.defineProperty(nextRequest, "cf", {
-      value: cf ?? null,
+      value: options?.cf ?? null,
       configurable: true,
     });
   } catch {
@@ -24,8 +28,10 @@ export async function resolveEdgeRuntime(
   }
 
   return {
-    env: env as unknown as Env,
-    ctx,
+    env: options?.env ?? (cloudflareEnv as unknown as Env),
+    ctx:
+      options?.ctx ??
+      ({ waitUntil: () => undefined } as unknown as ExecutionContext),
     request: nextRequest,
     url: new URL(nextRequest.url),
   };

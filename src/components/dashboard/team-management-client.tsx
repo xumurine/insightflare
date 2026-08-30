@@ -1,8 +1,4 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RiAddLine,
   RiArrowDownLine,
@@ -10,6 +6,8 @@ import {
   RiArrowRightSLine,
   RiArrowUpLine,
   RiBarChartBoxLine,
+  RiCheckboxBlankCircleLine,
+  RiCheckLine,
   RiCloseLine,
   RiDeleteBinLine,
   RiFileCopyLine,
@@ -21,17 +19,15 @@ import {
   RiSave3Line,
   RiSettings3Line,
 } from "@remixicon/react";
-import { motion } from "motion/react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { SiteTrafficStackChart } from "@/components/dashboard/charts/site-traffic-stack-chart";
+import { TrafficPairBarChart } from "@/components/dashboard/charts/traffic-pair-bar-chart";
 import { useDashboardQuery } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { SiteBrandIcon } from "@/components/dashboard/site-brand-icon";
-import {
-  SiteTrafficStackChart,
-  TrafficPairBarChart,
-} from "@/components/dashboard/site-traffic-charts";
 import { TableActionButton } from "@/components/dashboard/table-action-button";
 import {
   AlertDialog,
@@ -62,8 +58,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import {
   Select,
   SelectContent,
@@ -74,31 +80,38 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
+  type AdminServiceHttpMethod,
+  requestAdminService,
+} from "@/lib/admin-service-client";
+import type { AdminServiceRoute } from "@/lib/admin-service-contract";
+import {
   durationFormat,
   intlLocale,
   numberFormat,
   percentFormat,
   shortDateTime,
 } from "@/lib/dashboard/format";
-import { canAdministerTeam, canManageTeam } from "@/lib/dashboard/permissions";
-import type { TimeWindow } from "@/lib/dashboard/query-state";
-import {
-  addZonedInterval,
-  startOfZonedInterval,
-} from "@/lib/dashboard/time-zone";
 import type {
-  MemberData,
-  OverviewData,
-  SiteData,
-  TeamData,
-} from "@/lib/edge-client";
+  CreatedTeamInviteData,
+  TeamInviteData,
+  TeamManagementInitialData,
+} from "@/lib/dashboard/management-data";
+import { canAdministerTeam, canManageTeam } from "@/lib/dashboard/permissions";
+import {
+  buildTeamAggregateTrend,
+  buildTeamSiteTrends,
+  teamDashboardQueryOptions,
+  type TeamDashboardSnapshot,
+} from "@/lib/dashboard/team-dashboard-query";
+import type { MemberData, SiteData, TeamData } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import Link from "@/lib/router";
+import { useRouter } from "@/lib/router";
 
 type TeamTab = "sites" | "settings" | "members";
 
-type SiteOverviewMetrics = OverviewData["data"];
 type SiteMetricChangeRates = {
   views: number | null;
   visitors: number | null;
@@ -108,7 +121,7 @@ type SiteMetricChangeRates = {
   pagesPerSession: number | null;
 };
 
-function emptyOverviewMetrics(): SiteOverviewMetrics {
+function emptyOverviewMetrics() {
   return {
     views: 0,
     sessions: 0,
@@ -132,17 +145,9 @@ function emptySiteMetricChangeRates(): SiteMetricChangeRates {
   };
 }
 
-function normalizeChangeRate(value: number | null | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function formatChangeRate(value: number | null): string | null {
   if (value === null) return null;
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
-}
-
-function epochSecondsToMs(value: number): number {
-  return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
 }
 
 function changeRateClass(value: number | null, lowerIsBetter = false): string {
@@ -170,6 +175,10 @@ function ChangeRateInline({
   );
 }
 
+function epochSecondsToMs(value: number): number {
+  return value > 0 && value < 100_000_000_000 ? value * 1000 : value;
+}
+
 interface TeamManagementClientProps {
   locale: Locale;
   messages: AppMessages;
@@ -177,6 +186,8 @@ interface TeamManagementClientProps {
   activeTab: TeamTab;
   systemRole: "admin" | "user";
   currentUserId: string;
+  teamDashboardSnapshot?: TeamDashboardSnapshot | null;
+  teamManagementInitialData?: TeamManagementInitialData | null;
 }
 
 function safeSlug(value: string): string {
@@ -194,7 +205,7 @@ function getSiteSlug(site: SiteData): string {
   return site.id.slice(0, 8);
 }
 
-function withSiteSlug(site: SiteData): SiteData & { slug: string } {
+function withSiteSlug<T extends SiteData>(site: T): T & { slug: string } {
   return {
     ...site,
     slug: getSiteSlug(site),
@@ -202,7 +213,11 @@ function withSiteSlug(site: SiteData): SiteData & { slug: string } {
 }
 
 function sortSitesForInitialOrder<
-  T extends { id: string; name: string; overview?: SiteOverviewMetrics | null },
+  T extends {
+    id: string;
+    name: string;
+    overview?: { views: number; visitors: number } | null;
+  },
 >(sites: T[]): T[] {
   return [...sites].sort((left, right) => {
     const leftViews = left.overview?.views ?? 0;
@@ -232,193 +247,125 @@ function buildSitePath(
   return `/${locale}/app/${teamSlug}/${siteSlug}`;
 }
 
-function intervalStepMs(interval: TimeWindow["interval"]): number {
-  if (interval === "minute") return 60 * 1000;
-  if (interval === "hour") return 60 * 60 * 1000;
-  if (interval === "day") return 24 * 60 * 60 * 1000;
-  if (interval === "week") return 7 * 24 * 60 * 60 * 1000;
-  return 30 * 24 * 60 * 60 * 1000;
-}
-
-interface TeamDashboardTrendPoint {
-  bucket: number;
-  timestampMs: number;
-  sites: Array<{
-    siteId: string;
-    views: number;
-    visitors: number;
-  }>;
-}
-
-interface TeamDashboardSite extends SiteData {
-  overview: SiteOverviewMetrics;
-  changeRates?: SiteMetricChangeRates;
-}
-
-interface TeamDashboardData {
-  sites: TeamDashboardSite[];
-  trend: TeamDashboardTrendPoint[];
-}
-
-interface TeamInviteData {
-  id: string;
-  email: string;
-  payload: {
-    teamRole?: "member" | "admin";
-  };
-  code?: string;
-  url?: string;
-  createdByUserId: string;
-  createdAt: number;
-  expiresAt: number;
-  usedAt: number | null;
-  usedByUserId: string;
-  revokedAt: number | null;
-  status: "active" | "used" | "revoked" | "expired";
-}
-
-interface CreatedTeamInviteData {
-  invite: TeamInviteData;
-  url: string;
-}
-
 const SITE_CARD_MAX_TREND_POINTS = 120;
 
-async function fetchTeamDashboard(
-  teamId: string,
-  window: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">,
-): Promise<TeamDashboardData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: "/api/private/team-dashboard",
-      params: {
-        teamId,
-        from: window.from,
-        to: window.to,
-        interval: window.interval,
-        timeZone: window.timeZone,
-      },
-    }) as {
-      ok: boolean;
-      data?: { sites?: TeamDashboardSite[]; trend?: TeamDashboardTrendPoint[] };
-    };
-    return {
-      sites: Array.isArray(result.data?.sites) ? result.data.sites : [],
-      trend: Array.isArray(result.data?.trend) ? result.data.trend : [],
-    };
+function normalizeSiteIds(input: unknown): string[] {
+  const raw = Array.isArray(input) ? input : [];
+  const out: string[] = [];
+  for (const value of raw) {
+    const siteId = String(value || "").trim();
+    if (!siteId || out.includes(siteId)) continue;
+    out.push(siteId);
   }
-  const params = new URLSearchParams({
-    teamId,
-    from: String(window.from),
-    to: String(window.to),
-    interval: window.interval,
-    timeZone: window.timeZone,
-  });
-  const response = await fetch(
-    `/api/private/team-dashboard?${params.toString()}`,
-    {
-      method: "GET",
-      credentials: "include",
-    },
+  return out;
+}
+
+function formatCountTemplate(template: string, count: number): string {
+  return template.replace("{count}", String(count));
+}
+
+function siteAccessSummary(
+  siteIds: string[],
+  sites: Array<Pick<SiteData, "id" | "name" | "domain">>,
+  copy: AppMessages["teamManagement"]["members"],
+): string {
+  if (siteIds.length === 0) return copy.siteAccessAll;
+  const knownIds = new Set(sites.map((site) => site.id));
+  const selectedCount =
+    knownIds.size === 0
+      ? siteIds.length
+      : siteIds.filter((siteId) => knownIds.has(siteId)).length;
+  return formatCountTemplate(
+    copy.siteAccessSelected,
+    Math.max(selectedCount, siteIds.length),
   );
-  if (!response.ok) throw new Error("fetch_team_dashboard_failed");
-  const payload = (await response.json()) as {
-    ok: boolean;
-    data?: {
-      sites?: TeamDashboardSite[];
-      trend?: TeamDashboardTrendPoint[];
-    };
-  };
-  if (!payload.ok || !payload.data) {
-    throw new Error("fetch_team_dashboard_failed");
-  }
-  return {
-    sites: Array.isArray(payload.data.sites) ? payload.data.sites : [],
-    trend: Array.isArray(payload.data.trend) ? payload.data.trend : [],
-  };
 }
 
-async function fetchTeamMembers(teamId: string): Promise<MemberData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: "/api/private/admin/members",
-      params: { teamId },
-    }) as { ok: boolean; data?: MemberData[] };
-    return Array.isArray(result.data) ? result.data : [];
-  }
-  const url = `/api/private/admin/members?teamId=${encodeURIComponent(teamId)}`;
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
+function SiteAccessSelectorButtons({
+  siteIds,
+  sites,
+  allSitesLabel,
+  noSitesLabel,
+  onAllSites,
+  onToggleSite,
+}: {
+  siteIds: string[];
+  sites: Array<Pick<SiteData, "id" | "name" | "domain">>;
+  allSitesLabel: string;
+  noSitesLabel: string;
+  onAllSites: () => void;
+  onToggleSite: (siteId: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        type="button"
+        variant={siteIds.length === 0 ? "default" : "outline"}
+        size="sm"
+        onClick={onAllSites}
+      >
+        {siteIds.length === 0 ? <RiCheckLine /> : <RiCheckboxBlankCircleLine />}
+        <span>{allSitesLabel}</span>
+      </Button>
+      {sites.length > 0 ? (
+        sites.map((site) => {
+          const checked = siteIds.includes(site.id);
+          return (
+            <Button
+              key={site.id}
+              type="button"
+              variant={checked ? "default" : "outline"}
+              size="sm"
+              onClick={() => onToggleSite(site.id)}
+            >
+              {checked ? <RiCheckLine /> : <RiCheckboxBlankCircleLine />}
+              <span>{site.name || site.domain || site.id}</span>
+            </Button>
+          );
+        })
+      ) : (
+        <p className="text-sm text-muted-foreground">{noSitesLabel}</p>
+      )}
+    </div>
+  );
+}
+
+async function fetchTeamMembers(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<MemberData[]> {
+  return requestAdminService<MemberData[]>("members", {
+    params: { teamId },
+    signal,
   });
-  if (!response.ok) throw new Error("fetch_team_members_failed");
-  const payload = (await response.json()) as {
-    ok: boolean;
-    data?: MemberData[];
-  };
-  return Array.isArray(payload.data) ? payload.data : [];
 }
 
-async function fetchTeamInvites(teamId: string): Promise<TeamInviteData[]> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: "/api/private/admin/team-invites",
-      params: { teamId },
-    }) as { ok: boolean; data?: TeamInviteData[] };
-    return Array.isArray(result.data) ? result.data : [];
-  }
-  const url = `/api/private/admin/team-invites?teamId=${encodeURIComponent(teamId)}`;
-  const response = await fetch(url, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
+async function fetchTeamSites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<SiteData[]> {
+  return requestAdminService<SiteData[]>("sites", {
+    params: { teamId },
+    signal,
   });
-  if (!response.ok) throw new Error("fetch_team_invites_failed");
-  const payload = (await response.json()) as {
-    ok: boolean;
-    data?: TeamInviteData[];
-  };
-  return Array.isArray(payload.data) ? payload.data : [];
 }
 
-interface ActionResponse<T> {
-  ok: boolean;
-  data?: T;
-  error?: string;
-  message?: string;
+async function fetchTeamInvites(
+  teamId: string,
+  signal?: AbortSignal,
+): Promise<TeamInviteData[]> {
+  return requestAdminService<TeamInviteData[]>("team-invites", {
+    params: { teamId },
+    signal,
+  });
 }
 
 async function postJson<T>(
-  url: string,
+  route: AdminServiceRoute,
   body: Record<string, unknown>,
-  method: "POST" | "PATCH" = "POST",
+  method: AdminServiceHttpMethod = "POST",
 ): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    const result = handleDemoRequest({
-      path: url,
-      method,
-      body,
-    }) as ActionResponse<T>;
-    return (result.data ?? {}) as T;
-  }
-  const response = await fetch(url, {
-    method,
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-  const payload = (await response.json()) as ActionResponse<T>;
-  if (!response.ok || !payload.ok || payload.data === undefined) {
-    throw new Error(payload.message || payload.error || "request_failed");
-  }
-  return payload.data;
+  return requestAdminService<T>(route, { method, body });
 }
 
 export function TeamManagementClient({
@@ -428,15 +375,34 @@ export function TeamManagementClient({
   activeTab,
   systemRole,
   currentUserId,
+  teamDashboardSnapshot = null,
+  teamManagementInitialData = null,
 }: TeamManagementClientProps) {
   const router = useRouter();
-  const { window } = useDashboardQuery();
+  const { window: selectedWindow } = useDashboardQuery();
+  const canUseInitialSnapshotWindow =
+    teamDashboardSnapshot &&
+    selectedWindow.preset === teamDashboardSnapshot.range &&
+    selectedWindow.interval === teamDashboardSnapshot.window.interval &&
+    selectedWindow.timeZone === teamDashboardSnapshot.window.timeZone &&
+    (selectedWindow.preset !== "custom" ||
+      (selectedWindow.from === teamDashboardSnapshot.window.from &&
+        selectedWindow.to === teamDashboardSnapshot.window.to));
+  const window = canUseInitialSnapshotWindow
+    ? {
+        ...teamDashboardSnapshot.window,
+        preset: selectedWindow.preset,
+      }
+    : selectedWindow;
   const copy = messages.teamManagement;
   const siteCreateCopy = messages.adminSites;
-  const [sites, setSites] = useState<Array<SiteData & { slug: string }>>([]);
-  const [siteOrder, setSiteOrder] = useState<string[]>([]);
-  const [members, setMembers] = useState<MemberData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sites, setSites] = useState<Array<SiteData & { slug: string }>>(() =>
+    (teamManagementInitialData?.sites ?? []).map(withSiteSlug),
+  );
+  const [members, setMembers] = useState<MemberData[]>(
+    () => teamManagementInitialData?.members ?? [],
+  );
+  const [loading, setLoading] = useState(!teamManagementInitialData);
   const [createSiteDialogOpen, setCreateSiteDialogOpen] = useState(false);
   const [createSiteName, setCreateSiteName] = useState("");
   const [createSiteDomain, setCreateSiteDomain] = useState("");
@@ -446,9 +412,14 @@ export function TeamManagementClient({
   const [currentTeamName, setCurrentTeamName] = useState(activeTeam.name);
   const [teamName, setTeamName] = useState(activeTeam.name);
   const [teamSlug, setTeamSlug] = useState(activeTeam.slug);
-  const [invites, setInvites] = useState<TeamInviteData[]>([]);
+  const [invites, setInvites] = useState<TeamInviteData[]>(
+    () => teamManagementInitialData?.invites ?? [],
+  );
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<"admin" | "member">("member");
+  const [inviteSiteIds, setInviteSiteIds] = useState<string[]>([]);
+  const [inviteSiteAccessDialogOpen, setInviteSiteAccessDialogOpen] =
+    useState(false);
   const [inviteExpiresInHours, setInviteExpiresInHours] = useState("72");
   const [latestInviteUrl, setLatestInviteUrl] = useState("");
   const [savingTeam, setSavingTeam] = useState(false);
@@ -458,25 +429,15 @@ export function TeamManagementClient({
   const [revokingInviteId, setRevokingInviteId] = useState<string | null>(null);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [siteOverviewById, setSiteOverviewById] = useState<
-    Record<string, SiteOverviewMetrics>
-  >({});
-  const [siteChangeRatesById, setSiteChangeRatesById] = useState<
-    Record<string, SiteMetricChangeRates>
-  >({});
-  const [teamTrend, setTeamTrend] = useState<TeamDashboardTrendPoint[]>([]);
+  const [savingSiteAccessId, setSavingSiteAccessId] = useState<string | null>(
+    null,
+  );
+  const [siteAccessDialogMember, setSiteAccessDialogMember] =
+    useState<MemberData | null>(null);
+  const [editingSiteIds, setEditingSiteIds] = useState<string[]>([]);
   const [transferTargetId, setTransferTargetId] = useState<string>("");
   const [transferring, setTransferring] = useState(false);
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
-  const [chartWindow, setChartWindow] = useState<
-    Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">
-  >(() => ({
-    from: window.from,
-    to: window.to,
-    interval: window.interval,
-    timeZone: window.timeZone,
-  }));
   const canManage = canManageTeam(activeTeam.membershipRole, systemRole);
   const canAdminister = canAdministerTeam(
     activeTeam.membershipRole,
@@ -484,6 +445,42 @@ export function TeamManagementClient({
   );
   const canManageSites = canManage;
   const isRealOwner = activeTeam.ownerUserId === currentUserId;
+  const previousTeamIdRef = useRef<string | null>(null);
+  const managementDataQuery = useQuery({
+    queryKey: ["dashboard", "team-management-data", activeTeam.id, canManage],
+    queryFn: async ({ signal }) => {
+      const [members, invites, sites] = await Promise.all([
+        fetchTeamMembers(activeTeam.id, signal),
+        canManage
+          ? fetchTeamInvites(activeTeam.id, signal)
+          : Promise.resolve([]),
+        canManage ? fetchTeamSites(activeTeam.id, signal) : Promise.resolve([]),
+      ]);
+      return { members, invites, sites, fetchedAt: Date.now() };
+    },
+    enabled:
+      typeof window !== "undefined" &&
+      (activeTab === "settings" || activeTab === "members"),
+    initialData: teamManagementInitialData ?? undefined,
+    initialDataUpdatedAt: teamManagementInitialData?.fetchedAt,
+  });
+  const dashboardQuery = useQuery(
+    teamDashboardQueryOptions({
+      teamId: activeTeam.id,
+      window,
+      range: selectedWindow.preset,
+      snapshot: teamDashboardSnapshot,
+      enabled: activeTab === "sites",
+    }),
+  );
+  const dashboardSnapshot = dashboardQuery.data;
+  const dashboardData = dashboardSnapshot?.data;
+  const dashboardWindow = dashboardSnapshot?.window ?? window;
+  const dashboardSites = useMemo(
+    () =>
+      sortSitesForInitialOrder((dashboardData?.sites ?? []).map(withSiteSlug)),
+    [dashboardData?.sites],
+  );
   const transferableMembers = useMemo(
     () => members.filter((m) => m.userId !== activeTeam.ownerUserId),
     [members, activeTeam.ownerUserId],
@@ -491,34 +488,18 @@ export function TeamManagementClient({
 
   useEffect(() => {
     if (activeTab !== "settings" && activeTab !== "members") return;
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchTeamMembers(activeTeam.id),
-      canManage ? fetchTeamInvites(activeTeam.id) : Promise.resolve([]),
-    ])
-      .then(([nextMembers, nextInvites]) => {
-        if (!active) return;
-        setMembers(nextMembers);
-        setInvites(nextInvites);
-      })
-      .catch(() => {
-        if (!active) return;
-        setMembers([]);
-        setInvites([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [activeTeam.id, activeTab, canManage]);
+    setLoading(managementDataQuery.isPending);
+    if (managementDataQuery.isPending) return;
+    const data = managementDataQuery.data;
+    setMembers(data?.members ?? []);
+    setInvites(data?.invites ?? []);
+    setSites((data?.sites ?? []).map(withSiteSlug));
+  }, [activeTab, managementDataQuery.data, managementDataQuery.isPending]);
 
   useEffect(() => {
+    const previousTeamId = previousTeamIdRef.current;
+    previousTeamIdRef.current = activeTeam.id;
+    if (!previousTeamId || previousTeamId === activeTeam.id) return;
     setCreateSiteDialogOpen(false);
     setCreateSiteName("");
     setCreateSiteDomain("");
@@ -529,130 +510,48 @@ export function TeamManagementClient({
     setTeamSlug(activeTeam.slug);
     setInviteEmail("");
     setInviteRole("member");
+    setInviteSiteIds([]);
+    setInviteSiteAccessDialogOpen(false);
     setInviteExpiresInHours("72");
     setLatestInviteUrl("");
     setSites([]);
-    setSiteOrder([]);
     setMembers([]);
     setInvites([]);
-    setSiteOverviewById({});
-    setSiteChangeRatesById({});
-    setTeamTrend([]);
     setTransferTargetId("");
     setTransferDialogOpen(false);
-    setChartWindow({
-      from: window.from,
-      to: window.to,
-      interval: window.interval,
-      timeZone: window.timeZone,
-    });
+    setSiteAccessDialogMember(null);
+    setEditingSiteIds([]);
   }, [activeTeam.id, activeTeam.name, activeTeam.slug]);
-
-  useEffect(() => {
-    if (activeTab !== "sites") return;
-
-    let active = true;
-    setLoading(true);
-    setAnalyticsLoading(true);
-
-    fetchTeamDashboard(activeTeam.id, window)
-      .then((dashboard) => {
-        if (!active) return;
-        const nextSites = dashboard.sites.map(withSiteSlug);
-        const sortedSites = sortSitesForInitialOrder(dashboard.sites);
-        setSites(nextSites);
-        setSiteOrder((currentOrder) => {
-          const nextIds = sortedSites.map((site) => site.id);
-          if (currentOrder.length === 0) return nextIds;
-          const knownIds = new Set(currentOrder);
-          const appended = nextIds.filter((id) => !knownIds.has(id));
-          if (appended.length === 0) return currentOrder;
-          return [...currentOrder, ...appended];
-        });
-        setSiteOverviewById(
-          Object.fromEntries(
-            dashboard.sites.map((site) => [
-              site.id,
-              site.overview ?? emptyOverviewMetrics(),
-            ]),
-          ),
-        );
-        setSiteChangeRatesById(
-          Object.fromEntries(
-            dashboard.sites.map((site) => [
-              site.id,
-              {
-                views: normalizeChangeRate(site.changeRates?.views),
-                visitors: normalizeChangeRate(site.changeRates?.visitors),
-                sessions: normalizeChangeRate(site.changeRates?.sessions),
-                bounceRate: normalizeChangeRate(site.changeRates?.bounceRate),
-                avgDurationMs: normalizeChangeRate(
-                  site.changeRates?.avgDurationMs,
-                ),
-                pagesPerSession: normalizeChangeRate(
-                  site.changeRates?.pagesPerSession,
-                ),
-              },
-            ]),
-          ),
-        );
-        setTeamTrend(dashboard.trend);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .catch(() => {
-        if (!active) return;
-        setSites([]);
-        setSiteOverviewById({});
-        setSiteChangeRatesById({});
-        setTeamTrend([]);
-        setChartWindow({
-          from: window.from,
-          to: window.to,
-          interval: window.interval,
-          timeZone: window.timeZone,
-        });
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-        setAnalyticsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    activeTeam.id,
-    activeTab,
-    window.from,
-    window.to,
-    window.interval,
-    window.timeZone,
-  ]);
 
   useEffect(() => {
     if (activeTab === "sites" || activeTab === "settings") return;
     setLoading(false);
-    setAnalyticsLoading(false);
   }, [activeTab]);
 
   async function refreshMembers() {
-    const nextMembers = await fetchTeamMembers(activeTeam.id);
-    setMembers(nextMembers);
+    await managementDataQuery.refetch();
   }
 
   async function refreshInvites() {
-    if (!canManage) {
-      setInvites([]);
-      return;
-    }
-    const nextInvites = await fetchTeamInvites(activeTeam.id);
-    setInvites(nextInvites);
+    await managementDataQuery.refetch();
+  }
+
+  function toggleInviteSite(siteId: string, checked: boolean) {
+    setInviteSiteIds((current) => {
+      if (checked) {
+        return current.includes(siteId) ? current : [...current, siteId];
+      }
+      return current.filter((id) => id !== siteId);
+    });
+  }
+
+  function toggleEditingSite(siteId: string, checked: boolean) {
+    setEditingSiteIds((current) => {
+      if (checked) {
+        return current.includes(siteId) ? current : [...current, siteId];
+      }
+      return current.filter((id) => id !== siteId);
+    });
   }
 
   async function handleCreateSite() {
@@ -671,7 +570,7 @@ export function TeamManagementClient({
     setCreatingSite(true);
     setCreateSiteError("");
     try {
-      const created = await postJson<SiteData>("/api/private/admin/sites", {
+      const created = await postJson<SiteData>("sites", {
         teamId: team.id,
         name,
         domain,
@@ -708,7 +607,7 @@ export function TeamManagementClient({
     setSavingTeam(true);
     try {
       const updated = await postJson<TeamData>(
-        "/api/private/admin/teams",
+        "teams",
         {
           teamId: activeTeam.id,
           name,
@@ -749,17 +648,17 @@ export function TeamManagementClient({
 
     setCreatingInvite(true);
     try {
-      const created = await postJson<CreatedTeamInviteData>(
-        "/api/private/admin/team-invites",
-        {
-          teamId: activeTeam.id,
-          email: email || undefined,
-          role: inviteRole,
-          expiresInHours,
-        },
-      );
+      const created = await postJson<CreatedTeamInviteData>("team-invites", {
+        teamId: activeTeam.id,
+        email: email || undefined,
+        role: inviteRole,
+        siteIds: inviteRole === "member" ? inviteSiteIds : [],
+        expiresInHours,
+      });
       setInviteEmail("");
       setInviteRole("member");
+      setInviteSiteIds([]);
+      setInviteSiteAccessDialogOpen(false);
       setInviteExpiresInHours("72");
       setLatestInviteUrl(created.url);
       await refreshInvites();
@@ -777,7 +676,7 @@ export function TeamManagementClient({
     setRevokingInviteId(inviteId);
     try {
       await postJson<TeamInviteData>(
-        "/api/private/admin/team-invites",
+        "team-invites",
         {
           intent: "revoke",
           inviteId,
@@ -820,7 +719,7 @@ export function TeamManagementClient({
     setDeletingTeam(true);
     try {
       await postJson(
-        "/api/private/admin/teams",
+        "teams",
         {
           intent: "remove",
           teamId: activeTeam.id,
@@ -848,7 +747,7 @@ export function TeamManagementClient({
     setTransferring(true);
     try {
       await postJson<TeamData>(
-        "/api/private/admin/teams",
+        "teams",
         {
           intent: "transfer_owner",
           teamId: activeTeam.id,
@@ -879,7 +778,7 @@ export function TeamManagementClient({
     setChangingRoleId(userId);
     try {
       await postJson(
-        "/api/private/admin/members",
+        "members",
         {
           intent: "update_role",
           teamId: activeTeam.id,
@@ -899,11 +798,41 @@ export function TeamManagementClient({
     }
   }
 
+  async function handleSaveMemberSiteAccess() {
+    if (!siteAccessDialogMember) return;
+    const userId = siteAccessDialogMember.userId;
+    setSavingSiteAccessId(userId);
+    try {
+      await postJson(
+        "members",
+        {
+          intent: "update_site_access",
+          teamId: activeTeam.id,
+          userId,
+          siteIds: editingSiteIds,
+        },
+        "PATCH",
+      );
+      await refreshMembers();
+      setSiteAccessDialogMember(null);
+      setEditingSiteIds([]);
+      toast.success(copy.toasts.siteAccessChanged);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : copy.toasts.siteAccessChangeFailed;
+      toast.error(message || copy.toasts.siteAccessChangeFailed);
+    } finally {
+      setSavingSiteAccessId(null);
+    }
+  }
+
   async function handleRemoveMember(userId: string) {
     setRemovingMemberId(userId);
     try {
       await postJson(
-        "/api/private/admin/members",
+        "members",
         {
           intent: "remove",
           teamId: activeTeam.id,
@@ -923,206 +852,43 @@ export function TeamManagementClient({
   }
 
   const aggregateChartRenderData = useMemo(() => {
-    const timeline = new Map<
-      number,
-      {
-        timestampMs: number;
-        sites: Map<string, { views: number; visitors: number }>;
-      }
-    >();
-    const end = startOfZonedInterval(
-      chartWindow.to,
-      chartWindow.interval,
-      chartWindow.timeZone,
-    );
-    let current = startOfZonedInterval(
-      chartWindow.from,
-      chartWindow.interval,
-      chartWindow.timeZone,
-    );
-    const hardLimit = 2000;
+    if (!dashboardData) return undefined;
+    return buildTeamAggregateTrend(dashboardData.trend, dashboardWindow);
+  }, [dashboardData, dashboardWindow]);
 
-    for (let index = 0; index < hardLimit && current <= end; index += 1) {
-      timeline.set(current, {
-        timestampMs: current,
-        sites: new Map(),
-      });
-      let next = addZonedInterval(
-        current,
-        chartWindow.interval,
-        chartWindow.timeZone,
-      );
-      if (!Number.isFinite(next) || next <= current) {
-        next = current + intervalStepMs(chartWindow.interval);
-      }
-      current = next;
-    }
+  const siteTrendById = useMemo(
+    () =>
+      buildTeamSiteTrends(
+        dashboardSites.map((site) => site.id),
+        dashboardData?.trend ?? [],
+        dashboardWindow,
+      ),
+    [dashboardData?.trend, dashboardSites, dashboardWindow],
+  );
 
-    for (const point of teamTrend) {
-      const bucket = startOfZonedInterval(
-        Number(point.timestampMs ?? 0),
-        chartWindow.interval,
-        chartWindow.timeZone,
-      );
-      const current = timeline.get(bucket) ?? {
-        timestampMs: bucket,
-        sites: new Map<string, { views: number; visitors: number }>(),
-      };
-
-      for (const sitePoint of point.sites) {
-        const previous = current.sites.get(sitePoint.siteId) ?? {
-          views: 0,
-          visitors: 0,
+  const siteDashboardCards = useMemo(
+    () =>
+      dashboardSites.map((site) => {
+        const overview = site.overview ?? emptyOverviewMetrics();
+        return {
+          site,
+          overview,
+          pagesPerSession:
+            overview.sessions > 0 ? overview.views / overview.sessions : 0,
+          changeRates: site.changeRates ?? emptySiteMetricChangeRates(),
+          trend: siteTrendById[site.id] ?? [],
         };
-        current.sites.set(sitePoint.siteId, {
-          views: previous.views + (sitePoint.views ?? 0),
-          visitors: previous.visitors + (sitePoint.visitors ?? 0),
-        });
-      }
-      timeline.set(bucket, current);
-    }
+      }),
+    [dashboardSites, siteTrendById],
+  );
 
-    return Array.from(timeline.entries())
-      .sort((left, right) => left[0] - right[0])
-      .map(([, value]) => ({
-        timestampMs: value.timestampMs,
-        sites: Array.from(value.sites.entries()).map(([siteId, siteValue]) => ({
-          siteId,
-          views: siteValue.views,
-          visitors: siteValue.visitors,
-        })),
-      }));
-  }, [
-    teamTrend,
-    chartWindow.from,
-    chartWindow.to,
-    chartWindow.interval,
-    chartWindow.timeZone,
-  ]);
-
-  const siteTrendById = useMemo(() => {
-    const siteBuckets = new Map<
-      string,
-      Map<number, { timestampMs: number; views: number; visitors: number }>
-    >();
-    const starts: number[] = [];
-    const end = startOfZonedInterval(
-      chartWindow.to,
-      chartWindow.interval,
-      chartWindow.timeZone,
-    );
-    let current = startOfZonedInterval(
-      chartWindow.from,
-      chartWindow.interval,
-      chartWindow.timeZone,
-    );
-    const hardLimit = 2000;
-    for (let index = 0; index < hardLimit && current <= end; index += 1) {
-      starts.push(current);
-      let next = addZonedInterval(
-        current,
-        chartWindow.interval,
-        chartWindow.timeZone,
-      );
-      if (!Number.isFinite(next) || next <= current) {
-        next = current + intervalStepMs(chartWindow.interval);
-      }
-      current = next;
-    }
-
-    for (const site of sites) {
-      const bucketMap = new Map<
-        number,
-        { timestampMs: number; views: number; visitors: number }
-      >();
-      for (const start of starts) {
-        bucketMap.set(start, {
-          timestampMs: start,
-          views: 0,
-          visitors: 0,
-        });
-      }
-      siteBuckets.set(site.id, bucketMap);
-    }
-
-    for (const point of teamTrend) {
-      const bucket = startOfZonedInterval(
-        Number(point.timestampMs ?? 0),
-        chartWindow.interval,
-        chartWindow.timeZone,
-      );
-
-      for (const sitePoint of point.sites) {
-        const bucketMap = siteBuckets.get(sitePoint.siteId);
-        if (!bucketMap) continue;
-        const existing = bucketMap.get(bucket) ?? {
-          timestampMs: bucket,
-          views: 0,
-          visitors: 0,
-        };
-        existing.views += sitePoint.views ?? 0;
-        existing.visitors += sitePoint.visitors ?? 0;
-        bucketMap.set(bucket, existing);
-      }
-    }
-
-    return Object.fromEntries(
-      Array.from(siteBuckets.entries()).map(([siteId, bucketMap]) => [
-        siteId,
-        Array.from(bucketMap.entries())
-          .sort((left, right) => left[0] - right[0])
-          .map(([, value]) => value),
-      ]),
-    );
-  }, [
-    sites,
-    teamTrend,
-    chartWindow.from,
-    chartWindow.to,
-    chartWindow.interval,
-    chartWindow.timeZone,
-  ]);
-
-  const siteDashboardCards = useMemo(() => {
-    const cards = sites.map((site) => {
-      const overview = siteOverviewById[site.id] ?? emptyOverviewMetrics();
-      const pagesPerSession =
-        overview.sessions > 0 ? overview.views / overview.sessions : 0;
-      return {
-        site,
-        overview,
-        pagesPerSession,
-        changeRates:
-          siteChangeRatesById[site.id] ?? emptySiteMetricChangeRates(),
-        trend: siteTrendById[site.id] ?? [],
-      };
-    });
-
-    if (siteOrder.length === 0) return cards;
-
-    const cardById = new Map(cards.map((card) => [card.site.id, card]));
-    const orderedCards = [] as typeof cards;
-
-    for (const siteId of siteOrder) {
-      const card = cardById.get(siteId);
-      if (!card) continue;
-      orderedCards.push(card);
-      cardById.delete(siteId);
-    }
-
-    if (cardById.size > 0) {
-      orderedCards.push(...Array.from(cardById.values()));
-    }
-
-    return orderedCards;
-  }, [sites, siteOverviewById, siteChangeRatesById, siteTrendById, siteOrder]);
   const aggregateChartSites = useMemo(
     () =>
-      siteDashboardCards.map(({ site }) => ({
+      dashboardSites.map((site) => ({
         id: site.id,
         name: site.name,
       })),
-    [siteDashboardCards],
+    [dashboardSites],
   );
 
   const pagesPerSessionFormatter = useMemo(
@@ -1134,8 +900,9 @@ export function TeamManagementClient({
   );
 
   const siteCount = useMemo(
-    () => (activeTab === "sites" ? sites.length : activeTeam.siteCount),
-    [activeTab, sites.length, activeTeam.siteCount],
+    () =>
+      activeTab === "sites" ? dashboardSites.length : activeTeam.siteCount,
+    [activeTab, dashboardSites.length, activeTeam.siteCount],
   );
 
   const memberCount = useMemo(
@@ -1158,8 +925,10 @@ export function TeamManagementClient({
       : activeTab === "settings"
         ? copy.settings.subtitle
         : copy.members.subtitle;
-  const isSitesChartsLoading =
-    activeTab === "sites" && (loading || analyticsLoading);
+  const isPageDataLoading =
+    activeTab === "sites"
+      ? dashboardQuery.isPending && !dashboardData
+      : loading;
   const inviteCreateCard = (
     <Card className="h-full">
       <CardHeader>
@@ -1195,7 +964,9 @@ export function TeamManagementClient({
               <Select
                 value={inviteRole}
                 onValueChange={(value) => {
-                  setInviteRole(value === "admin" ? "admin" : "member");
+                  const nextRole = value === "admin" ? "admin" : "member";
+                  setInviteRole(nextRole);
+                  if (nextRole === "admin") setInviteSiteIds([]);
                 }}
                 disabled={!canManage}
               >
@@ -1227,6 +998,30 @@ export function TeamManagementClient({
               />
             </div>
           </div>
+          {inviteRole === "member" ? (
+            <div className="space-y-2">
+              <Label>{copy.members.siteAccessLabel}</Label>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!canManage}
+                className="w-full justify-between"
+                onClick={() => setInviteSiteAccessDialogOpen(true)}
+              >
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <RiGlobalLine className="size-4 shrink-0" />
+                  <span className="truncate">
+                    {siteAccessSummary(inviteSiteIds, sites, copy.members)}
+                  </span>
+                </span>
+                <RiSettings3Line className="size-4 shrink-0 text-muted-foreground" />
+              </Button>
+            </div>
+          ) : (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+              {copy.members.siteAccessAdmins}
+            </div>
+          )}
           <Button
             type="submit"
             className="mt-auto self-start"
@@ -1282,12 +1077,13 @@ export function TeamManagementClient({
           hasContent={invites.length > 0}
           loadingLabel={messages.common.loading}
           emptyLabel={copy.members.noInvites}
-          colSpan={8}
+          colSpan={9}
           header={
             <TableRow>
               <TableHead>{copy.members.columns.email}</TableHead>
               <TableHead>{copy.members.columns.inviteCode}</TableHead>
               <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.siteAccess}</TableHead>
               <TableHead>{copy.members.columns.status}</TableHead>
               <TableHead>{copy.members.columns.createdAt}</TableHead>
               <TableHead>{copy.members.columns.expiresAt}</TableHead>
@@ -1320,6 +1116,15 @@ export function TeamManagementClient({
                 {invite.payload.teamRole === "admin"
                   ? copy.members.roleLabels.admin
                   : copy.members.roleLabels.member}
+              </TableCell>
+              <TableCell>
+                {invite.payload.teamRole === "admin"
+                  ? copy.members.siteAccessAll
+                  : siteAccessSummary(
+                      normalizeSiteIds(invite.payload.siteIds),
+                      sites,
+                      copy.members,
+                    )}
               </TableCell>
               <TableCell>
                 {copy.members.inviteStatuses[invite.status]}
@@ -1385,13 +1190,14 @@ export function TeamManagementClient({
           hasContent={members.length > 0}
           loadingLabel={messages.common.loading}
           emptyLabel={copy.members.noMembers}
-          colSpan={6}
+          colSpan={7}
           header={
             <TableRow>
               <TableHead>{copy.members.columns.name}</TableHead>
               <TableHead>{copy.members.columns.username}</TableHead>
               <TableHead>{copy.members.columns.email}</TableHead>
               <TableHead>{copy.members.columns.role}</TableHead>
+              <TableHead>{copy.members.columns.siteAccess}</TableHead>
               <TableHead>{copy.members.columns.joinedAt}</TableHead>
               <TableHead className="text-right">
                 {copy.members.columns.action}
@@ -1461,6 +1267,52 @@ export function TeamManagementClient({
                 )}
               </TableCell>
               <TableCell>
+                {member.role === "member" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      !canManage || savingSiteAccessId === member.userId
+                    }
+                    className="justify-between"
+                    onClick={() => {
+                      setSiteAccessDialogMember(member);
+                      setEditingSiteIds(normalizeSiteIds(member.siteIds));
+                    }}
+                  >
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      <RiGlobalLine className="size-3.5 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        {siteAccessSummary(
+                          normalizeSiteIds(member.siteIds),
+                          sites,
+                          copy.members,
+                        )}
+                      </span>
+                    </span>
+                    {savingSiteAccessId === member.userId ? (
+                      <Spinner className="size-3.5 shrink-0" />
+                    ) : (
+                      <RiSettings3Line className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled
+                    className="justify-start"
+                  >
+                    <RiGlobalLine className="size-3.5" />
+                    <span className="truncate">
+                      {copy.members.siteAccessAll}
+                    </span>
+                  </Button>
+                )}
+              </TableCell>
+              <TableCell>
                 {shortDateTime(
                   locale,
                   epochSecondsToMs(member.joinedAt),
@@ -1503,89 +1355,210 @@ export function TeamManagementClient({
     </div>
   );
 
+  const inviteSiteAccessDialog = (
+    <ResponsiveDialog
+      open={inviteSiteAccessDialogOpen}
+      onOpenChange={setInviteSiteAccessDialogOpen}
+    >
+      <ResponsiveDialogContent desktopClassName="max-w-2xl">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>
+            {copy.members.siteAccessDialogTitle}
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
+            {copy.members.invitesTitle}
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
+        <ResponsiveDialogBody>
+          <Field>
+            <FieldLabel>{copy.members.siteAccessLabel}</FieldLabel>
+            <FieldDescription>
+              {copy.members.siteAccessDescription}
+            </FieldDescription>
+            <SiteAccessSelectorButtons
+              siteIds={inviteSiteIds}
+              sites={sites}
+              allSitesLabel={copy.members.siteAccessAll}
+              noSitesLabel={copy.members.noSitesForAccess}
+              onAllSites={() => setInviteSiteIds([])}
+              onToggleSite={(siteId) =>
+                toggleInviteSite(siteId, !inviteSiteIds.includes(siteId))
+              }
+            />
+          </Field>
+        </ResponsiveDialogBody>
+        <ResponsiveDialogFooter>
+          <Button
+            type="button"
+            onClick={() => setInviteSiteAccessDialogOpen(false)}
+          >
+            <RiSave3Line className="size-4" />
+            <span>{copy.members.saveSiteAccess}</span>
+          </Button>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+
+  const siteAccessDialog = (
+    <ResponsiveDialog
+      open={Boolean(siteAccessDialogMember)}
+      onOpenChange={(open) => {
+        if (open) return;
+        setSiteAccessDialogMember(null);
+        setEditingSiteIds([]);
+      }}
+    >
+      <ResponsiveDialogContent desktopClassName="max-w-2xl">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>
+            {copy.members.siteAccessDialogTitle}
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
+            {siteAccessDialogMember
+              ? siteAccessDialogMember.name || siteAccessDialogMember.username
+              : copy.members.roleLabels.member}
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
+        <ResponsiveDialogBody>
+          <Field>
+            <FieldLabel>{copy.members.siteAccessLabel}</FieldLabel>
+            <FieldDescription>
+              {copy.members.siteAccessDescription}
+            </FieldDescription>
+            <SiteAccessSelectorButtons
+              siteIds={editingSiteIds}
+              sites={sites}
+              allSitesLabel={copy.members.siteAccessAll}
+              noSitesLabel={copy.members.noSitesForAccess}
+              onAllSites={() => setEditingSiteIds([])}
+              onToggleSite={(siteId) =>
+                toggleEditingSite(siteId, !editingSiteIds.includes(siteId))
+              }
+            />
+          </Field>
+        </ResponsiveDialogBody>
+        <ResponsiveDialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setSiteAccessDialogMember(null);
+              setEditingSiteIds([]);
+            }}
+          >
+            {copy.members.cancelSiteAccess}
+          </Button>
+          <Button
+            type="button"
+            disabled={
+              !siteAccessDialogMember ||
+              savingSiteAccessId === siteAccessDialogMember.userId
+            }
+            onClick={() => {
+              void handleSaveMemberSiteAccess();
+            }}
+          >
+            {siteAccessDialogMember &&
+            savingSiteAccessId === siteAccessDialogMember.userId ? (
+              <Spinner className="size-4" />
+            ) : (
+              <RiSave3Line className="size-4" />
+            )}
+            <span>{copy.members.saveSiteAccess}</span>
+          </Button>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+
   return (
     <div className="space-y-6">
+      {inviteSiteAccessDialog}
+      {siteAccessDialog}
       <PageHeading
         title={`${panelTitle} · ${currentTeamName}`}
         subtitle={panelSubtitle}
         actions={
-          <>
-            <Button variant="outline" asChild>
-              <Link href={`/${locale}/app/${activeTeam.slug}`}>
-                <RiGlobalLine />
-                <span className="inline-flex items-center gap-1.5">
-                  {copy.stats.sites}:
-                  <AutoResizer
-                    initial
-                    animateWidth
-                    animateHeight={false}
-                    className="inline-flex items-center"
-                  >
-                    <AutoTransition
+          canManage ? (
+            <>
+              <Button variant="outline" asChild>
+                <Link href={`/${locale}/app/${activeTeam.slug}/manage/sites`}>
+                  <RiGlobalLine />
+                  <span className="inline-flex items-center gap-1.5">
+                    {copy.stats.sites}:
+                    <AutoResizer
                       initial
+                      animateWidth
+                      animateHeight={false}
                       className="inline-flex items-center"
                     >
-                      {loading ? (
-                        <span
-                          key="sites-loading"
-                          className="inline-flex items-center"
-                        >
-                          <Spinner className="size-3.5" />
-                        </span>
-                      ) : (
-                        <span key="sites-value">{siteCount}</span>
-                      )}
-                    </AutoTransition>
-                  </AutoResizer>
-                </span>
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href={`/${locale}/app/${activeTeam.slug}/members`}>
-                <RiGroupLine />
-                <span className="inline-flex items-center gap-1.5">
-                  {copy.stats.members}:
-                  <AutoResizer
-                    initial
-                    animateWidth
-                    animateHeight={false}
-                    className="inline-flex items-center"
-                  >
-                    <AutoTransition
-                      initial
-                      className="inline-flex items-center"
-                    >
-                      {loading ? (
-                        <span
-                          key="members-loading"
-                          className="inline-flex items-center"
-                        >
-                          <Spinner className="size-3.5" />
-                        </span>
-                      ) : (
-                        <span key="members-value">{memberCount}</span>
-                      )}
-                    </AutoTransition>
-                  </AutoResizer>
-                </span>
-              </Link>
-            </Button>
-            {activeTab === "sites" && canManageSites ? (
-              <Button
-                type="button"
-                onClick={() => {
-                  setCreateSiteName("");
-                  setCreateSiteDomain("");
-                  setCreateSitePublicSlug("");
-                  setCreateSiteError("");
-                  setCreateSiteDialogOpen(true);
-                }}
-              >
-                <RiAddLine />
-                <span>{siteCreateCopy.create}</span>
+                      <AutoTransition
+                        initial
+                        className="inline-flex items-center"
+                      >
+                        {isPageDataLoading ? (
+                          <span
+                            key="sites-loading"
+                            className="inline-flex items-center"
+                          >
+                            <Spinner className="size-3.5" />
+                          </span>
+                        ) : (
+                          <span key="sites-value">{siteCount}</span>
+                        )}
+                      </AutoTransition>
+                    </AutoResizer>
+                  </span>
+                </Link>
               </Button>
-            ) : null}
-          </>
+              <Button variant="outline" asChild>
+                <Link href={`/${locale}/app/${activeTeam.slug}/members`}>
+                  <RiGroupLine />
+                  <span className="inline-flex items-center gap-1.5">
+                    {copy.stats.members}:
+                    <AutoResizer
+                      initial
+                      animateWidth
+                      animateHeight={false}
+                      className="inline-flex items-center"
+                    >
+                      <AutoTransition
+                        initial
+                        className="inline-flex items-center"
+                      >
+                        {isPageDataLoading ? (
+                          <span
+                            key="members-loading"
+                            className="inline-flex items-center"
+                          >
+                            <Spinner className="size-3.5" />
+                          </span>
+                        ) : (
+                          <span key="members-value">{memberCount}</span>
+                        )}
+                      </AutoTransition>
+                    </AutoResizer>
+                  </span>
+                </Link>
+              </Button>
+              {activeTab === "sites" && canManageSites ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setCreateSiteName("");
+                    setCreateSiteDomain("");
+                    setCreateSitePublicSlug("");
+                    setCreateSiteError("");
+                    setCreateSiteDialogOpen(true);
+                  }}
+                >
+                  <RiAddLine />
+                  <span>{siteCreateCopy.create}</span>
+                </Button>
+              ) : null}
+            </>
+          ) : null
         }
       />
 
@@ -1706,44 +1679,24 @@ export function TeamManagementClient({
               </CardHeader>
 
               <CardContent className="space-y-3">
-                <div className="relative">
+                <div>
                   <SiteTrafficStackChart
                     data={aggregateChartRenderData}
                     sites={aggregateChartSites}
+                    from={dashboardWindow.from}
+                    to={dashboardWindow.to}
                     locale={locale}
-                    timeZone={chartWindow.timeZone}
-                    interval={chartWindow.interval}
+                    timeZone={dashboardWindow.timeZone}
+                    interval={dashboardWindow.interval}
                     viewsLabel={messages.common.views}
                     visitorsLabel={messages.common.visitors}
                     messages={messages}
-                    loading={isSitesChartsLoading}
-                    className={isSitesChartsLoading ? "opacity-40" : undefined}
+                    axisDateFormat="regular"
+                    loading={dashboardQuery.isFetching}
                   />
-                  <AutoTransition
-                    type="fade"
-                    duration={0.22}
-                    className="pointer-events-none absolute inset-0"
-                  >
-                    {isSitesChartsLoading ? (
-                      <div
-                        key="aggregate-overlay-loading"
-                        className="flex h-full w-full items-center justify-center bg-background/50 text-sm text-muted-foreground"
-                      >
-                        <span className="inline-flex items-center gap-2">
-                          <Spinner className="size-4" />
-                          {messages.common.loading}
-                        </span>
-                      </div>
-                    ) : (
-                      <div
-                        key="aggregate-overlay-idle"
-                        className="h-full w-full bg-transparent"
-                      />
-                    )}
-                  </AutoTransition>
                 </div>
 
-                {!loading && !analyticsLoading && sites.length === 0 ? (
+                {!dashboardQuery.isPending && dashboardSites.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     {copy.sites.noSites}
                   </p>
@@ -1751,144 +1704,128 @@ export function TeamManagementClient({
               </CardContent>
             </Card>
 
-            {sites.length > 0 ? (
+            {siteDashboardCards.length > 0 ? (
               <div className="grid gap-4 lg:grid-cols-2">
                 {siteDashboardCards.map(
                   ({ site, overview, pagesPerSession, changeRates, trend }) => (
                     <Link
                       key={site.id}
                       href={buildSitePath(locale, activeTeam.slug, site.slug)}
-                      className="group block h-full outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
+                      className="group block h-full cursor-pointer outline-none transition-transform hover:-translate-y-0.5 active:translate-y-0 focus-visible:ring-1 focus-visible:ring-ring/60"
                       aria-label={`${copy.sites.openAnalytics}: ${site.name}`}
                       title={copy.sites.openAnalytics}
                     >
-                      <motion.div
-                        className="h-full"
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.994 }}
-                        transition={{ duration: 0.16, ease: "easeOut" }}
-                      >
-                        <Card className="h-full transition-colors group-hover:bg-accent/20">
-                          <CardHeader className="space-y-2">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex min-w-0 items-start gap-2.5">
-                                <div className="min-w-0 space-y-1">
-                                  <CardTitle className="truncate text-base flex items-center gap-2">
-                                    <SiteBrandIcon
-                                      siteId={site.id}
-                                      siteName={site.name}
-                                      domain={site.domain}
-                                      iconSrc={site.iconPath}
-                                      size="md"
-                                    />
-                                    {site.name}
-                                  </CardTitle>
-                                  <CardDescription className="truncate font-mono text-xs">
-                                    {site.domain}
-                                  </CardDescription>
-                                </div>
+                      <Card className="h-full transition-colors group-hover:bg-accent/20">
+                        <CardHeader className="space-y-2">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-start gap-2.5">
+                              <div className="min-w-0 space-y-1">
+                                <CardTitle className="flex items-center gap-2 truncate text-base">
+                                  <SiteBrandIcon
+                                    siteId={site.id}
+                                    siteName={site.name}
+                                    domain={site.domain}
+                                    iconSrc={site.iconPath}
+                                    size="md"
+                                  />
+                                  {site.name}
+                                </CardTitle>
+                                <CardDescription className="truncate font-mono text-xs">
+                                  {site.domain}
+                                </CardDescription>
                               </div>
-                              <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
-                                <RiArrowRightSLine className="size-4" />
-                              </span>
                             </div>
-                          </CardHeader>
+                            <span className="inline-flex size-6 shrink-0 items-center justify-center text-muted-foreground">
+                              <RiArrowRightSLine className="size-4" />
+                            </span>
+                          </div>
+                        </CardHeader>
 
-                          <CardContent className="space-y-4">
-                            <AutoTransition
-                              type="fade"
-                              duration={0.24}
-                              className="w-full"
-                            >
-                              <div key={`site-chart-${site.id}`}>
-                                <TrafficPairBarChart
-                                  data={trend}
-                                  locale={locale}
-                                  timeZone={chartWindow.timeZone}
-                                  interval={chartWindow.interval}
-                                  viewsLabel={messages.common.views}
-                                  visitorsLabel={messages.common.visitors}
-                                  messages={messages}
-                                  maxPoints={SITE_CARD_MAX_TREND_POINTS}
+                        <CardContent className="space-y-4">
+                          <TrafficPairBarChart
+                            data={trend}
+                            locale={locale}
+                            timeZone={dashboardWindow.timeZone}
+                            interval={dashboardWindow.interval}
+                            viewsLabel={messages.common.views}
+                            visitorsLabel={messages.common.visitors}
+                            axisDateFormat="compact"
+                            maxPoints={SITE_CARD_MAX_TREND_POINTS}
+                            loading={dashboardQuery.isFetching}
+                            range={dashboardWindow}
+                          />
+
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">
+                                {messages.common.views}
+                              </p>
+                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                {numberFormat(locale, overview.views)}
+                                <ChangeRateInline value={changeRates.views} />
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">
+                                {messages.common.visitors}
+                              </p>
+                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                {numberFormat(locale, overview.visitors)}
+                                <ChangeRateInline
+                                  value={changeRates.visitors}
                                 />
-                              </div>
-                            </AutoTransition>
-
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-4 text-[11px] sm:grid-cols-3">
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.views}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {numberFormat(locale, overview.views)}
-                                  <ChangeRateInline value={changeRates.views} />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.visitors}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {numberFormat(locale, overview.visitors)}
-                                  <ChangeRateInline
-                                    value={changeRates.visitors}
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.sessions}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {numberFormat(locale, overview.sessions)}
-                                  <ChangeRateInline
-                                    value={changeRates.sessions}
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.bounceRate}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {percentFormat(locale, overview.bounceRate)}
-                                  <ChangeRateInline
-                                    value={changeRates.bounceRate}
-                                    lowerIsBetter
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {copy.sites.pagesPerSession}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {pagesPerSessionFormatter.format(
-                                    pagesPerSession,
-                                  )}
-                                  <ChangeRateInline
-                                    value={changeRates.pagesPerSession}
-                                  />
-                                </p>
-                              </div>
-                              <div className="space-y-1">
-                                <p className="text-muted-foreground">
-                                  {messages.common.avgDuration}
-                                </p>
-                                <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
-                                  {durationFormat(
-                                    locale,
-                                    overview.avgDurationMs,
-                                  )}
-                                  <ChangeRateInline
-                                    value={changeRates.avgDurationMs}
-                                  />
-                                </p>
-                              </div>
+                              </p>
                             </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">
+                                {messages.common.sessions}
+                              </p>
+                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                {numberFormat(locale, overview.sessions)}
+                                <ChangeRateInline
+                                  value={changeRates.sessions}
+                                />
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">
+                                {messages.common.bounceRate}
+                              </p>
+                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                {percentFormat(locale, overview.bounceRate)}
+                                <ChangeRateInline
+                                  value={changeRates.bounceRate}
+                                  lowerIsBetter
+                                />
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">
+                                {copy.sites.pagesPerSession}
+                              </p>
+                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                {pagesPerSessionFormatter.format(
+                                  pagesPerSession,
+                                )}
+                                <ChangeRateInline
+                                  value={changeRates.pagesPerSession}
+                                />
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">
+                                {messages.common.avgDuration}
+                              </p>
+                              <p className="inline-flex items-end gap-1.5 font-mono text-base leading-none">
+                                {durationFormat(locale, overview.avgDurationMs)}
+                                <ChangeRateInline
+                                  value={changeRates.avgDurationMs}
+                                />
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
                     </Link>
                   ),
                 )}

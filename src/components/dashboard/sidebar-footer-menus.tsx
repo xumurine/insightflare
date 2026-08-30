@@ -1,9 +1,4 @@
-"use client";
-
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
+import { memo, useState } from "react";
 import {
   RiCheckLine,
   RiComputerLine,
@@ -16,6 +11,7 @@ import {
 } from "@remixicon/react";
 import { toast } from "sonner";
 
+import { useTheme } from "@/components/theme-provider";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import {
   DropdownMenu,
@@ -31,12 +27,15 @@ import { Spinner } from "@/components/ui/spinner";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
+import Link from "@/lib/router";
+import { useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 interface SidebarFooterMenusProps {
   locale: Locale;
   switchToEn: string;
   switchToZh: string;
+  switchToJa: string;
   accountHref: string;
   notificationsHref: string;
   unreadAttentionCount?: number;
@@ -67,10 +66,11 @@ const triggerBaseClass =
 const footerGridClass =
   "m-0 grid w-full grid-cols-3 p-0 transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none group-data-[collapsible=icon]:grid-cols-1";
 
-export function SidebarFooterMenus({
+export const SidebarFooterMenus = memo(function SidebarFooterMenus({
   locale,
   switchToEn,
   switchToZh,
+  switchToJa,
   accountHref,
   notificationsHref,
   unreadAttentionCount = 0,
@@ -99,6 +99,11 @@ export function SidebarFooterMenus({
   }> = [
     { locale: "en", href: switchToEn, label: messages.actions.switchToEnglish },
     { locale: "zh", href: switchToZh, label: messages.actions.switchToChinese },
+    {
+      locale: "ja",
+      href: switchToJa,
+      label: messages.actions.switchToJapanese,
+    },
   ];
 
   async function handleLogout() {
@@ -270,4 +275,4 @@ export function SidebarFooterMenus({
       </DropdownMenu>
     </div>
   );
-}
+});

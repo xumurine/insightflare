@@ -2,11 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createMockRealtimeSocket } from "@/lib/realtime/mock/socket";
 import type { DemoFactDataset, DemoVisitFact } from "@/lib/realtime/mock/types";
-import type {
-  RealtimeEvent,
-  RealtimeVisit,
-  RealtimeVisitorPoint,
-} from "@/lib/realtime/types";
+import type { RealtimeEvent, RealtimeVisit } from "@/lib/realtime/types";
 
 const { buildDemoFactDatasetMock } = vi.hoisted(() => ({
   buildDemoFactDatasetMock: vi.fn(),
@@ -24,7 +20,6 @@ type SnapshotMessage = {
   data: {
     activeNow: number;
     events: RealtimeEvent[];
-    points: RealtimeVisitorPoint[];
     visits: RealtimeVisit[];
   };
 };
@@ -36,13 +31,70 @@ type EventMessage = {
 
 type SocketMessage = SnapshotMessage | EventMessage;
 
+class FakeWorker {
+  static instances: FakeWorker[] = [];
+
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: (() => void) | null = null;
+  readonly postMessage = vi.fn();
+  readonly terminate = vi.fn();
+
+  constructor() {
+    FakeWorker.instances.push(this);
+  }
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  FakeWorker.instances.length = 0;
   buildDemoFactDatasetMock.mockReset();
 });
 
 describe("mock/socket", () => {
+  it("loads the initial dataset through a worker before opening", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIME);
+    vi.spyOn(Math, "random")
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0.5)
+      .mockReturnValue(1);
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("Worker", FakeWorker);
+    buildDemoFactDatasetMock.mockReturnValue(makeDataset([]));
+
+    const socket = createMockRealtimeSocket({ siteId: SITE_ID });
+    const onmessage = vi.fn();
+    socket.onmessage = onmessage;
+
+    const worker = FakeWorker.instances[0];
+    expect(worker).toBeDefined();
+    expect(worker?.postMessage).toHaveBeenCalledWith({
+      type: "build",
+      siteId: SITE_ID,
+      from: expect.any(Number),
+      to: expect.any(Number),
+    });
+
+    await vi.advanceTimersByTimeAsync(120);
+    expect(onmessage).not.toHaveBeenCalled();
+
+    worker?.onmessage?.({
+      data: {
+        type: "ready",
+        dataset: makeDataset([]),
+      },
+    } as MessageEvent);
+
+    expect(worker?.terminate).toHaveBeenCalledTimes(1);
+    expect(messagesFrom(onmessage)).toEqual([
+      expect.objectContaining({ type: "snapshot" }),
+    ]);
+
+    socket.close();
+  });
+
   it("slides an empty future queue and stops when no new visits are available", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(BASE_TIME);
@@ -103,7 +155,7 @@ describe("mock/socket", () => {
     socket.close();
   });
 
-  it("serializes profile host fallback and omits invalid visitor points", async () => {
+  it("serializes profile host fallback without derived point fields", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(BASE_TIME);
     vi.spyOn(Math, "random")
@@ -136,7 +188,7 @@ describe("mock/socket", () => {
       (message): message is SnapshotMessage => message.type === "snapshot",
     );
     expect(snapshot?.data.activeNow).toBe(1);
-    expect(snapshot?.data.points).toEqual([]);
+    expect(snapshot?.data).not.toHaveProperty("points");
     expect(snapshot?.data.events[0]).toEqual(
       expect.objectContaining({
         hostname: expect.any(String),
@@ -203,7 +255,7 @@ describe("mock/socket", () => {
     expect(repeatVisit?.startedAt).toBeLessThan(
       repeatVisit?.lastActivityAt ?? 0,
     );
-    expect(snapshots[1].data.points).toHaveLength(11);
+    expect(snapshots[1].data).not.toHaveProperty("points");
 
     socket.close();
   });

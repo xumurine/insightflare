@@ -1,25 +1,44 @@
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+
 import { describe, expect, it, vi } from "vitest";
 
-import type { QueryWindow } from "@/lib/edge/query/core";
 import {
-  handleSessionDetail,
-  handleSessions,
-  handleVisitorDetail,
-  handleVisitors,
+  handleSessionDetailContract as handleSessionDetail,
+  handleSessionsContract as handleSessions,
+  handleVisitorDetailContract as handleVisitorDetail,
+  handleVisitorsContract as handleVisitors,
+} from "@/lib/edge/analytics/composition/protocol/journeys-contract-adapter";
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import type { QueryWindow } from "@/lib/edge/analytics/providers/d1/internal/core";
+import {
+  buildSessionAggregationSql,
+  buildVisitorAggregationSql,
+} from "@/lib/edge/analytics/providers/d1/internal/journey-aggregation-sql";
+import {
+  parseSessionListCursor,
+  parseVisitorListCursor,
+  querySessionsFromD1,
+  serializeSessionListCursor,
+  serializeVisitorListCursor,
+} from "@/lib/edge/analytics/providers/d1/internal/journey-list-queries";
+import {
   queryGeoPointAggregate,
   queryGeoPointsFromD1,
+  queryJourneyEventDetailFromD1,
   queryJourneyEventsForDetailFromD1,
   queryJourneyEventsFromD1,
   querySessionDetailFromD1,
   querySessionLocationPointsFromD1,
   querySessionsForDetailFromD1,
-  querySessionsFromD1,
   queryVisitorAggregate,
   queryVisitorDetailFromD1,
   queryVisitorForDetailFromD1,
   queryVisitorsFromD1,
-} from "@/lib/edge/query/journeys";
+} from "@/lib/edge/analytics/providers/d1/internal/journeys";
 import type { Env } from "@/lib/edge/types";
+
+import { filterFixture } from "./filter-fixtures";
 
 type D1Row = Record<string, unknown>;
 type QueryBinding = string | number | null;
@@ -34,8 +53,8 @@ const baseMs = Date.UTC(2026, 0, 1);
 
 function queryWindow(): QueryWindow {
   return {
-    fromMs: baseMs,
-    toMs: baseMs + 2 * 60 * 60 * 1000,
+    startMs: baseMs,
+    endExclusiveMs: baseMs + 2 * 60 * 60 * 1000,
     nowMs: baseMs + 24 * 60 * 60 * 1000,
     timeZone: "UTC",
   };
@@ -66,12 +85,90 @@ function createD1Env(resultSets: D1Row[][]): {
   };
 }
 
+function createSqliteDetailEnv(): {
+  env: Env;
+  calls: QueryCall[];
+  database: DatabaseSync;
+  close: () => void;
+  explain: (call: QueryCall) => string[];
+} {
+  const database = new DatabaseSync(":memory:");
+  for (const migration of [
+    "migrations/0008_rebuild_analytics.sql",
+    "migrations/0013_add_visit_performance_metrics.sql",
+    "migrations/0017_structured_custom_events.sql",
+  ]) {
+    database.exec(readFileSync(migration, "utf8"));
+  }
+  database.exec(`
+    CREATE TABLE site_identities (
+      site_pk INTEGER PRIMARY KEY,
+      site_id TEXT NOT NULL UNIQUE
+    );
+    INSERT INTO site_identities (site_pk, site_id) VALUES (1, '${siteId}');
+
+    ALTER TABLE visits ADD COLUMN site_pk INTEGER;
+    ALTER TABLE custom_event_names ADD COLUMN site_pk INTEGER;
+    ALTER TABLE custom_events ADD COLUMN site_pk INTEGER;
+
+    CREATE TRIGGER test_visits_site_pk
+    AFTER INSERT ON visits
+    BEGIN
+      UPDATE visits SET site_pk = 1 WHERE visit_id = NEW.visit_id;
+    END;
+    CREATE TRIGGER test_custom_event_names_site_pk
+    AFTER INSERT ON custom_event_names
+    BEGIN
+      UPDATE custom_event_names SET site_pk = 1 WHERE id = NEW.id;
+    END;
+    CREATE TRIGGER test_custom_events_site_pk
+    AFTER INSERT ON custom_events
+    BEGIN
+      UPDATE custom_events SET site_pk = 1 WHERE event_pk = NEW.event_pk;
+    END;
+
+    CREATE INDEX idx_visits_site_pk_visitor_started_at
+      ON visits(site_pk, visitor_id, started_at);
+    CREATE INDEX idx_visits_site_pk_session_started_at
+      ON visits(site_pk, session_id, started_at);
+    CREATE INDEX idx_custom_events_site_pk_visit_time
+      ON custom_events(site_pk, visit_id, occurred_at, event_pk);
+  `);
+  const calls: QueryCall[] = [];
+  const env = {
+    DB: {
+      prepare: (sql: string) => ({
+        bind: (...bindings: QueryBinding[]) => {
+          const call = { sql, bindings };
+          calls.push(call);
+          return {
+            all: async () => ({
+              results: database.prepare(sql).all(...bindings) as D1Row[],
+            }),
+          };
+        },
+      }),
+    } as unknown as D1Database,
+  } as Env;
+  return {
+    env,
+    calls,
+    database,
+    close: () => database.close(),
+    explain: (call) =>
+      database
+        .prepare(`EXPLAIN QUERY PLAN ${call.sql}`)
+        .all(...call.bindings)
+        .map((row) => String((row as { detail?: unknown }).detail ?? "")),
+  };
+}
+
 function visitBindings(window: QueryWindow): QueryBinding[] {
-  return [siteId, window.fromMs, window.toMs];
+  return [siteId, window.startMs, window.endExclusiveMs];
 }
 
 function eventBindings(window: QueryWindow): QueryBinding[] {
-  return [siteId, window.fromMs, window.toMs];
+  return [siteId, window.startMs, window.endExclusiveMs];
 }
 
 function url(path: string, params: Record<string, string | number | boolean>) {
@@ -180,7 +277,66 @@ function journeyEventRow(overrides: D1Row = {}): D1Row {
   };
 }
 
+function visitorDetailVisitRow(overrides: D1Row = {}): D1Row {
+  return {
+    sourceType: "visit",
+    visitId: "visit-1",
+    visitorId: "visitor-1",
+    sessionId: "session-1",
+    status: "closed",
+    startedAt: baseMs + 10_000,
+    lastActivityAt: baseMs + 50_000,
+    endedAt: baseMs + 50_000,
+    durationMs: 40_000,
+    pathname: "/home",
+    hash: "",
+    title: "Home",
+    hostname: "example.com",
+    referrerHost: "ref.example",
+    referrerUrl: "https://ref.example/start",
+    country: "US",
+    region: "California",
+    regionCode: "CA",
+    city: "San Francisco",
+    latitude: 37.77,
+    longitude: -122.42,
+    browser: "Chrome",
+    browserVersion: "124",
+    os: "macOS",
+    osVersion: "14",
+    deviceType: "desktop",
+    screenWidth: 1440,
+    screenHeight: 900,
+    perfTtfbMs: 100,
+    perfFcpMs: 250,
+    perfLcpMs: 1100,
+    perfCls: 0.01,
+    perfInpMs: 80,
+    ...overrides,
+  };
+}
+
+function visitorDetailCustomEventRow(overrides: D1Row = {}): D1Row {
+  return {
+    ...visitorDetailVisitRow(),
+    sourceType: "custom",
+    eventId: "event-1",
+    eventType: "signup",
+    occurredAt: baseMs + 20_000,
+    ...overrides,
+  };
+}
+
 describe("edge journey detail D1 queries", () => {
+  it("supports aggregation SQL callers without pagination", () => {
+    expect(
+      buildVisitorAggregationSql({ orderBy: "lastSeenAt DESC" }),
+    ).not.toContain("LIMIT ?");
+    expect(buildSessionAggregationSql({ orderBy: "startedAt DESC" })).toContain(
+      "session_metrics AS",
+    );
+  });
+
   it("returns null for a missing visitor detail row and captures target bindings", async () => {
     const { env, calls } = createD1Env([[]]);
 
@@ -196,30 +352,18 @@ describe("edge journey detail D1 queries", () => {
   it("combines visitor, session, and event rows into visitor detail metrics", async () => {
     const secondSessionStart = baseMs + 24 * 60 * 60 * 1000;
     const { env, calls } = createD1Env([
-      [visitorRow({ firstSeenAt: baseMs, lastSeenAt: secondSessionStart })],
       [
-        sessionRow(),
-        sessionRow({
+        visitorDetailVisitRow(),
+        visitorDetailVisitRow({
+          visitId: "visit-2",
           sessionId: "session-2",
-          startedAt: secondSessionStart,
-          endedAt: secondSessionStart + 30_000,
-          totalDurationMs: 30_000,
-          bounce: 1,
-          entryPath: "/checkout",
-          exitPath: "/checkout",
+          startedAt: secondSessionStart + 10_000,
+          endedAt: secondSessionStart + 40_000,
+          lastActivityAt: secondSessionStart + 40_000,
+          durationMs: 30_000,
+          pathname: "/checkout",
         }),
-      ],
-      [
-        journeyEventRow(),
-        journeyEventRow({
-          id: "event-1",
-          kind: "custom",
-          eventType: "signup",
-          occurredAt: baseMs + 20_000,
-          visitId: "visit-1",
-          pathname: "/signup",
-          durationMs: 0,
-        }),
+        visitorDetailCustomEventRow({ pathname: "/signup" }),
       ],
     ]);
 
@@ -233,55 +377,431 @@ describe("edge journey detail D1 queries", () => {
     expect(detail?.metrics).toMatchObject({
       totalEvents: 1,
       sessions: 2,
-      views: 1,
+      views: 2,
       avgEventsPerSession: 0.5,
-      bounceRate: 0.5,
-      avgDurationMs: 45_000,
-      p90DurationMs: 60_000,
+      bounceRate: 1,
+      avgDurationMs: 35_000,
+      p90DurationMs: 40_000,
       daysActive: 2,
       conversionEvents: 1,
       avgTimeBetweenSessionsMs: 24 * 60 * 60 * 1000,
     });
-    expect(detail?.visitedPages).toEqual([{ pathname: "/home", views: 1 }]);
+    expect(detail?.visitedPages).toEqual([
+      { pathname: "/checkout", views: 1 },
+      { pathname: "/home", views: 1 },
+    ]);
     expect(detail?.eventDistribution).toEqual([
+      { eventType: "pageview", count: 2 },
       { eventType: "session start", count: 2 },
-      { eventType: "pageview", count: 1 },
       { eventType: "signup", count: 1 },
     ]);
     expect(detail?.performance.ttfb).toMatchObject({
       avg: 100,
       p75: 100,
-      samples: 1,
+      samples: 2,
     });
     expect(detail?.events.map((event) => event.id)).toContain(
       "session-start:session-2",
     );
-    expect(calls.map((call) => call.bindings)).toEqual([
-      [siteId, "visitor-1", siteId],
-      [siteId, "visitor-1", siteId],
-      [siteId, "visitor-1", siteId],
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.bindings).toEqual([siteId, "visitor-1", siteId]);
+    expect(calls[0]?.sql).toContain("filtered_visits AS MATERIALIZED");
+    expect(calls[0]?.sql).toContain("event_source AS MATERIALIZED");
+  });
+
+  it("ignores custom events without a session when grouping visitor details", async () => {
+    const { env } = createD1Env([
+      [visitorDetailVisitRow(), visitorDetailCustomEventRow({ sessionId: "" })],
+    ]);
+
+    await expect(
+      queryVisitorDetailFromD1(env, siteId, "visitor-1", "UTC"),
+    ).resolves.toMatchObject({
+      visitor: { visitorId: "visitor-1" },
+      sessions: [{ sessionId: "session-1", events: 0 }],
+      metrics: { totalEvents: 1 },
+    });
+  });
+
+  it("handles multi-view sessions and ties session ordering by id", async () => {
+    const { env } = createD1Env([
+      [
+        visitorDetailVisitRow({
+          visitId: "visit-a-1",
+          sessionId: "session-a",
+          startedAt: baseMs,
+        }),
+        visitorDetailVisitRow({
+          visitId: "visit-a-2",
+          sessionId: "session-a",
+          startedAt: baseMs + 1_000,
+        }),
+        visitorDetailVisitRow({
+          visitId: "visit-b-1",
+          sessionId: "session-b",
+          startedAt: baseMs,
+        }),
+      ],
+    ]);
+
+    const detail = await queryVisitorDetailFromD1(
+      env,
+      siteId,
+      "visitor-1",
+      "UTC",
+    );
+
+    expect(detail?.sessions).toEqual([
+      expect.objectContaining({ sessionId: "session-a", bounce: false }),
+      expect.objectContaining({ sessionId: "session-b", bounce: true }),
     ]);
   });
 
-  it("returns null visitor detail without consuming session or event rows", async () => {
+  it("maps a pageview detail without custom event payload fields", async () => {
     const { env, calls } = createD1Env([
-      [],
-      [sessionRow()],
-      [journeyEventRow()],
+      [
+        visitorDetailVisitRow({
+          visitId: "visit-detail",
+          startedAt: baseMs + 10_000,
+        }),
+      ],
     ]);
+
+    const detail = await queryJourneyEventDetailFromD1(
+      env,
+      siteId,
+      "visit-detail",
+      queryWindow(),
+      "pageview",
+    );
+
+    expect(detail).toMatchObject({
+      event: {
+        eventId: "visit-detail",
+        eventName: "pageview",
+        eventKind: "pageview",
+        occurredAt: baseMs + 10_000,
+        visitId: "visit-detail",
+        nodeCount: 0,
+        valueCount: 0,
+      },
+      context: {
+        visitId: "visit-detail",
+        sessionId: "session-1",
+        visitorId: "visitor-1",
+        pathname: "/home",
+        browser: "Chrome",
+      },
+    });
+    expect(detail).not.toHaveProperty("eventData");
+    expect(calls[0]?.bindings).toEqual([
+      siteId,
+      "visit-detail",
+      baseMs,
+      baseMs + 2 * 60 * 60 * 1000,
+    ]);
+  });
+
+  it("resolves session boundary details and rejects mismatched boundary ids", async () => {
+    const startEnv = createD1Env([[visitorDetailVisitRow()]]);
+    await expect(
+      queryJourneyEventDetailFromD1(
+        startEnv.env,
+        siteId,
+        "session-start:session-1",
+        queryWindow(),
+        "session_start",
+      ),
+    ).resolves.toMatchObject({
+      event: {
+        eventId: "session-start:session-1",
+        eventKind: "session_start",
+        visitId: "",
+      },
+      context: {
+        status: "complete",
+        durationMs: 40_000,
+      },
+    });
+
+    const leaveEnv = createD1Env([[visitorDetailVisitRow()]]);
+    await expect(
+      queryJourneyEventDetailFromD1(
+        leaveEnv.env,
+        siteId,
+        "session-leave:session-1",
+        queryWindow(),
+        "leave",
+      ),
+    ).resolves.toMatchObject({
+      event: {
+        eventId: "session-leave:session-1",
+        eventKind: "leave",
+        visitId: "visit-1",
+      },
+    });
+
+    await expect(
+      queryJourneyEventDetailFromD1(
+        createD1Env([[]]).env,
+        siteId,
+        "session-start:missing",
+        queryWindow(),
+        "session_start",
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      queryJourneyEventDetailFromD1(
+        createD1Env([[]]).env,
+        siteId,
+        "session-start:",
+        queryWindow(),
+        "session_start",
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      queryJourneyEventDetailFromD1(
+        createD1Env([[]]).env,
+        siteId,
+        "session-start:session-1",
+        queryWindow(),
+        "leave",
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("applies the standard event window and active session status", async () => {
+    const activeEnv = createD1Env([
+      [visitorDetailVisitRow({ status: "open", endedAt: null })],
+    ]);
+    await expect(
+      queryJourneyEventDetailFromD1(
+        activeEnv.env,
+        siteId,
+        "session-start:session-1",
+        queryWindow(),
+        "session_start",
+      ),
+    ).resolves.toMatchObject({
+      context: { status: "open" },
+    });
+
+    const outsideWindow = createD1Env([[visitorDetailVisitRow()]]);
+    await expect(
+      queryJourneyEventDetailFromD1(
+        outsideWindow.env,
+        siteId,
+        "session-start:session-1",
+        {
+          ...queryWindow(),
+          endExclusiveMs: baseMs + 5_000,
+        },
+        "session_start",
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("returns null visitor detail from an empty shared source", async () => {
+    const { env, calls } = createD1Env([[]]);
 
     await expect(
       queryVisitorDetailFromD1(env, siteId, "visitor-missing", "UTC"),
     ).resolves.toBeNull();
 
-    expect(calls).toHaveLength(3);
-    expect(calls.every((call) => call.bindings[1] === "visitor-missing")).toBe(
-      true,
-    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.bindings).toEqual([siteId, "visitor-missing", siteId]);
   });
 
-  it("returns zeroed visitor detail metrics when no sessions or events exist", async () => {
-    const { env } = createD1Env([[visitorRow()], [], []]);
+  it("constrains visitor and session details to an explicit half-open query window", async () => {
+    const { env, calls } = createD1Env([[], []]);
+    const window = {
+      startMs: baseMs,
+      endExclusiveMs: baseMs + 60_000,
+      nowMs: baseMs + 60_000,
+      timeZone: "UTC",
+    };
+
+    await expect(
+      queryVisitorDetailFromD1(env, siteId, "visitor-outside", "UTC", window),
+    ).resolves.toBeNull();
+    await expect(
+      querySessionDetailFromD1(env, siteId, "session-outside", window),
+    ).resolves.toBeNull();
+
+    expect(calls[0]?.sql).toContain("started_at >= ? AND started_at < ?");
+    expect(calls[0]?.bindings).toEqual([
+      siteId,
+      "visitor-outside",
+      baseMs,
+      baseMs + 60_000,
+      siteId,
+    ]);
+    expect(calls[1]?.bindings).toEqual([
+      siteId,
+      "session-outside",
+      baseMs,
+      baseMs + 60_000,
+      siteId,
+    ]);
+  });
+
+  it("uses target-visit and target-event indexes from the shared detail source", async () => {
+    const sqlite = createSqliteDetailEnv();
+    try {
+      sqlite.database
+        .prepare(
+          `INSERT INTO visits (
+            visit_id, site_id, visitor_id, session_id, status, started_at,
+            last_activity_at, pathname, hostname
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          "visit-plan",
+          siteId,
+          "visitor-plan",
+          "session-plan",
+          "closed",
+          baseMs,
+          baseMs,
+          "/target",
+          "example.test",
+        );
+      sqlite.database
+        .prepare(
+          `INSERT INTO visits (
+            visit_id, site_id, visitor_id, session_id, status, started_at,
+            last_activity_at, pathname, hostname
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          "visit-noise",
+          siteId,
+          "visitor-noise",
+          "session-noise",
+          "closed",
+          baseMs,
+          baseMs,
+          "/noise",
+          "example.test",
+        );
+      sqlite.database
+        .prepare(
+          "INSERT INTO custom_event_names (id, site_id, name, last_seen_at) VALUES (?, ?, ?, ?)",
+        )
+        .run(1, siteId, "signup", baseMs);
+      sqlite.database
+        .prepare(
+          `INSERT INTO custom_events (
+            event_pk, event_id, site_id, visit_id, event_name_id, occurred_at,
+            received_at, sequence, node_count, value_count
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(1, "event-plan", siteId, "visit-plan", 1, baseMs, baseMs, 0, 0, 0);
+      sqlite.database.exec(`
+        WITH RECURSIVE sequence(value) AS (
+          VALUES(2)
+          UNION ALL
+          SELECT value + 1 FROM sequence WHERE value < 5001
+        )
+        INSERT INTO visits (
+          visit_id, site_id, visitor_id, session_id, status, started_at,
+          last_activity_at, pathname, hostname
+        )
+        SELECT
+          'visit-noise-' || value,
+          '${siteId}',
+          'visitor-noise-' || value,
+          'session-noise-' || value,
+          'closed',
+          ${baseMs} + value,
+          ${baseMs} + value,
+          '/noise',
+          'example.test'
+        FROM sequence;
+
+        WITH RECURSIVE sequence(value) AS (
+          VALUES(2)
+          UNION ALL
+          SELECT value + 1 FROM sequence WHERE value < 5001
+        )
+        INSERT INTO custom_events (
+          event_pk, event_id, site_id, visit_id, event_name_id, occurred_at,
+          received_at, sequence, node_count, value_count
+        )
+        SELECT
+          value,
+          'event-noise-' || value,
+          '${siteId}',
+          'visit-noise',
+          1,
+          ${baseMs} + value,
+          ${baseMs} + value,
+          value,
+          0,
+          0
+        FROM sequence;
+        ANALYZE;
+      `);
+
+      await expect(
+        queryVisitorDetailFromD1(sqlite.env, siteId, "visitor-plan", "UTC"),
+      ).resolves.toMatchObject({
+        visitor: { visitorId: "visitor-plan" },
+        metrics: { totalEvents: 1 },
+      });
+
+      expect(sqlite.calls).toHaveLength(1);
+      const plan = sqlite.explain(sqlite.calls[0]!);
+      expect(
+        plan.some((detail) =>
+          detail.includes("idx_visits_site_pk_visitor_started_at"),
+        ),
+      ).toBe(true);
+      expect(
+        plan.some((detail) =>
+          detail.includes("idx_custom_events_site_pk_visit_time"),
+        ),
+      ).toBe(true);
+      expect(plan.some((detail) => /SCAN ce(?:\s|$)/.test(detail))).toBe(false);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("uses session-target indexes from the shared session detail source", async () => {
+    const sqlite = createSqliteDetailEnv();
+    try {
+      await expect(
+        querySessionDetailFromD1(sqlite.env, siteId, "session-plan"),
+      ).resolves.toBeNull();
+
+      expect(sqlite.calls).toHaveLength(1);
+      const plan = sqlite.explain(sqlite.calls[0]!);
+      expect(
+        plan.some((detail) =>
+          detail.includes("idx_visits_site_pk_session_started_at"),
+        ),
+      ).toBe(true);
+      expect(
+        plan.some((detail) =>
+          detail.includes("idx_custom_events_site_pk_visit_time"),
+        ),
+      ).toBe(true);
+    } finally {
+      sqlite.close();
+    }
+  });
+
+  it("keeps pageview metrics when a visitor has no session or custom event", async () => {
+    const { env } = createD1Env([
+      [
+        visitorDetailVisitRow({
+          sessionId: "",
+          startedAt: baseMs,
+          durationMs: 0,
+        }),
+      ],
+    ]);
 
     const detail = await queryVisitorDetailFromD1(
       env,
@@ -294,37 +814,31 @@ describe("edge journey detail D1 queries", () => {
       metrics: {
         totalEvents: 0,
         sessions: 0,
-        views: 0,
+        views: 1,
         avgEventsPerSession: 0,
         bounceRate: 0,
         avgDurationMs: 0,
         p90DurationMs: 0,
-        daysActive: 0,
+        daysActive: 1,
         conversionEvents: 0,
         avgTimeBetweenSessionsMs: 0,
       },
       sessions: [],
-      events: [],
-      visitedPages: [],
-      eventDistribution: [],
-      activity: [],
+      events: [expect.objectContaining({ id: "visit-1", kind: "pageview" })],
+      visitedPages: [{ pathname: "/home", views: 1 }],
+      eventDistribution: [{ eventType: "pageview", count: 1 }],
+      activity: [expect.objectContaining({ count: 1 })],
     });
   });
 
   it("returns session detail with synthetic start and leave events", async () => {
     const { env } = createD1Env([
-      [sessionRow()],
-      [journeyEventRow()],
       [
-        {
+        visitorDetailVisitRow({
+          durationMs: 60_000,
           latitude: "37.7",
           longitude: "-122.4",
-          timestampMs: String(baseMs + 10_000),
-          country: "US",
-          region: "California",
-          regionCode: "CA",
-          city: "San Francisco",
-        },
+        }),
       ],
     ]);
 
@@ -333,13 +847,6 @@ describe("edge journey detail D1 queries", () => {
     expect(detail?.session).toMatchObject({
       sessionId: "session-1",
       durationMs: 60_000,
-      performance: {
-        ttfb: 120,
-        fcp: 300,
-        lcp: 1200,
-        cls: 0.02,
-        inp: 90,
-      },
     });
     expect(detail?.locationPoints).toEqual([
       {
@@ -368,26 +875,24 @@ describe("edge journey detail D1 queries", () => {
   it("sorts session detail events with id tie-breakers", async () => {
     const { env } = createD1Env([
       [
-        sessionRow({
-          active: 1,
+        visitorDetailVisitRow({
+          status: "open",
           startedAt: baseMs,
-          endedAt: baseMs + 30_000,
-        }),
-      ],
-      [
-        journeyEventRow({
-          id: "z-event",
+          eventId: undefined,
+          eventType: undefined,
           occurredAt: baseMs + 10_000,
-          visitId: "visit-z",
+          visitId: "visit-1",
         }),
-        journeyEventRow({
-          id: "a-event",
+        visitorDetailCustomEventRow({
+          eventId: "z-event",
           occurredAt: baseMs + 10_000,
-          visitId: "visit-a",
+        }),
+        visitorDetailCustomEventRow({
+          eventId: "a-event",
+          occurredAt: baseMs + 10_000,
           pathname: "/a",
         }),
       ],
-      [],
     ]);
 
     const detail = await querySessionDetailFromD1(env, siteId, "session-1");
@@ -395,12 +900,13 @@ describe("edge journey detail D1 queries", () => {
     expect(detail?.events.map((event) => event.id)).toEqual([
       "z-event",
       "a-event",
+      "visit-1",
       "session-start:session-1",
     ]);
   });
 
   it("returns null when a session detail lookup has no matching session row", async () => {
-    const { env } = createD1Env([[], [journeyEventRow()], []]);
+    const { env } = createD1Env([[]]);
 
     await expect(
       querySessionDetailFromD1(env, siteId, "session-missing"),
@@ -410,14 +916,11 @@ describe("edge journey detail D1 queries", () => {
   it("omits leave events for active session detail rows", async () => {
     const { env } = createD1Env([
       [
-        sessionRow({
-          active: 1,
+        visitorDetailVisitRow({
+          status: "open",
           endedAt: baseMs + 60_000,
-          exitPath: "/still-open",
         }),
       ],
-      [journeyEventRow()],
-      [],
     ]);
 
     const detail = await querySessionDetailFromD1(env, siteId, "session-1");
@@ -480,7 +983,7 @@ describe("edge journey list D1 queries", () => {
     ]);
 
     await expect(
-      queryVisitorAggregate(env, siteId, window, {}, 6),
+      queryVisitorAggregate(env, siteId, window, EMPTY_FILTER_DOCUMENT, 6),
     ).resolves.toMatchObject([{ visitorId: "visitor-2" }]);
 
     expect(calls[0].sql).toContain("ORDER BY lastSeenAt DESC");
@@ -497,7 +1000,7 @@ describe("edge journey list D1 queries", () => {
         env,
         siteId,
         window,
-        { country: "US" },
+        filterFixture({ country: "US" }),
         5,
         "123",
         10,
@@ -527,7 +1030,7 @@ describe("edge journey list D1 queries", () => {
         env,
         siteId,
         window,
-        { device: "desktop" },
+        filterFixture({ device: "desktop" }),
         7,
         { type: "session", value: "session-1" },
         2,
@@ -559,7 +1062,7 @@ describe("edge journey list D1 queries", () => {
         env,
         siteId,
         window,
-        { path: "/pricing" },
+        filterFixture({ path: "/pricing" }),
         { type: "session", value: "session-1" },
         20,
       ),
@@ -586,7 +1089,7 @@ describe("edge journey geo D1 queries", () => {
     ]);
 
     await expect(
-      queryGeoPointAggregate(env, siteId, window, {}, 5),
+      queryGeoPointAggregate(env, siteId, window, EMPTY_FILTER_DOCUMENT, 5),
     ).resolves.toEqual({
       points: [
         {
@@ -621,7 +1124,7 @@ describe("edge journey geo D1 queries", () => {
     ]);
 
     await expect(
-      queryGeoPointsFromD1(env, siteId, window, { country: "IT" }, 25),
+      queryGeoPointsFromD1(env, siteId, window, EMPTY_FILTER_DOCUMENT, 25),
     ).resolves.toEqual({
       points: [
         {
@@ -639,11 +1142,11 @@ describe("edge journey geo D1 queries", () => {
       regionCounts: [],
       cityCounts: [],
     });
-    expect(calls[0].bindings).toEqual([...visitBindings(window), "it", 25]);
+    expect(calls[0].bindings).toEqual([...visitBindings(window), 25]);
     expect(calls[0].sql).not.toContain(
       "WHERE LOWER(TRIM(COALESCE(country, ''))) = ?\n  WHERE",
     );
-    expect(calls[0].sql).toContain("AND\n    latitude IS NOT NULL");
+    expect(calls[0].sql).toContain("WHERE\n    latitude IS NOT NULL");
     expect(calls[1].sql).toContain("GROUP BY country");
   });
 
@@ -652,7 +1155,7 @@ describe("edge journey geo D1 queries", () => {
     const { env } = createD1Env([[], [{ country: null }]]);
 
     await expect(
-      queryGeoPointsFromD1(env, siteId, window, {}, 10),
+      queryGeoPointsFromD1(env, siteId, window, EMPTY_FILTER_DOCUMENT, 10),
     ).resolves.toMatchObject({
       countryCounts: [{ country: "", views: 0, sessions: 0, visitors: 0 }],
       regionCounts: [],
@@ -678,7 +1181,13 @@ describe("edge journey geo D1 queries", () => {
     ]);
 
     await expect(
-      queryGeoPointsFromD1(env, siteId, window, { geo: "US" }, 10),
+      queryGeoPointsFromD1(
+        env,
+        siteId,
+        window,
+        filterFixture({ geo: "US" }),
+        10,
+      ),
     ).resolves.toMatchObject({
       countryCounts: [],
       regionCounts: [
@@ -717,7 +1226,7 @@ describe("edge journey geo D1 queries", () => {
         env,
         siteId,
         window,
-        { geo: "US::CA::California" },
+        filterFixture({ geo: "US::CA::California" }),
         10,
       ),
     ).resolves.toMatchObject({
@@ -751,7 +1260,13 @@ describe("edge journey geo D1 queries", () => {
     ]);
 
     await expect(
-      queryGeoPointsFromD1(regionEnv.env, siteId, window, { geo: "US" }, 10),
+      queryGeoPointsFromD1(
+        regionEnv.env,
+        siteId,
+        window,
+        filterFixture({ geo: "US" }),
+        10,
+      ),
     ).resolves.toMatchObject({
       regionCounts: [
         {
@@ -780,7 +1295,7 @@ describe("edge journey geo D1 queries", () => {
         cityEnv.env,
         siteId,
         window,
-        { geo: "US::NY::NY" },
+        filterFixture({ geo: "US::NY::NY" }),
         10,
       ),
     ).resolves.toMatchObject({
@@ -814,7 +1329,13 @@ describe("edge journey geo D1 queries", () => {
     ]);
 
     await expect(
-      queryGeoPointsFromD1(regionEnv.env, siteId, window, { geo: "CA" }, 10),
+      queryGeoPointsFromD1(
+        regionEnv.env,
+        siteId,
+        window,
+        filterFixture({ geo: "CA" }),
+        10,
+      ),
     ).resolves.toMatchObject({
       regionCounts: [
         {
@@ -848,7 +1369,7 @@ describe("edge journey geo D1 queries", () => {
         cityEnv.env,
         siteId,
         window,
-        { geo: "CA::ON::Ontario" },
+        filterFixture({ geo: "CA::ON::Ontario" }),
         10,
       ),
     ).resolves.toMatchObject({
@@ -867,7 +1388,7 @@ describe("edge journey geo D1 queries", () => {
 });
 
 describe("edge journey handlers", () => {
-  it("paginates visitors and trims hasMore rows", async () => {
+  it("paginates visitors with a keyset cursor and trims hasMore rows", async () => {
     const window = queryWindow();
     const { env, calls } = createD1Env([
       [
@@ -880,9 +1401,8 @@ describe("edge journey handlers", () => {
       env,
       siteId,
       url("/visitors", {
-        from: window.fromMs,
-        to: window.toMs,
-        page: 2,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         pageSize: 1,
         sortBy: "views",
         sortDir: "asc",
@@ -894,16 +1414,64 @@ describe("edge journey handlers", () => {
       ok: true,
       data: [{ visitorId: "visitor-1", views: 3, sessions: 2 }],
       meta: {
-        page: 2,
         pageSize: 1,
         returned: 1,
         hasMore: true,
-        nextPage: 3,
+        nextCursor: expect.any(String),
       },
     });
     expect(calls[0].sql).toContain("ORDER BY views ASC");
-    expect(calls[0].bindings.at(-2)).toBe(2);
-    expect(calls[0].bindings.at(-1)).toBe(1);
+    expect(calls[0].sql).not.toContain("OFFSET");
+    expect(calls[0].bindings.at(-1)).toBe(2);
+  });
+
+  it("rejects invalid and mismatched journey cursors before querying D1", async () => {
+    const window = queryWindow();
+    const visitors = createD1Env([]);
+    const sessions = createD1Env([]);
+    const visitorCursor = serializeVisitorListCursor({
+      sortKey: "views",
+      sortDirection: "asc",
+      sortValue: 3,
+      lastSeenAt: baseMs,
+      visitorId: "visitor-1",
+    });
+    const sessionCursor = serializeSessionListCursor({
+      sortKey: "views",
+      sortDirection: "asc",
+      sortValue: 2,
+      startedAt: baseMs,
+      sessionId: "session-1",
+    });
+
+    await expect(
+      handleVisitors(
+        visitors.env,
+        siteId,
+        url("/visitors", {
+          from: window.startMs,
+          to: window.endExclusiveMs,
+          pageSize: 120,
+          cursor: visitorCursor,
+          sortBy: "sessions",
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 400 });
+    await expect(
+      handleSessions(
+        sessions.env,
+        siteId,
+        url("/sessions", {
+          from: window.startMs,
+          to: window.endExclusiveMs,
+          pageSize: 120,
+          cursor: sessionCursor,
+          sortBy: "durationMs",
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 400 });
+    expect(visitors.calls).toHaveLength(0);
+    expect(sessions.calls).toHaveLength(0);
   });
 
   it("returns non-paged sessions with search and default metadata", async () => {
@@ -914,8 +1482,8 @@ describe("edge journey handlers", () => {
       env,
       siteId,
       url("/sessions", {
-        from: window.fromMs,
-        to: window.toMs,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         limit: 3,
         search: "pricing",
       }),
@@ -925,18 +1493,17 @@ describe("edge journey handlers", () => {
       ok: true,
       data: [{ sessionId: "session-1", visitorId: "visitor-1" }],
       meta: {
-        page: 1,
         pageSize: 3,
         returned: 1,
         hasMore: false,
-        nextPage: null,
+        nextCursor: null,
       },
     });
     expect(calls[0].bindings.at(-2)).toBe(3);
     expect(calls[0].bindings.at(-1)).toBe(0);
   });
 
-  it("paginates sessions and trims the extra hasMore row", async () => {
+  it("paginates sessions with a keyset cursor and trims the extra row", async () => {
     const window = queryWindow();
     const { env, calls } = createD1Env([
       [
@@ -949,9 +1516,8 @@ describe("edge journey handlers", () => {
       env,
       siteId,
       url("/sessions", {
-        from: window.fromMs,
-        to: window.toMs,
-        page: 1,
+        from: window.startMs,
+        to: window.endExclusiveMs,
         pageSize: 1,
         sortBy: "views",
         sortDir: "asc",
@@ -962,16 +1528,83 @@ describe("edge journey handlers", () => {
       ok: true,
       data: [{ sessionId: "session-1" }],
       meta: {
-        page: 1,
         pageSize: 1,
         returned: 1,
         hasMore: true,
-        nextPage: 2,
+        nextCursor: expect.any(String),
       },
     });
     expect(calls[0].sql).toContain("ORDER BY views ASC");
-    expect(calls[0].bindings.at(-2)).toBe(2);
-    expect(calls[0].bindings.at(-1)).toBe(0);
+    expect(calls[0].sql).not.toContain("OFFSET");
+    expect(calls[0].bindings.at(-1)).toBe(2);
+  });
+
+  it("adds a seek predicate after Journey aggregation for a supplied cursor", async () => {
+    const window = queryWindow();
+    const { env, calls } = createD1Env([
+      [visitorRow({ visitorId: "visitor-2" })],
+    ]);
+    const cursor = serializeVisitorListCursor({
+      sortKey: "views",
+      sortDirection: "asc",
+      sortValue: 3,
+      lastSeenAt: baseMs + 60_000,
+      visitorId: "visitor-1",
+    });
+
+    await expect(
+      handleVisitors(
+        env,
+        siteId,
+        url("/visitors", {
+          from: window.startMs,
+          to: window.endExclusiveMs,
+          pageSize: 1,
+          cursor,
+          sortBy: "views",
+          sortDir: "asc",
+        }),
+      ),
+    ).resolves.toMatchObject({ status: 200 });
+
+    expect(calls[0].sql).toContain("vm.views > ?");
+    expect(calls[0].sql).toContain("vm.lastSeenAt < ?");
+    expect(calls[0].sql).not.toContain("OFFSET");
+    expect(calls[0].bindings.at(-6)).toBe(3);
+    expect(calls[0].bindings.at(-1)).toBe(2);
+  });
+
+  it("serializes Journey cursors only for their matching sort", () => {
+    const visitor = serializeVisitorListCursor({
+      sortKey: "views",
+      sortDirection: "asc",
+      sortValue: 3,
+      lastSeenAt: baseMs,
+      visitorId: "visitor-1",
+    });
+    const session = serializeSessionListCursor({
+      sortKey: "durationMs",
+      sortDirection: "desc",
+      sortValue: 60_000,
+      startedAt: baseMs,
+      sessionId: "session-1",
+    });
+
+    expect(
+      parseVisitorListCursor(visitor, { key: "views", direction: "asc" }),
+    ).toMatchObject({ visitorId: "visitor-1", sortValue: 3 });
+    expect(
+      parseVisitorListCursor(visitor, { key: "sessions", direction: "asc" }),
+    ).toBeNull();
+    expect(
+      parseSessionListCursor(session, {
+        key: "durationMs",
+        direction: "desc",
+      }),
+    ).toMatchObject({ sessionId: "session-1", sortValue: 60_000 });
+    expect(
+      parseSessionListCursor(session, { key: "durationMs", direction: "asc" }),
+    ).toBeNull();
   });
 
   it("rejects invalid list windows before querying D1", async () => {
@@ -1029,26 +1662,30 @@ describe("edge journey handlers", () => {
   });
 
   it("returns visitor and session detail handler payloads", async () => {
+    const window = queryWindow();
     const { env } = createD1Env([
-      [visitorRow()],
-      [sessionRow()],
-      [journeyEventRow()],
-      [sessionRow()],
-      [journeyEventRow()],
-      [{ latitude: 1, longitude: 2, timestampMs: 3 }],
+      [visitorDetailVisitRow()],
+      [visitorDetailVisitRow({ latitude: 1, longitude: 2, startedAt: 3 })],
     ]);
 
     const visitor = await handleVisitorDetail(
       env,
       siteId,
-      new URL(
-        "https://edge.test/visitor-detail?visitorId=visitor-1&timeZone=Bad/Zone",
-      ),
+      url("/visitor-detail", {
+        visitorId: "visitor-1",
+        timeZone: "Bad/Zone",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+      }),
     );
     const session = await handleSessionDetail(
       env,
       siteId,
-      new URL("https://edge.test/session-detail?sessionId=session-1"),
+      url("/session-detail", {
+        sessionId: "session-1",
+        from: window.startMs,
+        to: window.endExclusiveMs,
+      }),
     );
 
     await expect(visitor.json()).resolves.toMatchObject({

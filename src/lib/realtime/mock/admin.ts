@@ -4,7 +4,7 @@ import type {
   NotificationMessageData,
   NotificationRuleData,
 } from "@/lib/edge-client-types/admin";
-import type { Locale } from "@/lib/i18n/config";
+import { isValidLocale, type Locale } from "@/lib/i18n/config";
 import { buildNotificationContent } from "@/lib/notifications/content";
 import { renderNotificationPlainText } from "@/lib/notifications/email-text";
 import type { NotificationMessage } from "@/lib/notifications/message-store";
@@ -47,7 +47,7 @@ const DEMO_USERS = [
   {
     id: "demo-user-001",
     username: "demo",
-    email: "demo@insightflare.app",
+    email: "demo@insightflare.net",
     name: "Demo User",
     systemRole: "admin" as const,
     timeZone: "",
@@ -152,6 +152,7 @@ export function getDemoSites(teamId: string) {
 }
 
 export function getDemoMembers(teamId: string) {
+  const sites = getDemoSites(teamId);
   return getDemoUsers().map((user, index) => ({
     teamId,
     userId: user.id,
@@ -161,6 +162,7 @@ export function getDemoMembers(teamId: string) {
         : index === 3
           ? ("admin" as const)
           : ("member" as const),
+    siteIds: index === 2 ? sites.slice(0, 2).map((site) => site.id) : [],
     joinedAt: user.createdAt,
     username: user.username,
     email: user.email,
@@ -178,9 +180,9 @@ export function generateDemoTeamInvites(teamId: string) {
       teamId: tid,
       userId: "",
       email: "product@example.test",
-      payload: { teamRole: "admin", siteAccess: { mode: "all" } },
+      payload: { teamRole: "admin", siteIds: [] },
       code: "demo_product_admin_token",
-      url: "https://demo.insightflare.app/invite#token=demo_product_admin_token",
+      url: "https://demo.insightflare.net/invite#token=demo_product_admin_token",
       createdByUserId: getDemoUser().id,
       createdAt: now - 2 * 24 * 60 * 60,
       expiresAt: now + 5 * 24 * 60 * 60,
@@ -195,9 +197,9 @@ export function generateDemoTeamInvites(teamId: string) {
       teamId: tid,
       userId: "",
       email: "",
-      payload: { teamRole: "member", siteAccess: { mode: "all" } },
+      payload: { teamRole: "member", siteIds: [] },
       code: "demo_open_member_token",
-      url: "https://demo.insightflare.app/invite#token=demo_open_member_token",
+      url: "https://demo.insightflare.net/invite#token=demo_open_member_token",
       createdByUserId: getDemoUser().id,
       createdAt: now - 6 * 60 * 60,
       expiresAt: now + 72 * 60 * 60,
@@ -212,9 +214,14 @@ export function generateDemoTeamInvites(teamId: string) {
       teamId: tid,
       userId: "",
       email: "mia@example.test",
-      payload: { teamRole: "member", siteAccess: { mode: "all" } },
+      payload: {
+        teamRole: "member",
+        siteIds: getDemoSites(tid)
+          .slice(0, 1)
+          .map((site) => site.id),
+      },
       code: "demo_used_member_token",
-      url: "https://demo.insightflare.app/invite#token=demo_used_member_token",
+      url: "https://demo.insightflare.net/invite#token=demo_used_member_token",
       createdByUserId: getDemoUser().id,
       createdAt: now - 21 * 24 * 60 * 60,
       expiresAt: now + 9 * 24 * 60 * 60,
@@ -617,9 +624,9 @@ export function generateDemoNotificationMessages(
   const primarySite = sites[0] ?? null;
   const docsSite = sites[1] ?? primarySite;
   const apiSite = sites[2] ?? primarySite;
-  const primaryDomain = primarySite?.domain ?? "demo.insightflare.app";
-  const docsDomain = docsSite?.domain ?? "docs.insightflare.app";
-  const apiDomain = apiSite?.domain ?? "api.insightflare.app";
+  const primaryDomain = primarySite?.domain ?? "demo.insightflare.net";
+  const docsDomain = docsSite?.domain ?? "docs.insightflare.net";
+  const apiDomain = apiSite?.domain ?? "api.insightflare.net";
   return [
     demoTypedNotificationMessage({
       id: "demo-notification-message-attention",
@@ -871,7 +878,10 @@ export function generateDemoNotificationTest(body: unknown): {
     body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const teamId = String(raw.teamId || getDemoTeams()[0].id);
   const userId = String(raw.userId || getDemoUser().id);
-  const locale = raw.locale === "zh" ? "zh" : "en";
+  const requestedLocale = String(raw.locale || "");
+  const locale: Locale = isValidLocale(requestedLocale)
+    ? requestedLocale
+    : "en";
   const message = demoTypedNotificationMessage({
     id: `demo-notification-test-${nowSeconds()}`,
     teamId,

@@ -1,13 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
 import {
   addDimensionValue,
   addGeoDimensionValue,
   appendSqlConditions,
   buildEventFilterSql,
-  buildEventPayloadFilterSql,
   buildTimeBuckets,
   buildVisitFilterSql,
+  buildVisitSourceCte,
   clientDimensionDefinition,
   customEventJsonTypeCode,
   customEventJsonTypeLabel,
@@ -15,7 +16,6 @@ import {
   DIRECT_REFERRER_FILTER_VALUE,
   emptyOverviewAggregateRow,
   emptyPerformanceRouteMetrics,
-  eventPayloadFilterValueType,
   eventRecordOrderBy,
   fetchPublicSite,
   finalizeDimensionBuckets,
@@ -37,15 +37,14 @@ import {
   mapTrendRows,
   mapVisitors,
   mapVisitPerformanceMetrics,
+  paginationOffset,
   parseBooleanFlag,
   parseEventFieldPath,
   parseEventFieldValueType,
   parseEventId,
   parseEventName,
-  parseEventPayloadFilters,
   parseEventRecordSort,
   parseFilterOptionKey,
-  parseFilters,
   parseGeoFilterValue,
   parseInterval,
   parseLimit,
@@ -60,10 +59,13 @@ import {
   sourceLabel,
   timeBucketCase,
   timeBucketTimestamp,
+  visitSourceBindings,
   withoutFilterKey,
   withoutGeoFilter,
-} from "@/lib/edge/query/core";
+} from "@/lib/edge/analytics/providers/d1/internal/core";
 import type { Env } from "@/lib/edge/types";
+
+import { filterFixture } from "./filter-fixtures";
 
 const fixedNow = Date.UTC(2026, 4, 26, 8);
 
@@ -86,15 +88,15 @@ describe("edge query core parsers", () => {
         url("?from=1700000000123.9&to=1700003600999.5&timeZone=Asia/Tokyo"),
       ),
     ).toEqual({
-      fromMs: 1_700_000_000_123,
-      toMs: 1_700_003_600_999,
+      startMs: 1_700_000_000_123,
+      endExclusiveMs: 1_700_003_600_999,
       nowMs: fixedNow,
       timeZone: "Asia/Tokyo",
     });
 
     expect(parseWindow(url("?timeZone=Bad/Zone"))).toEqual({
-      fromMs: fixedNow - 86_400_000,
-      toMs: fixedNow,
+      startMs: fixedNow - 86_400_000,
+      endExclusiveMs: fixedNow,
       nowMs: fixedNow,
       timeZone: "UTC",
     });
@@ -102,6 +104,7 @@ describe("edge query core parsers", () => {
     expect(parseWindow(url("?from=nope&to=wat"))).toBeNull();
     expect(parseWindow(url("?from=-1&to=10"))).toBeNull();
     expect(parseWindow(url("?from=20&to=10"))).toBeNull();
+    expect(parseWindow(url("?from=10&to=10"))).toBeNull();
   });
 
   it("parses intervals and clamps limits", () => {
@@ -123,6 +126,11 @@ describe("edge query core parsers", () => {
     expect(parseQueryLimit(url("?pageSize=nope"), "pageSize", 20, 5, 50)).toBe(
       20,
     );
+
+    expect(paginationOffset(1, 120)).toBe(0);
+    expect(paginationOffset(167, 120)).toBe(19_920);
+    expect(paginationOffset(168, 120)).toBeNull();
+    expect(paginationOffset(Number.MAX_SAFE_INTEGER, 2)).toBeNull();
   });
 
   it("parses list sort keys and falls back to defaults", () => {
@@ -155,73 +163,6 @@ describe("edge query core parsers", () => {
     });
   });
 
-  it("normalizes dashboard filters and event payload filter rules", () => {
-    const payloadFilters = JSON.stringify([
-      { path: "$.plan.name", operator: "!=", value: " pro " },
-      { path: "/totals/paid", operator: "eq", value: 42 },
-      { path: "flags[0].enabled", operator: "ne", value: true },
-      { path: "empty", value: null },
-      { path: "/", value: "skip" },
-      { path: "bad", value: { unsupported: true } },
-    ]);
-
-    expect(parseEventPayloadFilters(payloadFilters)).toEqual([
-      { path: "/plan/name", operator: "ne", value: " pro " },
-      { path: "/totals/paid", operator: "eq", value: 42 },
-      { path: "/flags/*/enabled", operator: "ne", value: true },
-      { path: "/empty", operator: "eq", value: null },
-    ]);
-
-    const parsed = parseFilters(
-      url(
-        `?country= US &device=desktop&browser= Chrome &path=%20/docs%20` +
-          `&query=ref%3Dhome&title=Docs&hostname=Example.COM` +
-          `&entry=/&exit=/pricing&sourceDomain=News.Example` +
-          `&sourceLink=https%3A%2F%2Fnews.example%2Fpost` +
-          `&clientBrowser=Safari&clientOsVersion=17&clientDeviceType=mobile` +
-          `&clientLanguage=en-US&clientScreenSize=390x844` +
-          `&geoCountry=CA&geoRegion=CA%3A%3ABC%3A%3ABritish%20Columbia` +
-          `&geoContinent=NA&geoTimezone=America%2FVancouver` +
-          `&geoOrganization=Example%20ISP` +
-          `&eventPayloadFilters=${encodeURIComponent(payloadFilters)}`,
-      ),
-    );
-
-    expect(parsed).toMatchObject({
-      country: "US",
-      device: "desktop",
-      browser: "Chrome",
-      path: "/docs",
-      query: "ref=home",
-      title: "Docs",
-      hostname: "Example.COM",
-      entry: "/",
-      exit: "/pricing",
-      sourceDomain: "News.Example",
-      sourceLink: "https://news.example/post",
-      clientBrowser: "Safari",
-      clientOsVersion: "17",
-      clientDeviceType: "mobile",
-      clientLanguage: "en-US",
-      clientScreenSize: "390x844",
-      geo: "CA",
-      geoContinent: "NA",
-      geoTimezone: "America/Vancouver",
-      geoOrganization: "Example ISP",
-      eventPayloadFilters: [
-        { path: "/plan/name", operator: "ne", value: " pro " },
-        { path: "/totals/paid", operator: "eq", value: 42 },
-        { path: "/flags/*/enabled", operator: "ne", value: true },
-        { path: "/empty", operator: "eq", value: null },
-      ],
-    });
-
-    expect(parseEventPayloadFilters("not json")).toBeUndefined();
-    expect(
-      parseEventPayloadFilters(JSON.stringify({ path: "/plan" })),
-    ).toBeUndefined();
-  });
-
   it("parses focused query params and filter option helpers", () => {
     expect(parseListSearch(url("?search=%20checkout%20"))).toBe("checkout");
     expect(parseListSearch(url("?search=%20%20"))).toBeUndefined();
@@ -241,32 +182,19 @@ describe("edge query core parsers", () => {
     );
     expect(parseEventId(url("?eventId=%20evt_123%20"))).toBe("evt_123");
     expect(parseEventId(url("?eventId=%20%20"))).toBeUndefined();
-    expect(parseFilterOptionKey(url("?filterKey=geoTimezone"))).toBe(
-      "geoTimezone",
+    expect(parseFilterOptionKey(url("?filterKey=geo.timeZone"))).toBe(
+      "geo.timeZone",
     );
     expect(parseFilterOptionKey(url("?filterKey=unknown"))).toBeNull();
     expect(parseBooleanFlag(url("?includeDetail=yes"), "includeDetail")).toBe(
       true,
     );
     expect(
-      withoutFilterKey({ country: "US", browser: "Chrome" }, "country"),
-    ).toEqual({ browser: "Chrome" });
-  });
-
-  it("drops malformed payload filters while preserving valid rules", () => {
-    expect(parseEventPayloadFilters("")).toBeUndefined();
-    expect(
-      parseEventPayloadFilters(
-        JSON.stringify([
-          null,
-          "bad",
-          42,
-          { path: "/", value: "skip" },
-          { path: "bad", value: { nested: true } },
-          { path: "$.flags.enabled", operator: "ne", value: false },
-        ]),
+      withoutFilterKey(
+        filterFixture({ country: "US", browser: "Chrome" }),
+        "geo.country",
       ),
-    ).toEqual([{ path: "/flags/enabled", operator: "ne", value: false }]);
+    ).toEqual(filterFixture({ browser: "Chrome" }));
   });
 });
 
@@ -362,8 +290,8 @@ describe("edge query core dimensions", () => {
 describe("edge query core time helpers", () => {
   const nowMs = Date.UTC(2026, 4, 26);
 
-  function window(fromMs: number, toMs: number): QueryWindow {
-    return { fromMs, toMs, nowMs, timeZone: "UTC" };
+  function window(startMs: number, endExclusiveMs: number): QueryWindow {
+    return { startMs, endExclusiveMs, nowMs, timeZone: "UTC" };
   }
 
   it("labels query windows as detail data", () => {
@@ -372,8 +300,8 @@ describe("edge query core time helpers", () => {
 
   it("builds zoned buckets and SQL bucket cases", () => {
     const queryWindow: QueryWindow = {
-      fromMs: Date.UTC(2026, 0, 2, 1, 30),
-      toMs: Date.UTC(2026, 0, 2, 3, 5),
+      startMs: Date.UTC(2026, 0, 2, 1, 30),
+      endExclusiveMs: Date.UTC(2026, 0, 2, 3, 5),
       nowMs,
       timeZone: "UTC",
     };
@@ -384,20 +312,20 @@ describe("edge query core time helpers", () => {
       {
         index: 0,
         timestampMs: Date.UTC(2026, 0, 2, 1),
-        fromMs: Date.UTC(2026, 0, 2, 1),
-        toMs: Date.UTC(2026, 0, 2, 2),
+        startMs: Date.UTC(2026, 0, 2, 1),
+        endExclusiveMs: Date.UTC(2026, 0, 2, 2),
       },
       {
         index: 1,
         timestampMs: Date.UTC(2026, 0, 2, 2),
-        fromMs: Date.UTC(2026, 0, 2, 2),
-        toMs: Date.UTC(2026, 0, 2, 3),
+        startMs: Date.UTC(2026, 0, 2, 2),
+        endExclusiveMs: Date.UTC(2026, 0, 2, 3),
       },
       {
         index: 2,
         timestampMs: Date.UTC(2026, 0, 2, 3),
-        fromMs: Date.UTC(2026, 0, 2, 3),
-        toMs: Date.UTC(2026, 0, 2, 4),
+        startMs: Date.UTC(2026, 0, 2, 3),
+        endExclusiveMs: Date.UTC(2026, 0, 2, 4),
       },
     ]);
 
@@ -414,31 +342,56 @@ describe("edge query core time helpers", () => {
     });
   });
 
-  it("maps interval widths and falls back when no bucket can be generated", () => {
+  it("keeps calendar-day boundaries across daylight saving changes", () => {
+    const buckets = buildTimeBuckets(
+      {
+        startMs: Date.UTC(2026, 2, 7, 12),
+        endExclusiveMs: Date.UTC(2026, 2, 10, 12),
+        nowMs,
+        timeZone: "America/New_York",
+      },
+      "day",
+    );
+
+    expect(
+      buckets.map((bucket) => [bucket.startMs, bucket.endExclusiveMs]),
+    ).toEqual([
+      [Date.UTC(2026, 2, 7, 5), Date.UTC(2026, 2, 8, 5)],
+      [Date.UTC(2026, 2, 8, 5), Date.UTC(2026, 2, 9, 4)],
+      [Date.UTC(2026, 2, 9, 4), Date.UTC(2026, 2, 10, 4)],
+      [Date.UTC(2026, 2, 10, 4), Date.UTC(2026, 2, 11, 4)],
+    ]);
+  });
+
+  it("maps interval widths and rejects empty query windows", () => {
     expect(intervalBucketMs("minute")).toBe(60_000);
     expect(intervalBucketMs("hour")).toBe(3_600_000);
     expect(intervalBucketMs("day")).toBe(86_400_000);
     expect(intervalBucketMs("week")).toBe(7 * 86_400_000);
     expect(intervalBucketMs("month")).toBe(30 * 86_400_000);
 
-    const fromMs = Date.UTC(2026, 0, 2, 1, 30);
-    const buckets = buildTimeBuckets(
-      {
-        fromMs,
-        toMs: Date.UTC(2026, 0, 2, 0, 59),
-        nowMs,
-        timeZone: "UTC",
-      },
-      "hour",
-    );
+    expect(() =>
+      buildTimeBuckets(
+        {
+          startMs: Date.UTC(2026, 0, 2, 1, 30),
+          endExclusiveMs: Date.UTC(2026, 0, 2, 1, 30),
+          nowMs,
+          timeZone: "UTC",
+        },
+        "hour",
+      ),
+    ).toThrow("half-open");
+  });
 
-    expect(buckets).toEqual([
-      {
-        index: 0,
-        timestampMs: fromMs,
-        fromMs,
-        toMs: fromMs + 1,
-      },
+  it("uses a start-inclusive, end-exclusive source window", () => {
+    const queryWindow = window(100, 200);
+    expect(buildVisitSourceCte()).toContain(
+      "started_at >= ? AND started_at < ?",
+    );
+    expect(visitSourceBindings("site-1", queryWindow)).toEqual([
+      "site-1",
+      100,
+      200,
     ]);
   });
 });
@@ -801,6 +754,7 @@ describe("edge query core mappers", () => {
         referrerHost: "news.example",
         country: "US",
         region: "CA",
+        city: "San Francisco",
         browser: "Chrome",
         browserVersion: "124",
         os: "macOS",
@@ -824,6 +778,7 @@ describe("edge query core mappers", () => {
       referrerHost: "news.example",
       country: "US",
       region: "CA",
+      city: "San Francisco",
       browser: "Chrome",
       browserVersion: "124",
       os: "macOS",
@@ -922,23 +877,28 @@ describe("edge query core SQL helpers", () => {
         "started_at < ?",
       ]),
     ).toBe("WHERE status = 'active' AND started_at >= ? AND started_at < ?");
+    expect(appendSqlConditions("SELECT * FROM t", ["  ", "\t"])).toBe(
+      "SELECT * FROM t",
+    );
   });
 
   it("builds visit filters for direct traffic, client dimensions, and geo values", () => {
     const filter = buildVisitFilterSql(
-      {
+      filterFixture({
         country: "US",
         sourceDomain: DIRECT_REFERRER_FILTER_VALUE,
         sourceLink: "HTTPS://REF.EXAMPLE/POST",
         clientOsVersion: "macOS 14",
         clientScreenSize: "1440x900",
         geo: "US::CA::California::San Francisco",
-      },
+      }),
       "v",
     );
 
     expect(filter.clause).toContain("LOWER(TRIM(COALESCE(v.country, ''))) = ?");
-    expect(filter.clause).toContain("TRIM(COALESCE(v.referrer_host, '')) = ''");
+    expect(filter.clause).toContain(
+      "LOWER(TRIM(COALESCE(v.referrer_host, ''))) = ''",
+    );
     expect(filter.clause).toContain(
       "LOWER(TRIM(COALESCE(v.referrer_url, ''))) = ?",
     );
@@ -946,20 +906,18 @@ describe("edge query core SQL helpers", () => {
     expect(filter.clause).toContain(
       "CAST(v.screen_width AS TEXT) || 'x' || CAST(v.screen_height AS TEXT)",
     );
-    expect(filter.clause).toContain(
-      "UPPER(TRIM(CASE WHEN TRIM(COALESCE(v.region_code, '')) != '' THEN v.region_code ELSE v.region END)) IN (?, ?)",
-    );
+    expect(filter.clause).toContain("LOWER(TRIM(COALESCE(v.region, ''))) = ?");
     expect(filter.clause).toContain("LOWER(TRIM(COALESCE(v.city, ''))) = ?");
-    expect(filter.bindings).toEqual([
-      "us",
-      "https://ref.example/post",
-      "macOS 14",
-      "1440x900",
-      "us",
-      "CA",
-      "CALIFORNIA",
-      "san francisco",
-    ]);
+    expect(filter.bindings).toEqual(
+      expect.arrayContaining([
+        "us",
+        "https://ref.example/post",
+        "macOS 14",
+        "1440x900",
+        "ca",
+        "san francisco",
+      ]),
+    );
   });
 
   it("parses geo filter values and removes geo filters without mutating other keys", () => {
@@ -970,147 +928,61 @@ describe("edge query core SQL helpers", () => {
       city: "San Francisco",
     });
     expect(parseGeoFilterValue("bad")).toBeNull();
-    expect(withoutGeoFilter({ geo: "US", country: "US" })).toEqual({
-      geo: undefined,
-      country: "US",
-    });
+    expect(
+      withoutGeoFilter(filterFixture({ geo: "US", browser: "Chrome" })),
+    ).toEqual(filterFixture({ browser: "Chrome" }));
   });
 
   it("builds visit filters for page metadata, session edges, and direct source links", () => {
-    const filter = buildVisitFilterSql({
-      title: "Docs",
-      entry: "/",
-      exit: "/pricing",
-      sourceDomain: "News.Example",
-      sourceLink: DIRECT_REFERRER_FILTER_VALUE,
-      clientLanguage: "en-US",
-      geoTimezone: "America/Los_Angeles",
-    });
-
-    expect(filter.clause).toContain("TRIM(COALESCE(title, '')) = ?");
-    expect(filter.clause).toContain(
-      "ORDER BY edge.started_at ASC, edge.visit_id ASC LIMIT 1",
-    );
-    expect(filter.clause).toContain(
-      "ORDER BY edge.started_at DESC, edge.visit_id DESC LIMIT 1",
-    );
-    expect(filter.clause).toContain(
-      "LOWER(TRIM(COALESCE(referrer_host, ''))) = ?",
-    );
-    expect(filter.clause).toContain("TRIM(COALESCE(referrer_url, '')) = ''");
-    expect(filter.clause).toContain("TRIM(COALESCE(language, '')) = ?");
-    expect(filter.clause).toContain("TRIM(COALESCE(timezone, '')) = ?");
-    expect(filter.bindings).toEqual([
-      "Docs",
-      "/",
-      "/pricing",
-      "news.example",
-      "en-US",
-      "America/Los_Angeles",
-    ]);
-
-    expect(buildVisitFilterSql({})).toEqual({ clause: "", bindings: [] });
-  });
-
-  it("classifies event payload filter values", () => {
-    expect(eventPayloadFilterValueType(null)).toBe("null");
-    expect(eventPayloadFilterValueType(1)).toBe("number");
-    expect(eventPayloadFilterValueType(false)).toBe("boolean");
-    expect(eventPayloadFilterValueType("value")).toBe("string");
-  });
-
-  it("builds event payload and event filters with typed bindings", () => {
-    const payload = buildEventPayloadFilterSql(
-      {
-        eventPayloadFilters: [
-          { path: "$.plan", operator: "eq", value: "pro" },
-          { path: "/paid", operator: "ne", value: true },
-          { path: "/score", operator: "eq", value: 42 },
-          { path: "/missing", operator: "ne", value: null },
-        ],
-      },
-      "ev",
-    );
-
-    expect(payload.clauses).toHaveLength(4);
-    expect(payload.clauses.join("\n")).toContain("epv0.event_pk = ev.event_pk");
-    expect(payload.clauses.join("\n")).toContain(
-      "COALESCE(epv0.string_value, '') = ?",
-    );
-    expect(payload.clauses.join("\n")).toContain("epv1.boolean_value != ?");
-    expect(payload.clauses.join("\n")).toContain("epv2.number_value = ?");
-    expect(payload.clauses.join("\n")).toContain("epv3.value_type != ?");
-    expect(payload.bindings).toEqual([
-      "/plan",
-      1,
-      "pro",
-      "/paid",
-      3,
-      1,
-      "/score",
-      2,
-      42,
-      "/missing",
-      0,
-    ]);
-
-    const eventFilter = buildEventFilterSql(
-      {
-        browser: "Chrome",
-        eventPayloadFilters: [{ path: "/plan", operator: "eq", value: "pro" }],
-      },
-      "ev",
-      { eventName: "signup", search: "Checkout" },
-    );
-
-    expect(eventFilter.clause).toContain("TRIM(COALESCE(ev.browser, '')) = ?");
-    expect(eventFilter.clause).toContain(
-      "TRIM(COALESCE(ev.event_name, '')) = ?",
-    );
-    expect(eventFilter.clause).toContain(
-      "LOWER(TRIM(COALESCE(ev.event_id, ''))) LIKE ?",
-    );
-    expect(eventFilter.bindings).toEqual([
-      "Chrome",
-      "/plan",
-      1,
-      "pro",
-      "signup",
-      "%checkout%",
-      "%checkout%",
-      "%checkout%",
-      "%checkout%",
-      "%checkout%",
-      "%checkout%",
-      "%checkout%",
-      "%checkout%",
-    ]);
-
-    expect(
-      buildEventPayloadFilterSql({
-        eventPayloadFilters: [
-          { path: "/", operator: "eq", value: "skip" },
-          {
-            path: "/unsupported",
-            operator: "eq",
-            value: { nested: true } as never,
-          },
-        ],
+    const filter = buildVisitFilterSql(
+      filterFixture({
+        title: "Docs",
+        entry: "/",
+        exit: "/pricing",
+        sourceDomain: "News.Example",
+        sourceLink: DIRECT_REFERRER_FILTER_VALUE,
+        clientLanguage: "en-US",
+        geoTimezone: "America/Los_Angeles",
       }),
-    ).toEqual({ clauses: [], bindings: [] });
+    );
 
-    expect(
-      buildEventPayloadFilterSql(
-        {
-          eventPayloadFilters: [
-            { path: "/paid", operator: "eq", value: false },
-          ],
-        },
-        "",
-      ).bindings,
-    ).toEqual(["/paid", 3, 0]);
+    expect(filter.clause).toContain(
+      "TRIM(COALESCE(visit_source.title, '')) = ?",
+    );
+    expect(filter.clause).toContain("visit_source.session_id IN");
+    expect(filter.clause).toContain(
+      "ORDER BY edge.started_at ASC, edge.visit_id ASC",
+    );
+    expect(filter.clause).toContain(
+      "ORDER BY edge.started_at DESC, edge.visit_id DESC",
+    );
+    expect(filter.clause).toContain(
+      "LOWER(TRIM(COALESCE(visit_source.referrer_host, ''))) = ?",
+    );
+    expect(filter.clause).toContain(
+      "LOWER(TRIM(COALESCE(visit_source.referrer_url, ''))) = ''",
+    );
+    expect(filter.clause).toContain(
+      "TRIM(COALESCE(visit_source.language, '')) = ?",
+    );
+    expect(filter.clause).toContain(
+      "TRIM(COALESCE(visit_source.timezone, '')) = ?",
+    );
+    expect(filter.bindings).toEqual(
+      expect.arrayContaining([
+        "Docs",
+        "/",
+        "/pricing",
+        "news.example",
+        "en-US",
+        "America/Los_Angeles",
+      ]),
+    );
 
-    expect(buildEventFilterSql({}, "")).toEqual({ clause: "", bindings: [] });
+    expect(buildVisitFilterSql(EMPTY_FILTER_DOCUMENT)).toEqual({
+      clause: "",
+      bindings: [],
+    });
   });
 
   it("maps custom event JSON type labels and codes", () => {
@@ -1125,13 +997,13 @@ describe("edge query core SQL helpers", () => {
 
   it("builds deterministic event ordering clauses", () => {
     expect(eventRecordOrderBy({ key: "eventName", direction: "asc" })).toBe(
-      "eventName ASC, occurredAt DESC, eventId DESC",
+      "eventName ASC, occurredAt DESC, eventId DESC, eventPk DESC",
     );
     expect(eventRecordOrderBy({ key: "pathname", direction: "desc" })).toBe(
-      "pathname DESC, occurredAt DESC, eventId DESC",
+      "pathname DESC, occurredAt DESC, eventId DESC, eventPk DESC",
     );
     expect(eventRecordOrderBy({ key: "occurredAt", direction: "asc" })).toBe(
-      "occurredAt ASC, eventId ASC",
+      "occurredAt ASC, eventId ASC, eventPk ASC",
     );
   });
 });

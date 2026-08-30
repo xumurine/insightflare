@@ -1,3 +1,4 @@
+import { adminServicePath } from "@/lib/admin-service-contract";
 import type { TeamRole } from "@/lib/dashboard/permissions";
 import type {
   AccountUserData,
@@ -17,11 +18,17 @@ import type {
   TeamData,
   TrendData,
 } from "@/lib/edge-client-types";
+import {
+  analyticsFilterRegistry,
+  serializeFilterParams,
+} from "@/lib/filter-contract";
+import type { Locale } from "@/lib/i18n/config";
 import type { PublicNotificationEmailConfig } from "@/lib/notifications/email-config";
-import type { SiteScriptSettings } from "@/lib/site-settings";
+import type { SiteSettingsConfig } from "@/lib/site-settings";
 
 import { getSessionToken } from "./auth";
 import { DEFAULT_EDGE_BASE_URL } from "./constants";
+import { requestHeader } from "./request-headers";
 
 export type * from "@/lib/edge-client-types";
 
@@ -34,12 +41,13 @@ export interface PublicSiteData {
   domain: string;
 }
 
-interface FetchEdgeOptions {
+export interface FetchEdgeOptions {
   method?: HttpMethod;
   path: string;
   params?: Record<string, string | number>;
   body?: unknown;
   isPublic?: boolean;
+  signal?: AbortSignal;
 }
 
 async function edgeBaseUrl(): Promise<string> {
@@ -52,12 +60,12 @@ async function edgeBaseUrl(): Promise<string> {
   }
 
   try {
-    const { headers } = await import("next/headers");
-    const h = await headers();
-    const host = h.get("x-forwarded-host") || h.get("host");
+    const host =
+      (await requestHeader("x-forwarded-host")) ||
+      (await requestHeader("host"));
     if (host) {
       const proto =
-        h.get("x-forwarded-proto") ||
+        (await requestHeader("x-forwarded-proto")) ||
         (host.startsWith("localhost") || host.startsWith("127.0.0.1")
           ? "http"
           : "https");
@@ -84,44 +92,16 @@ function withFilters(
 ): Record<string, string | number> {
   const next = { ...params };
   if (!filters) return next;
-  if (filters.country) next.country = filters.country;
-  if (filters.device) next.device = filters.device;
-  if (filters.browser) next.browser = filters.browser;
-  if (filters.path) next.path = filters.path;
-  if (filters.query) next.query = filters.query;
-  if (filters.title) next.title = filters.title;
-  if (filters.hostname) next.hostname = filters.hostname;
-  if (filters.entry) next.entry = filters.entry;
-  if (filters.exit) next.exit = filters.exit;
-  if (filters.sourceDomain) next.sourceDomain = filters.sourceDomain;
-  if (filters.sourceLink) next.sourceLink = filters.sourceLink;
-  if (filters.clientBrowser) next.clientBrowser = filters.clientBrowser;
-  if (filters.clientOsVersion) next.clientOsVersion = filters.clientOsVersion;
-  if (filters.clientDeviceType)
-    next.clientDeviceType = filters.clientDeviceType;
-  if (filters.clientLanguage) next.clientLanguage = filters.clientLanguage;
-  if (filters.clientScreenSize)
-    next.clientScreenSize = filters.clientScreenSize;
-  if (filters.geo) next.geo = filters.geo;
-  if (filters.geoContinent) next.geoContinent = filters.geoContinent;
-  if (filters.geoTimezone) next.geoTimezone = filters.geoTimezone;
-  if (filters.geoOrganization) next.geoOrganization = filters.geoOrganization;
-  if (filters.eventPayloadFilters?.length) {
-    next.eventPayloadFilters = JSON.stringify(filters.eventPayloadFilters);
+  for (const [key, value] of serializeFilterParams(
+    filters,
+    analyticsFilterRegistry,
+  )) {
+    next[key] = value;
   }
   return next;
 }
 
-async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    return handleDemoRequest({
-      path: options.path,
-      method: options.method,
-      params: options.params as Record<string, string | number> | undefined,
-      body: options.body,
-    }) as T;
-  }
+export async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
   const method = options.method || "GET";
   const baseUrl = await edgeBaseUrl();
   const url = withQuery(new URL(options.path, baseUrl), options.params);
@@ -155,6 +135,7 @@ async function fetchEdgeJson<T>(options: FetchEdgeOptions): Promise<T> {
     headers,
     body: method === "GET" ? undefined : JSON.stringify(options.body ?? {}),
     cache: "no-store",
+    signal: options.signal,
   });
 
   if (!res.ok) {
@@ -267,7 +248,7 @@ export async function fetchPublicReferrers(
 
 export async function fetchAdminTeams(userId?: string): Promise<TeamData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: TeamData[] }>({
-    path: "/api/private/admin/teams",
+    path: adminServicePath("teams"),
     params: userId ? { userId } : undefined,
   });
   return res.data;
@@ -279,7 +260,7 @@ export async function createAdminTeam(input: {
 }): Promise<TeamData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: TeamData }>({
     method: "POST",
-    path: "/api/private/admin/teams",
+    path: adminServicePath("teams"),
     body: input,
   });
   return res.data;
@@ -292,7 +273,7 @@ export async function updateAdminTeam(input: {
 }): Promise<TeamData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: TeamData }>({
     method: "PATCH",
-    path: "/api/private/admin/teams",
+    path: adminServicePath("teams"),
     body: input,
   });
   return res.data;
@@ -306,7 +287,7 @@ export async function removeAdminTeam(input: {
     data: { teamId: string; removed: boolean };
   }>({
     method: "PATCH",
-    path: "/api/private/admin/teams",
+    path: adminServicePath("teams"),
     body: {
       ...input,
       intent: "remove",
@@ -324,7 +305,7 @@ export async function transferAdminTeamOwner(input: {
     data: TeamData & { transferred: boolean };
   }>({
     method: "PATCH",
-    path: "/api/private/admin/teams",
+    path: adminServicePath("teams"),
     body: {
       ...input,
       intent: "transfer_owner",
@@ -333,10 +314,14 @@ export async function transferAdminTeamOwner(input: {
   return res.data;
 }
 
-export async function fetchAdminSites(teamId: string): Promise<SiteData[]> {
+export async function fetchAdminSites(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<SiteData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: SiteData[] }>({
-    path: "/api/private/admin/sites",
+    path: adminServicePath("sites"),
     params: { teamId },
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -350,7 +335,7 @@ export async function createAdminSite(input: {
 }): Promise<SiteData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: SiteData }>({
     method: "POST",
-    path: "/api/private/admin/sites",
+    path: adminServicePath("sites"),
     body: input,
   });
   return res.data;
@@ -366,7 +351,7 @@ export async function updateAdminSite(input: {
 }): Promise<SiteData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: SiteData }>({
     method: "PATCH",
-    path: "/api/private/admin/sites",
+    path: adminServicePath("sites"),
     body: input,
   });
   return res.data;
@@ -380,7 +365,7 @@ export async function removeAdminSite(input: {
     data: { siteId: string; teamId: string; removed: boolean };
   }>({
     method: "PATCH",
-    path: "/api/private/admin/sites",
+    path: adminServicePath("sites"),
     body: {
       ...input,
       intent: "remove",
@@ -389,10 +374,14 @@ export async function removeAdminSite(input: {
   return res.data;
 }
 
-export async function fetchAdminMembers(teamId: string): Promise<MemberData[]> {
+export async function fetchAdminMembers(
+  teamId: string,
+  options?: { signal?: AbortSignal },
+): Promise<MemberData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: MemberData[] }>({
-    path: "/api/private/admin/members",
+    path: adminServicePath("members"),
     params: { teamId },
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -402,10 +391,11 @@ export async function addAdminMember(input: {
   identifier: string;
   userId?: string;
   role?: TeamRole;
+  siteIds?: string[];
 }): Promise<MemberData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: MemberData }>({
     method: "POST",
-    path: "/api/private/admin/members",
+    path: adminServicePath("members"),
     body: input,
   });
   return res.data;
@@ -421,8 +411,24 @@ export async function updateAdminMemberRole(input: {
     data: { teamId: string; userId: string; role: TeamRole };
   }>({
     method: "PATCH",
-    path: "/api/private/admin/members",
+    path: adminServicePath("members"),
     body: { ...input, intent: "update_role" },
+  });
+  return res.data;
+}
+
+export async function updateAdminMemberSiteAccess(input: {
+  teamId: string;
+  userId: string;
+  siteIds: string[];
+}): Promise<{ teamId: string; userId: string; siteIds: string[] }> {
+  const res = await fetchEdgeJson<{
+    ok: boolean;
+    data: { teamId: string; userId: string; siteIds: string[] };
+  }>({
+    method: "PATCH",
+    path: adminServicePath("members"),
+    body: { ...input, intent: "update_site_access" },
   });
   return res.data;
 }
@@ -436,7 +442,7 @@ export async function removeAdminMember(input: {
     data: { teamId: string; userId: string; removed: boolean };
   }>({
     method: "PATCH",
-    path: "/api/private/admin/members",
+    path: adminServicePath("members"),
     body: input,
   });
   return res.data;
@@ -444,9 +450,9 @@ export async function removeAdminMember(input: {
 
 export async function fetchAdminSiteConfig(
   siteId: string,
-): Promise<SiteScriptSettings> {
+): Promise<SiteSettingsConfig> {
   const res = await fetchEdgeJson<SiteConfigData>({
-    path: "/api/private/admin/site-config",
+    path: adminServicePath("site-config"),
     params: { siteId },
   });
   return res.data;
@@ -454,11 +460,12 @@ export async function fetchAdminSiteConfig(
 
 export async function upsertAdminSiteConfig(input: {
   siteId: string;
-  config: SiteScriptSettings | Record<string, unknown>;
-}): Promise<SiteScriptSettings> {
+  config: SiteSettingsConfig | Record<string, unknown>;
+  blockingPatch?: Record<string, unknown>;
+}): Promise<SiteSettingsConfig> {
   const res = await fetchEdgeJson<SiteConfigData>({
     method: "POST",
-    path: "/api/private/admin/site-config",
+    path: adminServicePath("site-config"),
     body: input,
   });
   return res.data;
@@ -468,7 +475,7 @@ export async function fetchAdminScriptSnippet(
   siteId: string,
 ): Promise<ScriptSnippetData["data"]> {
   const res = await fetchEdgeJson<ScriptSnippetData>({
-    path: "/api/private/admin/script-snippet",
+    path: adminServicePath("script-snippet"),
     params: { siteId },
   });
   return res.data;
@@ -508,14 +515,14 @@ export async function fetchAdminMe(): Promise<{
       teamGroups?: SessionTeamGroups;
     };
   }>({
-    path: "/api/private/session",
+    path: adminServicePath("session"),
   });
   return res.data;
 }
 
 export async function fetchAdminUsers(): Promise<AccountUserData[]> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData[] }>({
-    path: "/api/private/admin/users",
+    path: adminServicePath("users"),
   });
   return res.data;
 }
@@ -531,7 +538,7 @@ export async function createAdminUser(input: {
 }): Promise<AccountUserData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData }>({
     method: "POST",
-    path: "/api/private/admin/users",
+    path: adminServicePath("users"),
     body: input,
   });
   return res.data;
@@ -547,7 +554,7 @@ export async function updateAdminUser(input: {
 }): Promise<AccountUserData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData }>({
     method: "PATCH",
-    path: "/api/private/admin/users",
+    path: adminServicePath("users"),
     body: input,
   });
   return res.data;
@@ -561,7 +568,7 @@ export async function removeAdminUser(input: {
     data: { userId: string; removed: boolean };
   }>({
     method: "PATCH",
-    path: "/api/private/admin/users",
+    path: adminServicePath("users"),
     body: {
       ...input,
       intent: "remove",
@@ -572,23 +579,28 @@ export async function removeAdminUser(input: {
 
 export async function fetchNotificationRules(input: {
   teamId: string;
+  signal?: AbortSignal;
 }): Promise<NotificationRuleData[]> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: unknown;
   }>({
-    path: "/api/private/admin/notification-rules",
+    path: adminServicePath("notification-rules"),
     params: { teamId: input.teamId },
+    signal: input.signal,
   });
   return Array.isArray(res.data) ? (res.data as NotificationRuleData[]) : [];
 }
 
-export async function fetchNotificationEmailConfig(): Promise<PublicNotificationEmailConfig> {
+export async function fetchNotificationEmailConfig(options?: {
+  signal?: AbortSignal;
+}): Promise<PublicNotificationEmailConfig> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: PublicNotificationEmailConfig;
   }>({
-    path: "/api/private/admin/notification-email",
+    path: adminServicePath("notification-email"),
+    signal: options?.signal,
   });
   return res.data;
 }
@@ -609,7 +621,7 @@ export async function createNotificationRule(input: {
     data: NotificationRuleData;
   }>({
     method: "POST",
-    path: "/api/private/admin/notification-rules",
+    path: adminServicePath("notification-rules"),
     body: input,
   });
   return res.data;
@@ -632,7 +644,7 @@ export async function updateNotificationRule(input: {
     data: NotificationRuleData;
   }>({
     method: "PATCH",
-    path: "/api/private/admin/notification-rules",
+    path: adminServicePath("notification-rules"),
     body: input,
   });
   return res.data;
@@ -646,7 +658,7 @@ export async function deleteNotificationRule(input: {
     data: { id: string; removed: boolean };
   }>({
     method: "DELETE",
-    path: "/api/private/admin/notification-rules",
+    path: adminServicePath("notification-rules"),
     params: { id: input.ruleId },
   });
   return res.data;
@@ -660,7 +672,7 @@ export async function previewNotificationRule(input: {
     data: NotificationRuleEvaluationData;
   }>({
     method: "POST",
-    path: "/api/private/admin/notification-rules/preview",
+    path: adminServicePath("notification-rules/preview"),
     body: input,
   });
   return res.data;
@@ -674,7 +686,7 @@ export async function runNotificationRuleNow(input: {
     data: NotificationRuleRunData;
   }>({
     method: "POST",
-    path: "/api/private/admin/notification-rules/run",
+    path: adminServicePath("notification-rules/run"),
     body: input,
   });
   return res.data;
@@ -687,8 +699,9 @@ export async function fetchNotificationMessages(input: {
   type?: string;
   severity?: string;
   unread?: boolean;
-  locale?: "en" | "zh";
+  locale?: Locale;
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<{
   messages: NotificationMessageData[];
   unreadAttentionCount: number;
@@ -697,7 +710,7 @@ export async function fetchNotificationMessages(input: {
     ok: boolean;
     data: unknown;
   }>({
-    path: "/api/private/notifications",
+    path: adminServicePath("notifications"),
     params: {
       ...(input.teamId ? { teamId: input.teamId } : {}),
       ...(input.siteId ? { siteId: input.siteId } : {}),
@@ -708,6 +721,7 @@ export async function fetchNotificationMessages(input: {
       ...(input.locale ? { locale: input.locale } : {}),
       ...(input.limit ? { limit: input.limit } : {}),
     },
+    signal: input.signal,
   });
   const data =
     res.data && typeof res.data === "object"
@@ -729,7 +743,7 @@ export async function fetchNotificationMessages(input: {
 
 export async function fetchNotificationEmailPreview(input: {
   type: "test" | "report" | "milestone" | "threshold" | "change" | "health";
-  locale: "en" | "zh";
+  locale: Locale;
   format: "html" | "text" | "json";
 }): Promise<
   | string
@@ -741,7 +755,7 @@ export async function fetchNotificationEmailPreview(input: {
 > {
   const baseUrl = await edgeBaseUrl();
   const url = withQuery(
-    new URL("/api/private/admin/notification-email-preview", baseUrl),
+    new URL(adminServicePath("notification-email-preview"), baseUrl),
     input,
   );
   const headers = new Headers();
@@ -774,14 +788,16 @@ export async function fetchNotificationEmailPreview(input: {
 
 export async function markNotificationMessageRead(input: {
   messageId: string;
-  locale?: "en" | "zh";
+  locale?: Locale;
 }): Promise<NotificationMessageData | null> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: NotificationMessageData | null;
   }>({
     method: "PATCH",
-    path: `/api/private/notifications/${encodeURIComponent(input.messageId)}`,
+    path: adminServicePath(
+      `notifications/${encodeURIComponent(input.messageId)}`,
+    ),
     body: { read: true, ...(input.locale ? { locale: input.locale } : {}) },
   });
   return res.data;
@@ -795,7 +811,7 @@ export async function markAllNotificationMessagesRead(input: {
     data: { updated: number };
   }>({
     method: "PATCH",
-    path: "/api/private/notifications",
+    path: adminServicePath("notifications/read-all"),
     body: { ...input, read: true },
   });
   return res.data;
@@ -865,12 +881,15 @@ export type NotificationPreferencesUpdate = Partial<
   attention?: Partial<NotificationPreferencesData["attention"]>;
 };
 
-export async function fetchNotificationPreferences(): Promise<NotificationPreferencesData> {
+export async function fetchNotificationPreferences(options?: {
+  signal?: AbortSignal;
+}): Promise<NotificationPreferencesData> {
   const res = await fetchEdgeJson<{
     ok: boolean;
     data: NotificationPreferencesData;
   }>({
-    path: "/api/private/notifications/preferences",
+    path: adminServicePath("notifications/preferences"),
+    signal: options?.signal,
   });
   return normalizeNotificationPreferencesData(res.data);
 }
@@ -883,7 +902,7 @@ export async function updateNotificationPreferences(
     data: NotificationPreferencesData;
   }>({
     method: "PATCH",
-    path: "/api/private/notifications/preferences",
+    path: adminServicePath("notifications/preferences"),
     body: input,
   });
   return normalizeNotificationPreferencesData(res.data);
@@ -905,7 +924,7 @@ export async function sendNotificationTest(input: {
     };
   }>({
     method: "POST",
-    path: "/api/private/admin/notification-test",
+    path: adminServicePath("notification-test"),
     body: input,
   });
   return res.data;
@@ -922,7 +941,7 @@ export async function updateMyProfile(input: {
 }): Promise<AccountUserData> {
   const res = await fetchEdgeJson<{ ok: boolean; data: AccountUserData }>({
     method: "POST",
-    path: "/api/private/admin/profile",
+    path: adminServicePath("profile"),
     body: input,
   });
   return res.data;

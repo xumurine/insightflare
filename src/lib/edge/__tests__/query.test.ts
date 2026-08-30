@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handlePrivateQuery, handlePublicQuery } from "@/lib/edge/query";
+import {
+  executePrivateQuery,
+  executePrivateTeamDashboard,
+} from "@/lib/edge/analytics/adapters/private";
+import { executePublicQuery } from "@/lib/edge/analytics/adapters/public";
+import {
+  badRequest,
+  fetchPublicSite,
+  notAllowed,
+  parseWindow,
+  resolvePrivateSite,
+  resolvePrivateTeam,
+} from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   type EdgeSessionClaims,
   requireSession,
@@ -185,7 +197,36 @@ async function privateQuery(
   init?: RequestInit,
 ): Promise<Response> {
   const edgeRequest = request(path, init);
-  return handlePrivateQuery(edgeRequest, env, new URL(edgeRequest.url));
+  const url = new URL(edgeRequest.url);
+  const pathname = url.pathname.replace(/^\/api\/private\//, "");
+  if (
+    edgeRequest.method !== "GET" &&
+    (pathname !== "funnels" ||
+      (edgeRequest.method !== "POST" && edgeRequest.method !== "DELETE"))
+  ) {
+    return notAllowed();
+  }
+  if (pathname === "team-dashboard") {
+    if (!parseWindow(url)) return badRequest("Invalid time window");
+    const team = await resolvePrivateTeam(edgeRequest, env, url);
+    if (team instanceof Response) return team;
+    return executePrivateTeamDashboard({
+      env,
+      teamId: team.id,
+      allowedSiteIds: team.allowedSiteIds,
+      url,
+    });
+  }
+  const site = await resolvePrivateSite(edgeRequest, env, url);
+  if (site instanceof Response) return site;
+  return executePrivateQuery({
+    env,
+    siteId: site.id,
+    pathname,
+    url,
+    request: edgeRequest,
+    dashboardMode: true,
+  });
 }
 
 async function publicQuery(
@@ -194,7 +235,18 @@ async function publicQuery(
   init?: RequestInit,
 ): Promise<Response> {
   const edgeRequest = request(path, init);
-  return handlePublicQuery(edgeRequest, env, new URL(edgeRequest.url));
+  if (edgeRequest.method !== "GET") return notAllowed();
+  const url = new URL(edgeRequest.url);
+  const site = await fetchPublicSite(env, url);
+  if (site instanceof Response) return site;
+  const segments = url.pathname.split("/").filter(Boolean);
+  return executePublicQuery({
+    env,
+    siteId: site.id,
+    pathname: segments.slice(3).join("/"),
+    url,
+    request: edgeRequest,
+  });
 }
 
 const windowParams = `from=${from}&to=${to}`;
@@ -270,6 +322,7 @@ const dimensionRows = [
 ];
 
 const eventRecordRow = {
+  eventPk: 1,
   eventId: "evt-1",
   eventName: "Signup",
   occurredAt: from + 500,
@@ -335,23 +388,72 @@ function commonQueryMatches(): SqlMatch[] {
     overviewMatch(),
     allMatch(["visit_bucket_rollup AS", "session_bucket_rollup AS"], trendRows),
     allMatch(
-      ["SELECT visitorId, sessionId, startedAt, pathname"],
+      ["ranked_session_visits AS", "card_rows AS", "cardType"],
       [
         {
-          visitorId: "visitor-1",
-          sessionId: "session-1",
-          startedAt: from,
-          pathname: "/pricing",
-          title: "Pricing",
-          hostname: "example.com",
+          cardType: "path",
+          value: "/pricing",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
         },
         {
-          visitorId: "visitor-2",
-          sessionId: "session-2",
-          startedAt: from + 1,
-          pathname: "/docs",
-          title: "Docs",
-          hostname: "docs.example.com",
+          cardType: "entry",
+          value: "/pricing",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+        {
+          cardType: "exit",
+          value: "/pricing",
+          views: 1,
+          sessions: 1,
+          visitors: 1,
+        },
+      ],
+    ),
+    allMatch(
+      ["card_rows AS", "screenSize", "card_type"],
+      [
+        {
+          cardType: "screenSize",
+          value: "1440x900",
+          views: 2,
+          sessions: 2,
+        },
+      ],
+    ),
+    allMatch(
+      ["card_rows AS", "organization", "card_type"],
+      [
+        {
+          cardType: "country",
+          value: "US",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
+        },
+        {
+          cardType: "region",
+          value: "US::CA::California",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
+        },
+        {
+          cardType: "city",
+          value: "US::CA::California::San Francisco",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
+        },
+        {
+          cardType: "organization",
+          value: "Example ISP",
+          views: 2,
+          sessions: 2,
+          visitors: 2,
         },
       ],
     ),
@@ -370,7 +472,41 @@ function commonQueryMatches(): SqlMatch[] {
         },
       ],
     ),
+    allMatch(
+      ["COALESCE(pathname, '') AS value", "dimension_rollup AS"],
+      [{ value: "/pricing", views: 1, sessions: 1, visitors: 1 }],
+    ),
+    allMatch(
+      [
+        "COALESCE(TRIM(COALESCE(browser, '')), '') AS value",
+        "dimension_rollup AS",
+      ],
+      [{ value: "Chrome", views: 1, sessions: 1, visitors: 1 }],
+    ),
+    allMatch(
+      ["COALESCE(country, '') AS value", "dimension_rollup AS"],
+      [{ value: "US", views: 1, sessions: 1, visitors: 1 }],
+    ),
     allMatch(["dimension_rollup AS"], dimensionRows),
+    allMatch(
+      ["card_rows AS", "ranked_cards AS", "__summary__"],
+      [
+        {
+          cardType: "__summary__",
+          views: 12,
+          eventTypes: 3,
+          sessions: 5,
+          visitors: 4,
+        },
+        {
+          cardType: "event",
+          value: "Signup",
+          views: 7,
+          sessions: 4,
+          visitors: 3,
+        },
+      ],
+    ),
     allMatch(
       ["event_with_context AS", "event_rollup AS"],
       [{ value: "Signup", views: 8, sessions: 5, visitors: 4 }],
@@ -382,6 +518,48 @@ function commonQueryMatches(): SqlMatch[] {
     allMatch(
       ["seriesName AS seriesKey"],
       [{ bucket: 0, seriesKey: "Signup", events: 2 }],
+    ),
+    allMatch(
+      ["overview_card_rows AS", "ranked_overview_cards AS"],
+      [
+        {
+          cardType: "summary",
+          value: null,
+          events: 12,
+          eventTypes: 3,
+          sessions: 5,
+          visitors: 4,
+          scopedEvents: 12,
+        },
+        {
+          cardType: "page",
+          value: "/signup",
+          events: 7,
+          sessions: 4,
+          visitors: 3,
+        },
+        {
+          cardType: "country",
+          value: "US",
+          events: 7,
+          sessions: 4,
+          visitors: 3,
+        },
+        {
+          cardType: "device",
+          value: "desktop",
+          events: 7,
+          sessions: 4,
+          visitors: 3,
+        },
+        {
+          cardType: "browser",
+          value: "Chrome",
+          events: 7,
+          sessions: 4,
+          visitors: 3,
+        },
+      ],
     ),
     allMatch(
       ["count(*) AS events", "count(DISTINCT event_name)"],
@@ -439,6 +617,44 @@ function commonQueryMatches(): SqlMatch[] {
       ],
     ),
     allMatch(["LIMIT 1", "event_id AS eventId"], [eventRecordRow]),
+    {
+      match: (sql) =>
+        sql.includes("visitor_metrics AS") &&
+        sql.includes("PARTITION BY fv.visitor_id"),
+      all: [
+        {
+          visitorId: "visitor-1",
+          sessionId: "session-2",
+          firstSeenAt: from,
+          lastSeenAt: to,
+          views: 4,
+          sessions: 2,
+          events: 3,
+          country: "US",
+          region: "CA",
+          regionCode: "CA",
+          city: "San Francisco",
+          referrerHost: "news.example",
+          referrerUrl: "https://news.example/post",
+          browser: "Chrome",
+          browserVersion: "124",
+          os: "Windows",
+          osVersion: "11",
+          deviceType: "desktop",
+          screenWidth: 1440,
+          screenHeight: 900,
+        },
+      ],
+    },
+    {
+      match: (sql) =>
+        sql.includes("session_metrics AS") &&
+        sql.includes("PARTITION BY fv.session_id"),
+      all: [
+        sessionRow(),
+        sessionRow({ sessionId: "session-2", views: 1, bounce: 1 }),
+      ],
+    },
     allMatch(
       ["fv.visitor_id AS visitorId"],
       [
@@ -495,26 +711,82 @@ function commonQueryMatches(): SqlMatch[] {
       ],
     ),
     allMatch(
-      ["TRIM(COALESCE(browser", "AS labelValue", "LIMIT ?"],
-      [{ label: "Chrome", views: 10, visitors: 6, sessions: 5 }],
-    ),
-    allMatch(
-      ["assigned_visits AS", "GROUP BY label"],
+      ["tagged_rows AS", "rowType", "top_rows AS"],
       [
-        { label: "Chrome", views: 10, visitors: 6, sessions: 5 },
-        { label: "__share_trend_other__", views: 3, visitors: 2, sessions: 2 },
-      ],
-    ),
-    allMatch(
-      ["GROUP BY bucket, label"],
-      [
-        { bucket: 0, label: "Chrome", views: 5, visitors: 3, sessions: 2 },
         {
+          rowType: "top",
+          label: "Chrome",
+          views: 10,
+          visitors: 6,
+          sessions: 5,
+        },
+        {
+          rowType: "series",
+          label: "Chrome",
+          views: 10,
+          visitors: 6,
+          sessions: 5,
+        },
+        {
+          rowType: "series",
+          label: "__share_trend_other__",
+          views: 3,
+          visitors: 2,
+          sessions: 2,
+        },
+        {
+          rowType: "bucket",
+          bucket: 0,
+          label: "Chrome",
+          views: 5,
+          visitors: 3,
+          sessions: 2,
+        },
+        {
+          rowType: "bucket",
           bucket: 0,
           label: "__share_trend_other__",
           views: 1,
           visitors: 1,
           sessions: 1,
+        },
+      ],
+    ),
+    allMatch(
+      ["browser_rollup AS", "version_rollup AS", "browserRank"],
+      [
+        {
+          browser: "Chrome",
+          views: 10,
+          visitors: 6,
+          sessions: 5,
+          browserRank: 1,
+          version: "124",
+          versionViews: 6,
+          versionVisitors: 4,
+          versionSessions: 3,
+        },
+        {
+          browser: "Chrome",
+          views: 10,
+          visitors: 6,
+          sessions: 5,
+          browserRank: 1,
+          version: "__browser_version_unknown__",
+          versionViews: 2,
+          versionVisitors: 1,
+          versionSessions: 1,
+        },
+        {
+          browser: "Chrome",
+          views: 10,
+          visitors: 6,
+          sessions: 5,
+          browserRank: 1,
+          version: "122",
+          versionViews: 1,
+          versionVisitors: 1,
+          versionSessions: 1,
         },
       ],
     ),
@@ -534,6 +806,33 @@ function commonQueryMatches(): SqlMatch[] {
           views: 2,
           visitors: 1,
           sessions: 1,
+        },
+      ],
+    ),
+    allMatch(
+      ["top_browser_rows AS", "tagged_rows AS", "'browser' AS rowType"],
+      [
+        {
+          rowType: "browser",
+          browser: "Chrome",
+          views: 10,
+          visitors: 6,
+          sessions: 5,
+        },
+        {
+          rowType: "dimension",
+          dimension: "Windows",
+          views: 8,
+          visitors: 5,
+          sessions: 4,
+        },
+        {
+          rowType: "pair",
+          browser: "Chrome",
+          dimension: "Windows",
+          views: 8,
+          visitors: 5,
+          sessions: 4,
         },
       ],
     ),
@@ -648,15 +947,82 @@ function commonQueryMatches(): SqlMatch[] {
       ],
     ),
     allMatch(
-      ["ranked_titles AS"],
+      ["ranked_titles AS", "trend_rollup AS", "'title' AS rowKind"],
       [
-        { pathname: "/pricing", title: "Pricing", views: 9 },
-        { pathname: "/pricing", title: "Plans", views: 3 },
+        {
+          rowKind: "title",
+          pathname: "/pricing",
+          title: "Pricing",
+          views: 9,
+        },
+        {
+          rowKind: "title",
+          pathname: "/pricing",
+          title: "Plans",
+          views: 3,
+        },
+        {
+          rowKind: "trend",
+          pathname: "/pricing",
+          bucket: 0,
+          views: 5,
+          visitors: 4,
+        },
       ],
     ),
     allMatch(
       ["GROUP BY pathname, bucket"],
       [{ pathname: "/pricing", bucket: 0, views: 5, visitors: 4 }],
+    ),
+    allMatch(
+      [
+        "metric_visits AS MATERIALIZED",
+        "tagged_rows AS",
+        "'summary' AS rowType",
+      ],
+      [
+        {
+          rowType: "summary",
+          metric: "lcp",
+          avgValue: 123.4567,
+          p50: 100,
+          p75: 140,
+          p95: 200,
+          samples: 8,
+        },
+        {
+          rowType: "trend",
+          metric: "ttfb",
+          bucket: 0,
+          avgValue: 50,
+          p50: 40,
+          p75: 60,
+          p95: 90,
+          samples: 4,
+        },
+        {
+          rowType: "route",
+          pathname: "/pricing",
+          metric: "lcp",
+          views: 6,
+          avgValue: 100,
+          p50: 90,
+          p75: 120,
+          p95: 180,
+          samples: 5,
+        },
+        {
+          rowType: "country",
+          country: "us",
+          metric: "ttfb",
+          views: 6,
+          avgValue: 30,
+          p50: 20,
+          p75: 35,
+          p95: 60,
+          samples: 5,
+        },
+      ],
     ),
     allMatch(
       ["thresholds.pathname AS pathname"],
@@ -703,7 +1069,17 @@ function commonQueryMatches(): SqlMatch[] {
     ),
     allMatch(
       ["thresholds.bucket AS bucket"],
-      [{ bucket: 0, avgValue: 50, p50: 40, p75: 60, p95: 90, samples: 4 }],
+      [
+        {
+          metric: "ttfb",
+          bucket: 0,
+          avgValue: 50,
+          p50: 40,
+          p75: 60,
+          p95: 90,
+          samples: 4,
+        },
+      ],
     ),
     allMatch(
       ["SELECT sessionId, browser, os, osVersion"],
@@ -819,11 +1195,7 @@ describe("edge query handlers", () => {
       ok: false,
       error: { message: "Site not found" },
     });
-    expect(statements[0].bind).toHaveBeenCalledWith(
-      "user-1",
-      "site-1",
-      "user-1",
-    );
+    expect(statements[0].bind).toHaveBeenCalledWith("user-1", "site-1");
   });
 
   it("returns overview metrics, comparison, detail trend, and normalized filter bindings", async () => {
@@ -834,7 +1206,7 @@ describe("edge query handlers", () => {
     const response = await privateQuery(
       privatePath(
         "overview",
-        "includeChange=1&includeDetail=yes&interval=hour&country=US&hostname=Example.COM&sourceDomain=__direct__",
+        "includeChange=1&includeDetail=yes&interval=hour&filter[geo.country]=US&filter[page.hostname]=Example.COM&filter[referrer.domain]=__direct__",
       ),
       env,
     );
@@ -889,7 +1261,7 @@ describe("edge query handlers", () => {
       expect.arrayContaining(["us", "example.com"]),
     );
     expect(aggregateStatement?.sql).toContain(
-      "TRIM(COALESCE(referrer_host, '')) = ''",
+      "LOWER(TRIM(COALESCE(visit_source.referrer_host, ''))) = ''",
     );
   });
 
@@ -946,11 +1318,11 @@ describe("edge query handlers", () => {
       env,
     );
     const options = await privateQuery(
-      privatePath("filter-options", "filterKey=sourceLink&limit=999"),
+      privatePath("filter-values", "filterKey=referrer.url&limit=999"),
       env,
     );
     const invalidOptions = await privateQuery(
-      privatePath("filter-options", "filterKey=not-real"),
+      privatePath("filter-values", "filterKey=not-real"),
       env,
     );
 
@@ -959,22 +1331,29 @@ describe("edge query handlers", () => {
     expect(dimensionPayload).toMatchObject({ ok: true });
     expect(dimensionPayload.data).toEqual(
       expect.arrayContaining([
-        { label: "/pricing", views: 9, sessions: 6, visitors: 5 },
+        {
+          value: "/pricing",
+          label: "/pricing",
+          views: 9,
+          sessions: 6,
+          visitors: 5,
+        },
       ]),
     );
-    expect(optionsPayload).toMatchObject({ ok: true });
+    expect(optionsPayload).toMatchObject({ ok: true, field: "referrer.url" });
     expect(optionsPayload.data).toEqual(
       expect.arrayContaining([
         {
           value: "https://news.example/post",
           label: "https://news.example/post",
+          occurrences: 6,
         },
       ]),
     );
     expect(invalidOptions.status).toBe(400);
     expect(await invalidOptions.json()).toMatchObject({
       ok: false,
-      error: { message: "Invalid filter key" },
+      error: { message: "Invalid filter field" },
     });
     const dimensionStatement = statements.find((statement) =>
       statement.sql.includes("dimension_rollup AS"),
@@ -982,7 +1361,7 @@ describe("edge query handlers", () => {
     expect(dimensionStatement?.bindings.at(-1)).toBe(200);
   });
 
-  it("shapes events summary, trend, records, type detail, field values, and record detail", async () => {
+  it("shapes events summary, trend, records, type detail, fields, field values, and record detail", async () => {
     const { env } = createEnv({
       matches: [...authMatches(), ...commonQueryMatches()],
     });
@@ -1010,10 +1389,22 @@ describe("edge query handlers", () => {
       ),
       env,
     );
+    const fields = await privateQuery(
+      privatePath("event-type-fields", "eventName=Signup"),
+      env,
+    );
     const recordDetail = await privateQuery(
       privatePath("event-record-detail", "eventId=evt-1"),
       env,
     );
+    const pages = await privateQuery(privatePath("pages"), env);
+    const referrers = await privateQuery(privatePath("referrers"), env);
+    const eventTypes = await privateQuery(privatePath("event-types"), env);
+    const eventContext = await privateQuery(
+      privatePath("event-type-context", "eventName=Signup"),
+      env,
+    );
+    const funnels = await privateQuery(privatePath("funnels"), env);
 
     expect(await summary.json()).toMatchObject({
       ok: true,
@@ -1057,11 +1448,10 @@ describe("edge query handlers", () => {
         }),
       ],
       meta: {
-        page: 1,
         pageSize: 1,
         returned: 1,
         hasMore: true,
-        nextPage: 2,
+        nextCursor: expect.any(String),
       },
     });
     expect(await detail.json()).toMatchObject({
@@ -1072,6 +1462,17 @@ describe("edge query handlers", () => {
         avgEventsPerSession: 2.4,
         shareOfAllEvents: 1,
       },
+      fields: [
+        {
+          path: "/plan",
+          valueType: "string",
+          exampleValue: "pro",
+        },
+      ],
+    });
+    expect(await fields.json()).toMatchObject({
+      ok: true,
+      eventName: "Signup",
       fields: [
         {
           path: "/plan",
@@ -1108,6 +1509,11 @@ describe("edge query handlers", () => {
         },
       },
     });
+    expect(
+      [pages, referrers, eventTypes, eventContext, funnels].every(
+        (response) => response instanceof Response,
+      ),
+    ).toBe(true);
   });
 
   it("validates event detail request parameters before querying event aggregates", async () => {
@@ -1292,7 +1698,6 @@ describe("edge query handlers", () => {
         },
       ],
       meta: {
-        page: 1,
         pageSize: 1,
         returned: 1,
         hasMore: false,
@@ -1313,7 +1718,7 @@ describe("edge query handlers", () => {
       meta: {
         pageSize: 1,
         hasMore: true,
-        nextPage: 2,
+        nextCursor: expect.any(String),
       },
     });
     expect(await retention.json()).toMatchObject({
@@ -1370,6 +1775,10 @@ describe("edge query handlers", () => {
       privatePath("session-detail"),
       env,
     );
+    const missingJourneyEvent = await privateQuery(
+      privatePath("journey-event-detail"),
+      env,
+    );
 
     expect(missingVisitor.status).toBe(400);
     expect(await missingVisitor.json()).toMatchObject({
@@ -1380,6 +1789,11 @@ describe("edge query handlers", () => {
     expect(await missingSession.json()).toMatchObject({
       ok: false,
       error: { message: "Missing sessionId" },
+    });
+    expect(missingJourneyEvent.status).toBe(400);
+    expect(await missingJourneyEvent.json()).toMatchObject({
+      ok: false,
+      error: { message: "Missing eventId" },
     });
   });
 
@@ -1601,7 +2015,7 @@ describe("edge query handlers", () => {
     ];
     for (const route of dimensionRoutes) {
       const response = await privateQuery(
-        privatePath(route, "geo=US&limit=0"),
+        privatePath(route, "filter[geo.country]=US&limit=0"),
         env,
       );
       expect(response.status).toBe(200);
@@ -1631,18 +2045,13 @@ describe("edge query handlers", () => {
     }
 
     const geoOptions = await privateQuery(
-      privatePath("filter-options", "filterKey=geo"),
+      privatePath("filter-values", "filterKey=geo.country"),
       env,
     );
     expect(await geoOptions.json()).toMatchObject({
       ok: true,
-      data: expect.arrayContaining([
-        expect.objectContaining({ value: "US", group: "country" }),
-        expect.objectContaining({ value: "US::CA::California" }),
-        expect.objectContaining({
-          value: "US::CA::California::San Francisco",
-        }),
-      ]),
+      field: "geo.country",
+      data: expect.any(Array),
     });
 
     const emptyTrend = await privateQuery(
@@ -1780,11 +2189,7 @@ describe("edge query handlers", () => {
       ok: false,
       error: { message: "Team not found" },
     });
-    expect(statements[0].bind).toHaveBeenCalledWith(
-      "user-1",
-      "team-1",
-      "user-1",
-    );
+    expect(statements[0].bind).toHaveBeenCalledWith("user-1", "team-1");
   });
 
   it("routes team dashboard with team auth, site summaries, trends, and empty teams", async () => {

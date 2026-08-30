@@ -1,16 +1,12 @@
 name = "insightflare"
-main = "./workers/cf-worker.js"
+main = "./src/server.ts"
 compatibility_date = "2026-03-01"
 workers_dev = true
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
-[assets]
-directory = "./.open-next/assets"
-binding = "ASSETS"
-
 [vars]
 SESSION_WINDOW_MINUTES = "30"
-SCRIPT_CACHE_TTL_SECONDS = "3600"
+SCRIPT_CACHE_TTL_SECONDS = "600"
 PARQUET_WASM_URL = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.7.1/esm/parquet_wasm_bg.wasm"
 
 [triggers]
@@ -28,6 +24,14 @@ class_name = "IngestDurableObject"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["IngestDurableObject"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["DiagnosticsSampler"]
+
+[[migrations]]
+tag = "v3"
+deleted_classes = ["DiagnosticsSampler"]
 
 [[d1_databases]]
 binding = "DB"
@@ -57,11 +61,11 @@ dataset = "insightflare_normal_events"
 # environment above, which intentionally leaves R2 unbound.
 
 [env.ravelloh]
-name = "ravelloh"
+name = "insightflare"
 
 [env.ravelloh.vars]
 SESSION_WINDOW_MINUTES = "30"
-SCRIPT_CACHE_TTL_SECONDS = "3600"
+SCRIPT_CACHE_TTL_SECONDS = "600"
 PARQUET_WASM_URL = "https://cdn.jsdelivr.net/npm/parquet-wasm@0.7.1/esm/parquet_wasm_bg.wasm"
 
 [env.ravelloh.triggers]
@@ -74,6 +78,14 @@ class_name = "IngestDurableObject"
 [[env.ravelloh.migrations]]
 tag = "v1"
 new_sqlite_classes = ["IngestDurableObject"]
+
+[[env.ravelloh.migrations]]
+tag = "v2"
+new_sqlite_classes = ["DiagnosticsSampler"]
+
+[[env.ravelloh.migrations]]
+tag = "v3"
+deleted_classes = ["DiagnosticsSampler"]
 
 [[env.ravelloh.d1_databases]]
 binding = "DB"

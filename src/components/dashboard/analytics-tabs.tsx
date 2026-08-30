@@ -1,6 +1,5 @@
-"use client";
-
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,8 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import {
   RiComputerLine,
   RiDashboardLine,
@@ -36,6 +33,9 @@ import {
   prepareNativeScrollbarHost,
   useNativeScrollbars,
 } from "@/components/ui/overlay-scrollbar";
+import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
+import Link from "@/lib/router";
+import { usePathname, useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 type AnalyticsTabKey =
@@ -129,7 +129,26 @@ function isTabActive(
   return normalizedPathname.startsWith(itemPath);
 }
 
-export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
+function globalNavigationSearchParams(
+  searchParams: URLSearchParams,
+): URLSearchParams {
+  const next = new URLSearchParams();
+  for (const [key, value] of searchParams) {
+    if (
+      key.startsWith("filter[") ||
+      key === "range" ||
+      key === "interval" ||
+      key === "timeZone"
+    ) {
+      next.append(key, value);
+    }
+  }
+  return next;
+}
+
+export const AnalyticsTabs = memo(function AnalyticsTabs({
+  items,
+}: AnalyticsTabsProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const normalizedPathname = normalizePathname(pathname || "");
@@ -161,15 +180,18 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
   const resolvedActiveKey = pathActiveKey;
   const hrefForItem = useCallback(
     (item: AnalyticsTabItem) => {
-      if (!item.queryKey) return item.href;
       const itemPath = normalizePathname(item.href.split("?")[0] || item.href);
-      const nextParams = new URLSearchParams(searchParams.toString());
-      if (item.queryDefault) {
-        nextParams.delete(item.queryKey);
-      } else if (item.queryValue) {
-        nextParams.set(item.queryKey, item.queryValue);
+      const nextParams = item.queryKey
+        ? new URLSearchParams(searchParams.toString())
+        : globalNavigationSearchParams(searchParams);
+      if (item.queryKey) {
+        if (item.queryDefault) {
+          nextParams.delete(item.queryKey);
+        } else if (item.queryValue) {
+          nextParams.set(item.queryKey, item.queryValue);
+        }
       }
-      const nextQuery = nextParams.toString();
+      const nextQuery = serializeDashboardSearchParams(nextParams);
       return nextQuery ? `${itemPath}?${nextQuery}` : itemPath;
     },
     [searchParams],
@@ -279,7 +301,7 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
         host.scrollLeft += delta;
       };
 
-      host.addEventListener("scroll", sync);
+      host.addEventListener("scroll", sync, { passive: true });
       host.addEventListener("wheel", handleWheel, { passive: false });
       const animationFrame = requestAnimationFrame(() => {
         syncIndicatorRef.current();
@@ -434,4 +456,4 @@ export function AnalyticsTabs({ items }: AnalyticsTabsProps) {
       </div>
     </div>
   );
-}
+});

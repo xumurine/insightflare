@@ -2,6 +2,7 @@ import { classifyASN } from "asn-blocklist";
 import { isbot } from "isbot";
 
 import { isAnalyticsEngineDisabled } from "./analytics-engine";
+import type { InvocationLogger } from "./observability-logger";
 import type { Env, TrackerClientPayload } from "./types";
 import { clampString, coerceNumber, coerceString, safeHostname } from "./utils";
 
@@ -234,6 +235,8 @@ function longitude(cf: Record<string, unknown>): number {
 export function writeBotAnalyticsEvent(
   env: Env,
   input: BotAnalyticsInput,
+  logger?: Pick<InvocationLogger, "warn" | "error"> &
+    Partial<Pick<InvocationLogger, "info">>,
 ): void {
   if (isAnalyticsEngineDisabled(env)) {
     return;
@@ -241,14 +244,7 @@ export function writeBotAnalyticsEvent(
 
   const dataset = env.BOT_ANALYTICS;
   if (!dataset) {
-    console.warn(
-      JSON.stringify({
-        event: "bot_analytics_missing_binding",
-        traceId: input.traceId,
-        siteId: input.siteId,
-        reasons: input.classification.reasons,
-      }),
-    );
+    logger?.warn("collect.bot_analytics_missing_binding");
     return;
   }
 
@@ -325,14 +321,9 @@ export function writeBotAnalyticsEvent(
         userAgent.length,
       ],
     });
+    logger?.info?.("collect.bot_analytics_written");
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "bot_analytics_write_failed",
-        traceId: input.traceId,
-        siteId: input.siteId,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    void error;
+    logger?.error("collect.bot_analytics_write_failed");
   }
 }

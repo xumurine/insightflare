@@ -69,6 +69,7 @@ function delay(ms: number): Promise<void> {
 
 async function fetchWithTimeout(input: {
   apiKey: string;
+  apiUrl: string;
   body: ResendEmailPayload;
   fetchImpl: typeof fetch;
   timeoutMs: number;
@@ -76,7 +77,7 @@ async function fetchWithTimeout(input: {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), input.timeoutMs);
   try {
-    return await input.fetchImpl(RESEND_EMAILS_API_URL, {
+    return await input.fetchImpl.call(globalThis, input.apiUrl, {
       method: "POST",
       headers: {
         authorization: `Bearer ${input.apiKey}`,
@@ -92,19 +93,36 @@ async function fetchWithTimeout(input: {
 
 export async function sendResendEmailWithRetry(input: {
   apiKey: string;
+  apiUrl?: string;
   body: ResendEmailPayload;
   fetchImpl?: typeof fetch;
   deadlineMs?: number;
   maxAttempts?: number;
+  requireApiUrl?: boolean;
 }): Promise<ResendSendResult> {
   const startedAt = Date.now();
+  const configuredApiUrl = input.apiUrl?.trim();
+  if (input.requireApiUrl && !configuredApiUrl) {
+    return {
+      ok: false,
+      status: 0,
+      payload: {},
+      providerMessageId: "",
+      errorMessage: "E2E Resend mock URL is required",
+      durationMs: Date.now() - startedAt,
+      attempts: 0,
+      retryCount: 0,
+      reason: "network_failed",
+    };
+  }
   const deadlineAt =
     startedAt + Math.max(500, input.deadlineMs ?? DEFAULT_RETRY_DEADLINE_MS);
   const maxAttempts = Math.max(
     1,
     Math.trunc(input.maxAttempts ?? DEFAULT_MAX_ATTEMPTS),
   );
-  const fetchImpl = input.fetchImpl ?? fetch;
+  const fetchImpl = input.fetchImpl ?? fetch.bind(globalThis);
+  const apiUrl = configuredApiUrl || RESEND_EMAILS_API_URL;
   let attempts = 0;
   let status = 0;
   let payload: Record<string, unknown> = {};
@@ -118,6 +136,7 @@ export async function sendResendEmailWithRetry(input: {
     try {
       const response = await fetchWithTimeout({
         apiKey: input.apiKey,
+        apiUrl,
         body: input.body,
         fetchImpl,
         timeoutMs: Math.max(250, Math.min(5_000, remainingMs - 250)),

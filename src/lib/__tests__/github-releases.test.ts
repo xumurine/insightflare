@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  createInvocationLogger,
+  runWithInvocationLogger,
+} from "@/lib/edge/observability-logger";
 import { fetchGithubCompare, fetchGithubReleases } from "@/lib/github-releases";
 
 describe("github-releases", () => {
@@ -14,6 +18,27 @@ describe("github-releases", () => {
   });
 
   describe("fetchGithubReleases", () => {
+    it("records the direct request in an active Worker invocation", async () => {
+      fetchSpy.mockResolvedValueOnce(new Response("[]", { status: 200 }));
+      const logger = createInvocationLogger({
+        source: "worker",
+        trigger: "request",
+      });
+
+      await runWithInvocationLogger(logger, () =>
+        fetchGithubReleases("owner", "repo"),
+      );
+
+      expect(logger.build()).toMatchObject({
+        performance: {
+          externalFetches: 1,
+          operations: {
+            "external_fetch.github_releases": { count: 1, failed: 0 },
+          },
+        },
+      });
+    });
+
     it("returns normalized releases sorted by timestamp descending", async () => {
       fetchSpy.mockResolvedValueOnce(
         new Response(
@@ -151,6 +176,48 @@ describe("github-releases", () => {
       expect(releases[0].tagName).toBe("v1.0.0");
       expect(releases[1].tagName).toBe("v2.0.0");
     });
+
+    it("treats releases with invalid dates as timestamp zero during sorting", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: 1,
+              tag_name: "v-valid",
+              name: "Valid",
+              html_url: "",
+              body: null,
+              draft: false,
+              prerelease: false,
+              published_at: null,
+              created_at: "2026-03-01T00:00:00Z",
+              updated_at: "",
+              target_commitish: "main",
+              author: null,
+            },
+            {
+              id: 2,
+              tag_name: "v-invalid",
+              name: "Invalid",
+              html_url: "",
+              body: null,
+              draft: false,
+              prerelease: false,
+              published_at: null,
+              created_at: "not-a-valid-date",
+              updated_at: "",
+              target_commitish: "main",
+              author: null,
+            },
+          ]),
+          { status: 200 },
+        ),
+      );
+
+      const releases = await fetchGithubReleases("owner", "repo");
+      expect(releases[0].tagName).toBe("v-valid");
+      expect(releases[1].tagName).toBe("v-invalid");
+    });
   });
 
   describe("fetchGithubCompare", () => {
@@ -195,7 +262,13 @@ describe("github-releases", () => {
         ),
       );
 
-      const result = await fetchGithubCompare("owner", "repo", "v1", "v2");
+      const logger = createInvocationLogger({
+        source: "worker",
+        trigger: "request",
+      });
+      const result = await runWithInvocationLogger(logger, () =>
+        fetchGithubCompare("owner", "repo", "v1", "v2"),
+      );
 
       expect(result.htmlUrl).toBe("https://github.com/test/compare/v1...v2");
       expect(result.status).toBe("ahead");
@@ -211,6 +284,12 @@ describe("github-releases", () => {
       expect(result.commits[1].authorName).toBe("Other Author");
       expect(result.commits[1].authorLogin).toBeNull();
       expect(result.commits[1].authorUrl).toBeNull();
+      expect(logger.build().performance).toMatchObject({
+        externalFetches: 1,
+        operations: {
+          "external_fetch.github_compare": { count: 1, failed: 0 },
+        },
+      });
     });
 
     it("throws on non-OK HTTP response", async () => {
@@ -288,6 +367,33 @@ describe("github-releases", () => {
 
       const result = await fetchGithubCompare("o", "r", "a", "b");
       expect(result.commits[0].title).toBe("abc123");
+    });
+
+    it("falls back to a dash when no author name or login is available", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            html_url: "",
+            status: "identical",
+            total_commits: 0,
+            commits: [
+              {
+                sha: "abc123",
+                html_url: "",
+                commit: {
+                  message: "Anonymous commit",
+                  author: null,
+                },
+                author: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      );
+
+      const result = await fetchGithubCompare("o", "r", "a", "b");
+      expect(result.commits[0].authorName).toBe("-");
     });
   });
 });

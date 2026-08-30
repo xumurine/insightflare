@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,14 +11,15 @@ export type TransitionType =
   | "slide"
   | "scale"
   | "slideUp"
-  | "slideDown";
+  | "slideDown"
+  | "crossFade";
 
 export interface AutoTransitionProps extends Omit<
   React.HTMLAttributes<HTMLElement>,
   "children" | "className"
 > {
   children: React.ReactNode;
-  as?: "div" | "g" | "tbody";
+  as?: "div" | "span" | "g" | "tbody" | "tr" | "li";
   className?: string;
   duration?: number;
   type?: TransitionType;
@@ -68,26 +67,40 @@ const transitionVariants: Record<
     animate: { opacity: 1, scale: 1 },
     exit: { opacity: 0, scale: 0.95 },
   },
+  crossFade: {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+  },
 };
 
-export function AutoTransition({
-  children,
-  as = "div",
-  className = "",
-  duration = 0.3,
-  type = "fade",
-  initial = true,
-  custom,
-  transitionKey,
-  presenceMode = "wait",
-  customVariants,
-  ...motionProps
-}: AutoTransitionProps) {
-  const [hasRendered, setHasRendered] = useState(false);
+export const AutoTransition = React.forwardRef<
+  HTMLElement,
+  AutoTransitionProps
+>(function AutoTransition(
+  {
+    children,
+    as = "div",
+    className = "",
+    duration = 0.3,
+    type = "fade",
+    initial = true,
+    custom,
+    transitionKey,
+    presenceMode = "wait",
+    customVariants,
+    ...motionProps
+  },
+  ref,
+) {
+  const [hasRendered, setHasRendered] = useState(initial);
 
   useEffect(() => {
     if (!hasRendered) setHasRendered(true);
   }, [hasRendered]);
+
+  const resolvedPresenceMode =
+    type === "crossFade" ? "popLayout" : presenceMode;
 
   const key = useMemo(() => {
     if (transitionKey !== undefined) return String(transitionKey);
@@ -120,13 +133,24 @@ export function AutoTransition({
   const selectedVariants = customVariants || transitionVariants[type];
   const shouldAnimate = initial || hasRendered;
   const MotionComponent = (
-    as === "g" ? motion.g : as === "tbody" ? motion.tbody : motion.div
+    as === "g"
+      ? motion.g
+      : as === "tbody"
+        ? motion.tbody
+        : as === "tr"
+          ? motion.tr
+          : as === "li"
+            ? motion.li
+            : as === "span"
+              ? motion.span
+              : motion.div
   ) as React.ElementType;
 
   return (
-    <AnimatePresence mode={presenceMode} custom={custom}>
+    <AnimatePresence mode={resolvedPresenceMode} custom={custom}>
       <MotionComponent
         {...motionProps}
+        ref={ref}
         key={key}
         className={className}
         custom={custom}
@@ -140,4 +164,6 @@ export function AutoTransition({
       </MotionComponent>
     </AnimatePresence>
   );
-}
+});
+
+AutoTransition.displayName = "AutoTransition";

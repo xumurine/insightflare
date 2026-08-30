@@ -1,6 +1,5 @@
-"use client";
-
-import { useEffect, useState } from "react";
+import { memo, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { ShareRadialCard } from "@/components/dashboard/share-radial-card";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -9,8 +8,9 @@ import {
   fetchBrowserEngineTrend,
   fetchBrowserTrend,
 } from "@/lib/dashboard/client-data";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { BrowserTrendData } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 
@@ -18,65 +18,90 @@ function emptyTrend(): BrowserTrendData {
   return { ok: true, interval: "day", series: [], data: [] };
 }
 
+function emptyTrendUnlessAborted(error: unknown): BrowserTrendData {
+  if (error instanceof Error && error.name === "AbortError") throw error;
+  return emptyTrend();
+}
+
 interface BrowserShareOverviewProps {
   locale: Locale;
   messages: AppMessages;
   siteId: string;
   window: TimeWindow;
-  filters: DashboardFilters;
+  filters: FilterDocument;
 }
 
-export function BrowserShareOverview({
+export const BrowserShareOverview = memo(function BrowserShareOverview({
   locale,
   messages,
   siteId,
   window: tw,
   filters,
 }: BrowserShareOverviewProps) {
-  const [browserTrend, setBrowserTrend] =
-    useState<BrowserTrendData>(emptyTrend);
-  const [engineTrend, setEngineTrend] = useState<BrowserTrendData>(emptyTrend);
-  const [loading, setLoading] = useState(true);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-
-    Promise.all([
-      fetchBrowserTrend(siteId, tw, filters, { limit: 5 }).catch(() =>
-        emptyTrend(),
-      ),
-      fetchBrowserEngineTrend(siteId, tw, filters, { limit: 5 }).catch(() =>
-        emptyTrend(),
-      ),
-    ]).then(([bt, et]) => {
-      if (!active) return;
-      setBrowserTrend(bt);
-      setEngineTrend(et);
-      setLoading(false);
-      setHydrated(true);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [siteId, tw.from, tw.to, filters]);
-
-  const showOverlayLoading = loading && hydrated;
-  const showInitialLoading = loading && !hydrated;
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const { data, isFetching, isPending } = useQuery({
+    queryKey: [
+      "dashboard",
+      "browser-share-overview",
+      siteId,
+      tw.from,
+      tw.to,
+      tw.interval,
+      tw.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [browserTrend, engineTrend] = await Promise.all([
+        fetchBrowserTrend(siteId, tw, filters, { limit: 5, signal }).catch(
+          emptyTrendUnlessAborted,
+        ),
+        fetchBrowserEngineTrend(siteId, tw, filters, {
+          limit: 5,
+          signal,
+        }).catch(emptyTrendUnlessAborted),
+      ]);
+      return { browserTrend, engineTrend };
+    },
+    enabled: !import.meta.env.SSR,
+  });
+  const browserTrend = useMemo(
+    () => data?.browserTrend ?? emptyTrend(),
+    [data?.browserTrend],
+  );
+  const engineTrend = useMemo(
+    () => data?.engineTrend ?? emptyTrend(),
+    [data?.engineTrend],
+  );
+  const browserItems = useMemo(
+    () =>
+      browserTrend.series.map((item) => ({
+        key: item.key,
+        label: item.label,
+        value: item.visitors,
+        isOther: item.isOther,
+      })),
+    [browserTrend.series],
+  );
+  const engineItems = useMemo(
+    () =>
+      engineTrend.series.map((item) => ({
+        key: item.key,
+        label: item.label,
+        value: item.visitors,
+        isOther: item.isOther,
+      })),
+    [engineTrend.series],
+  );
+  const showOverlayLoading = isFetching && data !== undefined;
+  const showInitialLoading = isPending;
 
   return (
     <div className="relative">
       <div className="grid gap-4">
         <ShareRadialCard
           title={messages.browsers.browserShareTitle}
-          items={browserTrend.series.map((item) => ({
-            key: item.key,
-            label: item.label,
-            value: item.visitors,
-            isOther: item.isOther,
-          }))}
+          items={browserItems}
+          maxItems={6}
           locale={locale}
           valueLabel={messages.common.visitors}
           loading={showInitialLoading}
@@ -84,12 +109,8 @@ export function BrowserShareOverview({
         />
         <ShareRadialCard
           title={messages.browsers.engineShareTitle}
-          items={engineTrend.series.map((item) => ({
-            key: item.key,
-            label: item.label,
-            value: item.visitors,
-            isOther: item.isOther,
-          }))}
+          items={engineItems}
+          maxItems={6}
           locale={locale}
           valueLabel={messages.common.visitors}
           loading={showInitialLoading}
@@ -119,4 +140,4 @@ export function BrowserShareOverview({
       </AutoTransition>
     </div>
   );
-}
+});

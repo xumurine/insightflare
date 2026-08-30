@@ -35,6 +35,7 @@ export interface MemberData {
   teamId: string;
   userId: string;
   role: TeamRole;
+  siteIds: string[];
   joinedAt: number;
   username: string;
   email: string;
@@ -57,6 +58,8 @@ export interface AccountUserData {
 
 export type ApiKeyScope =
   | "analytics:read"
+  | "analysis:read"
+  | "analysis:write"
   | "site:read"
   | "site:write"
   | "site_config:read"

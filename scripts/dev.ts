@@ -1,79 +1,81 @@
-import type { ChildProcess } from "node:child_process";
-import { spawn, spawnSync } from "node:child_process";
+/**
+ * Development runner: builds the tracker SDK, regenerates messages.ts from the
+ * yaml sources, then starts `vite dev` while watching src/i18n/*.yaml.
+ *
+ * Replacements:
+ *   "dev": "tsx scripts/build-tracker-sdk.ts && vite dev --mode development"
+ * with:
+ *   "dev": "tsx scripts/dev.ts"
+ *
+ * The yaml watcher reruns `regenerateAppMessages()` on change so editing
+ * translation files takes effect in the running app without a restart.
+ */
+import { spawn } from "node:child_process";
+import path from "node:path";
 
+import { createYamlWatcher } from "./i18n-check/watch";
+import { localCli } from "./shared/deploy-runtime";
 import { createScriptLogger } from "./shared/logger";
 
-const rlog = createScriptLogger();
-const isWindows = process.platform === "win32";
-const npmCommand = isWindows ? "npm.cmd" : "npm";
-const npxCommand = isWindows ? "npx.cmd" : "npx";
+const rlog = createScriptLogger({
+  logFile: "dev.log",
+});
 
-const children: ChildProcess[] = [];
-let shuttingDown = false;
+const ROOT = process.cwd();
+const VITE = localCli(ROOT, "vite", path.join("bin", "vite.js"));
+const TSCLI = localCli(ROOT, "tsx", "dist/cli.mjs");
 
-function terminate(child: ChildProcess): void {
-  if (!child.pid || child.killed) return;
-  if (isWindows) {
-    spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
-      stdio: "ignore",
+async function runBuildSdk(): Promise<void> {
+  rlog.info("Building tracker SDK...");
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [TSCLI, path.join(ROOT, "scripts", "build-tracker-sdk.ts")],
+      { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    child.stdout.on("data", (chunk: Buffer) => process.stdout.write(chunk));
+    child.stderr.on("data", (chunk: Buffer) => process.stderr.write(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`build-tracker-sdk failed with exit code ${code}`));
     });
-    return;
-  }
-  child.kill();
+  });
 }
 
-function start(name: string, command: string, args: string[]): ChildProcess {
-  const child = spawn(command, args, {
-    cwd: process.cwd(),
-    env: process.env,
-    shell: isWindows,
-    stdio: ["ignore", "pipe", "pipe"],
+async function main(): Promise<void> {
+  await runBuildSdk();
+
+  const watcher = createYamlWatcher(rlog);
+  watcher.start();
+
+  rlog.info(`Starting vite dev (${VITE})...`);
+  const vite = spawn(process.execPath, [VITE, "dev", "--mode", "development"], {
+    cwd: ROOT,
+    stdio: ["inherit", "inherit", "inherit"],
   });
-  child.stdout?.pipe(process.stdout);
-  child.stderr?.pipe(process.stderr);
-  children.push(child);
-  child.on("exit", (code, signal) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    for (const other of children) {
-      if (other !== child && !other.killed) {
-        terminate(other);
-      }
-    }
-    if (signal) {
-      process.kill(process.pid, signal);
-      return;
-    }
-    process.exit(code ?? 0);
-  });
-  child.on("error", (error) => {
-    rlog.error(`[dev] Failed to start ${name}:`, error);
+
+  vite.on("error", (error) => {
+    rlog.error("vite failed to start:", error.message);
+    watcher.stop();
     process.exit(1);
   });
-  return child;
+
+  vite.on("close", (code, signal) => {
+    watcher.stop();
+    const reason =
+      signal != null
+        ? `vite terminated by signal ${signal}`
+        : `vite exited with code ${code ?? 0}`;
+    rlog.info(reason);
+    process.exit(code ?? 0);
+  });
 }
 
-function shutdown() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  for (const child of children) {
-    terminate(child);
-  }
-}
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-
-rlog.info("[dev] Next dev server: http://127.0.0.1:3000");
-rlog.info("[dev] Worker entrypoint: http://127.0.0.1:8787");
-rlog.info("[dev] Use the Worker URL for normal local development.");
-
-start("Next dev", npmCommand, ["run", "dev:ui"]);
-start("Wrangler dev", npxCommand, [
-  "wrangler",
-  "dev",
-  "--config",
-  "wrangler.dev.toml",
-  "--port",
-  "8787",
-]);
+main().catch((error) => {
+  rlog.error(
+    "fatal:",
+    error instanceof Error ? error.stack || error.message : String(error),
+  );
+  process.exit(1);
+});

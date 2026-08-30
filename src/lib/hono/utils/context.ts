@@ -7,7 +7,11 @@ export function executionContext(c: Context<AppEnv>): ExecutionContext {
 }
 
 export function requestUrl(c: Context<AppEnv>): URL {
-  return new URL(c.req.raw.url);
+  const existing = c.get("requestUrl");
+  if (existing) return existing;
+  const url = new URL(c.req.raw.url);
+  c.set("requestUrl", url);
+  return url;
 }
 
 export function responseContext(c: Context<AppEnv>): { requestId: string } {

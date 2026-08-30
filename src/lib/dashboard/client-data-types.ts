@@ -1,4 +1,4 @@
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   DashboardFilterOption,
   OverviewClientDimensionTabsData as OverviewClientDimensionTabsResponse,
@@ -7,6 +7,7 @@ import type {
   PagesDashboardData,
   PagesData,
 } from "@/lib/edge-client";
+import type { AnalyticsFilterFieldId } from "@/lib/filter-contract";
 
 export type DashboardFilterOptionData = DashboardFilterOption;
 
@@ -50,7 +51,7 @@ export type OverviewPageCardTab =
   | "entry"
   | "exit";
 
-export type OverviewSourceCardTab = "domain" | "link";
+export type OverviewSourceCardTab = "domain" | "link" | "channel";
 
 export type OverviewClientDimensionTab =
   | "browser"
@@ -67,7 +68,10 @@ export type OverviewGeoDimensionTab =
   | "timezone"
   | "organization";
 
-export type DashboardFilterKey = keyof DashboardFilters;
+export type DashboardFilterOptionKey = Exclude<
+  AnalyticsFilterFieldId,
+  "event.payload"
+>;
 
 export type UtmDimensionTab =
   | "source"

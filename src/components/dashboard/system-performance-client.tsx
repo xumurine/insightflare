@@ -1,6 +1,4 @@
-"use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type RemixiconComponentType,
   RiAlarmWarningLine,
@@ -11,9 +9,13 @@ import {
   RiSpeedUpLine,
   RiTimeLine,
 } from "@remixicon/react";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import {
+  LatencyPercentileChart,
+  type LatencyPercentileChartPoint,
+} from "@/components/dashboard/charts/latency-percentile-chart";
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
 import { DataTableSwitch } from "@/components/dashboard/data-table-switch";
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -29,14 +31,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  type ChartConfig,
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -45,11 +39,13 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
+import { requestAdminService } from "@/lib/admin-service-client";
 import {
   intlLocale,
   numberFormat,
   shortDateTime,
 } from "@/lib/dashboard/format";
+import type { SystemPerformanceInitialData } from "@/lib/dashboard/management-data";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
@@ -64,80 +60,28 @@ import { cn } from "@/lib/utils";
 interface SystemPerformanceClientProps {
   locale: Locale;
   messages: AppMessages;
-}
-
-interface ApiErrorResponse {
-  ok?: false;
-  error?: string;
-  message?: string;
+  initialData?: SystemPerformanceInitialData | null;
 }
 
 const WINDOW_OPTIONS: readonly SystemPerformanceWindowMinutes[] = [
   15, 60, 360, 1440,
 ] as const;
-const LATENCY_SERIES_COLORS = {
-  p50: "var(--color-chart-1)",
-  p75: "var(--color-chart-4)",
-  p95: "var(--color-chart-5)",
-} as const;
-
 async function fetchSystemPerformance(
   minutes: SystemPerformanceWindowMinutes,
+  signal?: AbortSignal,
 ): Promise<SystemPerformanceData> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    return handleDemoRequest({
-      path: "/api/private/admin/system-performance",
-      params: { minutes },
-    }) as SystemPerformanceData;
-  }
-
-  const response = await fetch(
-    `/api/private/admin/system-performance?minutes=${minutes}`,
-    {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    },
-  );
-  const payload = (await response.json()) as
-    | SystemPerformanceData
-    | ApiErrorResponse;
-  if (!response.ok || payload.ok !== true) {
-    throw new Error(
-      ("message" in payload && payload.message) ||
-        ("error" in payload && payload.error) ||
-        "load_system_performance_failed",
-    );
-  }
-  return payload;
+  return requestAdminService<SystemPerformanceData>("system-performance", {
+    params: { minutes },
+    signal,
+  });
 }
 
-async function fetchDoDiagnostic(): Promise<DoDiagnosticAggregate> {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE === "1") {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
-    return handleDemoRequest({
-      path: "/api/private/admin/do-diagnostic",
-      params: {},
-    }) as DoDiagnosticAggregate;
-  }
-
-  const response = await fetch(`/api/private/admin/do-diagnostic`, {
-    method: "GET",
-    credentials: "include",
-    cache: "no-store",
+async function fetchDoDiagnostic(
+  signal?: AbortSignal,
+): Promise<DoDiagnosticAggregate> {
+  return requestAdminService<DoDiagnosticAggregate>("do-diagnostic", {
+    signal,
   });
-  const payload = (await response.json()) as
-    | DoDiagnosticAggregate
-    | ApiErrorResponse;
-  if (!response.ok || payload.ok !== true) {
-    throw new Error(
-      ("message" in payload && payload.message) ||
-        ("error" in payload && payload.error) ||
-        "load_do_diagnostic_failed",
-    );
-  }
-  return payload;
 }
 
 function formatMetricNumber(locale: Locale, value: number): string {
@@ -255,210 +199,22 @@ function SystemMetricCell({
   );
 }
 
-function LatencyPercentileChart({
-  locale,
-  messages,
-  timeZone,
-  data,
-  loading,
-}: {
-  locale: Locale;
-  messages: AppMessages;
-  timeZone: string;
-  data: SystemPerformanceData | null;
-  loading: boolean;
-}) {
-  const t = messages.systemPerformance;
-  const chartData = useMemo(
-    () =>
-      (data?.trend ?? []).map((point) => ({
-        timestampMs: point.timestampMs,
-        p50: point.p50LatencyMs,
-        p75: point.p75LatencyMs,
-        p95: point.p95LatencyMs,
-      })),
-    [data?.trend],
-  );
-  const hasLatencyData = chartData.some(
-    (point) => point.p50 !== null || point.p75 !== null || point.p95 !== null,
-  );
-  const bucketFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(intlLocale(locale), {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone,
-      }),
-    [locale, timeZone],
-  );
-  const tooltipFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(intlLocale(locale), {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone,
-      }),
-    [locale, timeZone],
-  );
-  const chartConfig = useMemo(
-    () =>
-      ({
-        p50: {
-          label: t.p50Label,
-          color: LATENCY_SERIES_COLORS.p50,
-        },
-        p75: {
-          label: t.p75Label,
-          color: LATENCY_SERIES_COLORS.p75,
-        },
-        p95: {
-          label: t.p95Label,
-          color: LATENCY_SERIES_COLORS.p95,
-        },
-      }) satisfies ChartConfig,
-    [t.p50Label, t.p75Label, t.p95Label],
-  );
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="inline-flex items-center gap-2">
-          <RiSpeedUpLine className="size-4" />
-          {t.latencyPercentileTrend}
-        </CardTitle>
-        <CardDescription>{t.latencyPercentileTrendDescription}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <AutoResizer initial>
-          <AutoTransition
-            transitionKey={
-              hasLatencyData ? "chart" : loading ? "loading" : "empty"
-            }
-            initial={false}
-            duration={0.2}
-            type="fade"
-          >
-            {hasLatencyData ? (
-              <ChartContainer
-                key="chart"
-                className="h-[320px] w-full aspect-auto"
-                config={chartConfig}
-              >
-                <LineChart
-                  accessibilityLayer
-                  data={chartData}
-                  margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
-                >
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="timestampMs"
-                    tickFormatter={(value) =>
-                      bucketFormatter.format(new Date(Number(value ?? 0)))
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    minTickGap={12}
-                  />
-                  <YAxis
-                    tickFormatter={(value) =>
-                      formatLatency(locale, Number(value ?? 0))
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                    width={74}
-                  />
-                  <ChartTooltip
-                    cursor={false}
-                    content={
-                      <ChartTooltipContent
-                        className="min-w-[14rem]"
-                        indicator="line"
-                        labelFormatter={(value, payload) => {
-                          const timestamp = Number(
-                            payload?.[0]?.payload?.timestampMs ?? value ?? 0,
-                          );
-                          return tooltipFormatter.format(new Date(timestamp));
-                        }}
-                        formatter={(value, name) => (
-                          <div className="flex w-full items-center justify-between gap-3">
-                            <span className="text-muted-foreground">
-                              {String(name ?? "")}
-                            </span>
-                            <span className="font-mono text-foreground tabular-nums">
-                              {formatLatency(locale, Number(value ?? 0))}
-                            </span>
-                          </div>
-                        )}
-                      />
-                    }
-                  />
-                  <ChartLegend
-                    content={
-                      <ChartLegendContent className="pt-6 flex-wrap justify-center gap-x-4 gap-y-2" />
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="p50"
-                    name={t.p50Label}
-                    stroke={LATENCY_SERIES_COLORS.p50}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                    connectNulls={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="p75"
-                    name={t.p75Label}
-                    stroke={LATENCY_SERIES_COLORS.p75}
-                    strokeWidth={2.4}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                    connectNulls={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="p95"
-                    name={t.p95Label}
-                    stroke={LATENCY_SERIES_COLORS.p95}
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                    connectNulls={false}
-                  />
-                </LineChart>
-              </ChartContainer>
-            ) : (
-              <div
-                key={loading ? "loading" : "empty"}
-                className="flex h-[320px] items-center justify-center text-sm text-muted-foreground"
-              >
-                {loading ? messages.common.loading : t.noData}
-              </div>
-            )}
-          </AutoTransition>
-        </AutoResizer>
-      </CardContent>
-    </Card>
-  );
-}
-
 function DoDiagnosticPanel({
   locale,
   messages,
   timeZone,
   data,
   loading,
+  requested,
+  onRun,
 }: {
   locale: Locale;
   messages: AppMessages;
   timeZone: string;
   data: DoDiagnosticAggregate | null;
   loading: boolean;
+  requested: boolean;
+  onRun: () => void;
 }) {
   const t = messages.systemPerformance;
   const totals = data?.totals;
@@ -501,174 +257,234 @@ function DoDiagnosticPanel({
         <CardDescription>{t.doDiagnosticDescription}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-px overflow-hidden border bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
-          <DoDiagnosticCell
-            label={t.doDiagnosticTotalSites}
-            value={data ? formatMetricNumber(locale, data.totalSites) : "--"}
-            detail={
-              data
-                ? `${t.doDiagnosticReachableSites}: ${formatMetricNumber(locale, data.reachableSites)}`
-                : ""
+        <AutoResizer initial duration={0.28} ease={[0.22, 1, 0.36, 1]}>
+          <AutoTransition
+            initial={false}
+            duration={0.2}
+            type="fade"
+            presenceMode="wait"
+            transitionKey={
+              !requested ? "idle" : loading && !data ? "loading" : "result"
             }
-          />
-          <DoDiagnosticCell
-            label={t.doDiagnosticActiveAlarms}
-            value={
-              totals ? formatMetricNumber(locale, totals.activeAlarms) : "--"
-            }
-            detail={
-              totals
-                ? `${t.doDiagnosticBufferedVisits}: ${formatMetricNumber(locale, totals.bufferedVisits)}`
-                : ""
-            }
-          />
-          <DoDiagnosticCell
-            label={t.doDiagnosticOpenVisits}
-            value={
-              totals ? formatMetricNumber(locale, totals.openVisits) : "--"
-            }
-            detail={
-              totals
-                ? `${t.doDiagnosticOpenStale}: ${formatMetricNumber(locale, totals.openStale)} / ${t.doDiagnosticOpenTimedOut}: ${formatMetricNumber(locale, totals.openTimedOut)}`
-                : ""
-            }
-            tone={totals && totals.openTimedOut > 0 ? "warning" : "default"}
-          />
-          <DoDiagnosticCell
-            label={t.doDiagnosticStuckDirty}
-            value={
-              totals
-                ? formatMetricNumber(
-                    locale,
-                    totals.stuckDirtyVisits + totals.stuckDirtyCustomEvents,
-                  )
-                : "--"
-            }
-            detail={
-              totals
-                ? `${t.doDiagnosticOpenHardAged}: ${formatMetricNumber(locale, totals.openHardAged)} / ${t.doDiagnosticOpenFutureSkew}: ${formatMetricNumber(locale, totals.openFutureSkewed)}`
-                : ""
-            }
-            tone={hasAnomalies ? "warning" : "good"}
-          />
-        </div>
+          >
+            {!requested ? (
+              <div
+                key="idle"
+                className="flex min-h-28 flex-col items-center justify-center gap-3 border bg-muted/20 p-4 text-center"
+              >
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  disabled={loading}
+                  onClick={onRun}
+                >
+                  <RiRefreshLine className="size-4" />
+                  {t.doDiagnosticRun}
+                </Button>
+              </div>
+            ) : loading && !data ? (
+              <div
+                key="loading"
+                className="flex min-h-28 items-center justify-center gap-2 border bg-muted/20 p-4 text-sm text-muted-foreground"
+                aria-busy="true"
+              >
+                <Spinner className="size-4" />
+                {t.doDiagnosticLoading}
+              </div>
+            ) : (
+              <div key="result" className="space-y-4">
+                <div className="grid gap-px overflow-hidden border bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
+                  <DoDiagnosticCell
+                    label={t.doDiagnosticTotalSites}
+                    value={
+                      data ? formatMetricNumber(locale, data.totalSites) : "--"
+                    }
+                    detail={
+                      data
+                        ? `${t.doDiagnosticReachableSites}: ${formatMetricNumber(locale, data.reachableSites)}`
+                        : ""
+                    }
+                  />
+                  <DoDiagnosticCell
+                    label={t.doDiagnosticActiveAlarms}
+                    value={
+                      totals
+                        ? formatMetricNumber(locale, totals.activeAlarms)
+                        : "--"
+                    }
+                    detail={
+                      totals
+                        ? `${t.doDiagnosticBufferedVisits}: ${formatMetricNumber(locale, totals.bufferedVisits)}`
+                        : ""
+                    }
+                  />
+                  <DoDiagnosticCell
+                    label={t.doDiagnosticOpenVisits}
+                    value={
+                      totals
+                        ? formatMetricNumber(locale, totals.openVisits)
+                        : "--"
+                    }
+                    detail={
+                      totals
+                        ? `${t.doDiagnosticOpenStale}: ${formatMetricNumber(locale, totals.openStale)} / ${t.doDiagnosticOpenTimedOut}: ${formatMetricNumber(locale, totals.openTimedOut)}`
+                        : ""
+                    }
+                    tone={
+                      totals && totals.openTimedOut > 0 ? "warning" : "default"
+                    }
+                  />
+                  <DoDiagnosticCell
+                    label={t.doDiagnosticStuckDirty}
+                    value={
+                      totals
+                        ? formatMetricNumber(
+                            locale,
+                            totals.stuckDirtyVisits +
+                              totals.stuckDirtyCustomEvents,
+                          )
+                        : "--"
+                    }
+                    detail={
+                      totals
+                        ? `${t.doDiagnosticOpenHardAged}: ${formatMetricNumber(locale, totals.openHardAged)} / ${t.doDiagnosticOpenFutureSkew}: ${formatMetricNumber(locale, totals.openFutureSkewed)}`
+                        : ""
+                    }
+                    tone={hasAnomalies ? "warning" : "good"}
+                  />
+                </div>
 
-        <div className="grid gap-2 text-sm sm:grid-cols-2">
-          <DoDiagnosticKv
-            label={t.doDiagnosticOldestOpen}
-            value={
-              data?.oldestOpenStartedAt
-                ? shortDateTime(locale, data.oldestOpenStartedAt, timeZone)
-                : "--"
-            }
-          />
-          <DoDiagnosticKv
-            label={t.doDiagnosticFutureMaxActivity}
-            value={
-              data?.futureMaxActivityAt
-                ? shortDateTime(locale, data.futureMaxActivityAt, timeZone)
-                : "--"
-            }
-            tone={data?.futureMaxActivityAt ? "warning" : "default"}
-          />
-          <DoDiagnosticKv
-            label={t.doDiagnosticMaxFlushAttempts}
-            value={
-              totals
-                ? `${formatMetricNumber(locale, totals.maxVisitFlushAttempts)} / ${formatMetricNumber(locale, totals.maxCustomEventFlushAttempts)}`
-                : "--"
-            }
-            tone={
-              totals &&
-              Math.max(
-                totals.maxVisitFlushAttempts,
-                totals.maxCustomEventFlushAttempts,
-              ) >= (thresholds?.stuckFlushAttempts ?? 5)
-                ? "warning"
-                : "default"
-            }
-          />
-          <DoDiagnosticKv
-            label={t.doDiagnosticBufferedCustomEvents}
-            value={
-              totals
-                ? `${formatMetricNumber(locale, totals.bufferedCustomEvents)} (dirty: ${formatMetricNumber(locale, totals.dirtyCustomEvents)})`
-                : "--"
-            }
-          />
-        </div>
+                <div className="grid gap-2 text-sm sm:grid-cols-2">
+                  <DoDiagnosticKv
+                    label={t.doDiagnosticOldestOpen}
+                    value={
+                      data?.oldestOpenStartedAt
+                        ? shortDateTime(
+                            locale,
+                            data.oldestOpenStartedAt,
+                            timeZone,
+                          )
+                        : "--"
+                    }
+                  />
+                  <DoDiagnosticKv
+                    label={t.doDiagnosticFutureMaxActivity}
+                    value={
+                      data?.futureMaxActivityAt
+                        ? shortDateTime(
+                            locale,
+                            data.futureMaxActivityAt,
+                            timeZone,
+                          )
+                        : "--"
+                    }
+                    tone={data?.futureMaxActivityAt ? "warning" : "default"}
+                  />
+                  <DoDiagnosticKv
+                    label={t.doDiagnosticMaxFlushAttempts}
+                    value={
+                      totals
+                        ? `${formatMetricNumber(locale, totals.maxVisitFlushAttempts)} / ${formatMetricNumber(locale, totals.maxCustomEventFlushAttempts)}`
+                        : "--"
+                    }
+                    tone={
+                      totals &&
+                      Math.max(
+                        totals.maxVisitFlushAttempts,
+                        totals.maxCustomEventFlushAttempts,
+                      ) >= (thresholds?.stuckFlushAttempts ?? 5)
+                        ? "warning"
+                        : "default"
+                    }
+                  />
+                  <DoDiagnosticKv
+                    label={t.doDiagnosticBufferedCustomEvents}
+                    value={
+                      totals
+                        ? `${formatMetricNumber(locale, totals.bufferedCustomEvents)} (dirty: ${formatMetricNumber(locale, totals.dirtyCustomEvents)})`
+                        : "--"
+                    }
+                  />
+                </div>
 
-        {data && data.unreachableSites > 0 ? (
-          <Badge variant="outline" className="gap-2 text-destructive">
-            <RiAlarmWarningLine className="size-3" />
-            {t.doDiagnosticUnreachable}:{" "}
-            {formatMetricNumber(locale, data.unreachableSites)}
-          </Badge>
-        ) : null}
+                {data && data.unreachableSites > 0 ? (
+                  <Badge variant="outline" className="gap-2 text-destructive">
+                    <RiAlarmWarningLine className="size-3" />
+                    {t.doDiagnosticUnreachable}:{" "}
+                    {formatMetricNumber(locale, data.unreachableSites)}
+                  </Badge>
+                ) : null}
 
-        <div className="border-t pt-4">
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-medium">{t.doDiagnosticSiteList}</h3>
-              <p className="text-xs text-muted-foreground">
-                {t.doDiagnosticSiteListDescription}
-              </p>
-            </div>
-            {thresholdHint ? (
-              <p className="hidden text-right text-xs text-muted-foreground md:block">
-                {thresholdHint}
-              </p>
-            ) : null}
-          </div>
-          <DataTableSwitch
-            loading={loading}
-            hasContent={visibleSites.length > 0}
-            loadingLabel={t.doDiagnosticLoading}
-            emptyLabel={
-              data && data.totalSites === 0
-                ? t.doDiagnosticEmpty
-                : t.doDiagnosticHealthy
-            }
-            colSpan={7}
-            header={
-              <TableRow>
-                <TableHead>{messages.common.site}</TableHead>
-                <TableHead className="text-right">
-                  {t.doDiagnosticSiteOpen}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t.doDiagnosticSiteHardAged}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t.doDiagnosticSiteFuture}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t.doDiagnosticSiteStuck}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t.doDiagnosticSiteAlarm}
-                </TableHead>
-                <TableHead className="text-right">
-                  {t.doDiagnosticSiteResponseMs}
-                </TableHead>
-              </TableRow>
-            }
-            rows={visibleSites.map((site) => (
-              <DoDiagnosticSiteRow
-                key={site.siteId}
-                locale={locale}
-                messages={messages}
-                site={site}
-              />
-            ))}
-          />
-        </div>
+                <div className="border-t pt-4">
+                  <div className="mb-2 flex items-baseline justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-medium">
+                        {t.doDiagnosticSiteList}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        {t.doDiagnosticSiteListDescription}
+                      </p>
+                    </div>
+                    {thresholdHint ? (
+                      <p className="hidden text-right text-xs text-muted-foreground md:block">
+                        {thresholdHint}
+                      </p>
+                    ) : null}
+                  </div>
+                  <DataTableSwitch
+                    loading={loading}
+                    hasContent={visibleSites.length > 0}
+                    loadingLabel={t.doDiagnosticLoading}
+                    emptyLabel={
+                      data && data.totalSites === 0
+                        ? t.doDiagnosticEmpty
+                        : t.doDiagnosticHealthy
+                    }
+                    colSpan={7}
+                    header={
+                      <TableRow>
+                        <TableHead>{messages.common.site}</TableHead>
+                        <TableHead className="text-right">
+                          {t.doDiagnosticSiteOpen}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {t.doDiagnosticSiteHardAged}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {t.doDiagnosticSiteFuture}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {t.doDiagnosticSiteStuck}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {t.doDiagnosticSiteAlarm}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {t.doDiagnosticSiteResponseMs}
+                        </TableHead>
+                      </TableRow>
+                    }
+                    rows={visibleSites.map((site) => (
+                      <DoDiagnosticSiteRow
+                        key={site.siteId}
+                        locale={locale}
+                        messages={messages}
+                        site={site}
+                      />
+                    ))}
+                  />
+                </div>
 
-        {thresholdHint ? (
-          <p className="text-xs text-muted-foreground md:hidden">
-            {thresholdHint}
-          </p>
-        ) : null}
+                {thresholdHint ? (
+                  <p className="text-xs text-muted-foreground md:hidden">
+                    {thresholdHint}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </AutoTransition>
+        </AutoResizer>
       </CardContent>
     </Card>
   );
@@ -840,62 +656,57 @@ function DoDiagnosticSiteRow({
 export function SystemPerformanceClient({
   locale,
   messages,
+  initialData = null,
 }: SystemPerformanceClientProps) {
   const { timeZone } = useDashboardQueryControls();
   const t = messages.systemPerformance;
   const [minutes, setMinutes] = useState<SystemPerformanceWindowMinutes>(60);
-  const [refreshNonce, setRefreshNonce] = useState(0);
-  const [data, setData] = useState<SystemPerformanceData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [doData, setDoData] = useState<DoDiagnosticAggregate | null>(null);
-  const [doLoading, setDoLoading] = useState(true);
+  const [diagnosticRequested, setDiagnosticRequested] = useState(false);
+  const performanceQuery = useQuery({
+    queryKey: ["dashboard", "system-performance", minutes],
+    queryFn: ({ signal }) => fetchSystemPerformance(minutes, signal),
+    initialData: initialData?.data,
+    initialDataUpdatedAt: initialData?.fetchedAt,
+    staleTime: initialData ? 15_000 : 0,
+    enabled: typeof window !== "undefined",
+  });
+  const diagnosticQuery = useQuery({
+    queryKey: ["dashboard", "do-diagnostic"],
+    queryFn: ({ signal }) => fetchDoDiagnostic(signal),
+    enabled: false,
+  });
+  const data = performanceQuery.data ?? null;
+  const doData = diagnosticQuery.data ?? null;
+  const loading = performanceQuery.isFetching;
+  const doLoading = diagnosticQuery.isFetching;
 
   useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchSystemPerformance(minutes)
-      .then((next) => {
-        if (!active) return;
-        setData(next);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : t.loadFailed;
-        toast.error(message || t.loadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [minutes, refreshNonce, t.loadFailed]);
+    if (!performanceQuery.isError) return;
+    const message =
+      performanceQuery.error instanceof Error
+        ? performanceQuery.error.message
+        : t.loadFailed;
+    toast.error(message || t.loadFailed);
+  }, [
+    performanceQuery.error,
+    performanceQuery.errorUpdatedAt,
+    performanceQuery.isError,
+    t.loadFailed,
+  ]);
 
   useEffect(() => {
-    let active = true;
-    setDoLoading(true);
-    fetchDoDiagnostic()
-      .then((next) => {
-        if (!active) return;
-        setDoData(next);
-      })
-      .catch((error) => {
-        if (!active) return;
-        const message =
-          error instanceof Error ? error.message : t.doDiagnosticLoadFailed;
-        toast.error(message || t.doDiagnosticLoadFailed);
-      })
-      .finally(() => {
-        if (!active) return;
-        setDoLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [refreshNonce, t.doDiagnosticLoadFailed]);
+    if (!diagnosticQuery.isError) return;
+    const message =
+      diagnosticQuery.error instanceof Error
+        ? diagnosticQuery.error.message
+        : t.doDiagnosticLoadFailed;
+    toast.error(message || t.doDiagnosticLoadFailed);
+  }, [
+    diagnosticQuery.error,
+    diagnosticQuery.errorUpdatedAt,
+    diagnosticQuery.isError,
+    t.doDiagnosticLoadFailed,
+  ]);
 
   const bucketFormatter = useMemo(
     () =>
@@ -909,6 +720,28 @@ export function SystemPerformanceClient({
   const maxTrendEvents = Math.max(
     1,
     ...(data?.trend.map((point) => point.totalEvents) ?? []),
+  );
+  const latencyChartData = useMemo<LatencyPercentileChartPoint[]>(
+    () =>
+      (data?.trend ?? []).map((point) => ({
+        timestampMs: point.timestampMs,
+        p50: point.p50LatencyMs,
+        p75: point.p75LatencyMs,
+        p95: point.p95LatencyMs,
+      })),
+    [data?.trend],
+  );
+  const latencyChartLabels = useMemo(
+    () => ({
+      p50: t.p50Label,
+      p75: t.p75Label,
+      p95: t.p95Label,
+    }),
+    [t.p50Label, t.p75Label, t.p95Label],
+  );
+  const formatLatencyValue = useCallback(
+    (value: number | null) => formatLatency(locale, value),
+    [locale],
   );
   const summary = data?.summary;
   const openVisits = data?.openVisits;
@@ -957,7 +790,9 @@ export function SystemPerformanceClient({
               variant="outline"
               className="gap-2"
               disabled={loading}
-              onClick={() => setRefreshNonce((value) => value + 1)}
+              onClick={() => {
+                void performanceQuery.refetch();
+              }}
             >
               <span className="inline-flex size-4 shrink-0 items-center justify-center">
                 {loading ? (
@@ -1062,13 +897,29 @@ export function SystemPerformanceClient({
         </CardContent>
       </Card>
 
-      <LatencyPercentileChart
-        locale={locale}
-        messages={messages}
-        timeZone={timeZone}
-        data={data}
-        loading={loading}
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle className="inline-flex items-center gap-2">
+            <RiSpeedUpLine className="size-4" />
+            {t.latencyPercentileTrend}
+          </CardTitle>
+          <CardDescription>
+            {t.latencyPercentileTrendDescription}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LatencyPercentileChart
+            data={latencyChartData}
+            labels={latencyChartLabels}
+            locale={locale}
+            timeZone={timeZone}
+            formatValue={formatLatencyValue}
+            loading={loading}
+            loadingLabel={messages.common.loading}
+            emptyLabel={t.noData}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -1253,7 +1104,6 @@ export function SystemPerformanceClient({
                 </span>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">{t.estimationNote}</p>
           </CardContent>
         </Card>
 
@@ -1333,7 +1183,6 @@ export function SystemPerformanceClient({
                 </span>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">{t.estimationNote}</p>
           </CardContent>
         </Card>
       </div>
@@ -1344,6 +1193,11 @@ export function SystemPerformanceClient({
         timeZone={timeZone}
         data={doData}
         loading={doLoading}
+        requested={diagnosticRequested}
+        onRun={() => {
+          setDiagnosticRequested(true);
+          void diagnosticQuery.refetch();
+        }}
       />
 
       <Card>

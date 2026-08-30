@@ -1,6 +1,7 @@
 // scripts/check-env.ts
 // 检查环境变量设置是否正确，确保生产环境安全
 
+import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
 
 import { createScriptLogger } from "./shared/logger";
@@ -24,7 +25,7 @@ function calculateShannonEntropy(str: string): number {
 
 // 生成强随机密钥
 function generateStrongSecret(): string {
-  return randomBytes(32).toString("hex");
+  return Buffer.from(randomBytes(32)).toString("hex");
 }
 
 // 密钥验证器
@@ -95,7 +96,7 @@ function isProduction(): boolean {
 
 // 检查是否为 Demo 模式
 function isDemoMode(): boolean {
-  return process.env.NEXT_PUBLIC_DEMO_MODE === "1";
+  return process.env.DEMO_MODE === "1";
 }
 
 // 导出的环境检查函数

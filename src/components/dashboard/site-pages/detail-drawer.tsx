@@ -1,5 +1,3 @@
-"use client";
-
 import {
   createContext,
   type CSSProperties,
@@ -24,11 +22,9 @@ import {
   setDetailDrawerLayer,
   subscribeDetailDrawerLayers,
 } from "@/components/dashboard/site-pages/floating-layer";
-import {
-  prepareNativeScrollbarHost,
-  shouldUseNativeScrollbars,
-  useNativeScrollbars,
-} from "@/components/ui/overlay-scrollbar";
+import { AppOverlay } from "@/components/ui/app-overlay";
+import { shouldUseNativeScrollbars } from "@/components/ui/overlay-scrollbar";
+import { VerticalScrollMask } from "@/components/ui/vertical-scroll-mask";
 import { cn } from "@/lib/utils";
 
 export const DETAIL_QUERY_PARAM = "detail";
@@ -38,6 +34,8 @@ const CLOSE_SCROLL_TOP_THRESHOLD = 2;
 const CLOSE_SCROLL_MAX_WAIT_MS = 900;
 const STACK_LIFT_PX = 28;
 const MAX_STACK_LIFT_DEPTH = 3;
+const POINTER_DRAG_THRESHOLD_PX = 6;
+const POINTER_GESTURE_RESET_MS = 500;
 
 let nextDetailDrawerInstanceId = 0;
 
@@ -117,10 +115,13 @@ export function DetailDrawer({
   const closeAnimationFrameRef = useRef<number | null>(null);
   const closeScrollFrameRef = useRef<number | null>(null);
   const closeScrollTimeoutRef = useRef<number | null>(null);
-  const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
-    null,
-  );
-  const nativeScrollbars = useNativeScrollbars();
+  const pointerGestureRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  const pointerGestureResetTimerRef = useRef<number | null>(null);
   const isPreparingCloseRef = useRef(false);
   const layerIdRef = useRef<string | null>(null);
   if (layerIdRef.current === null) {
@@ -175,9 +176,7 @@ export function DetailDrawer({
     if (shouldUseNativeScrollbars()) return scrollContainer;
 
     return (
-      scrollbarRef.current?.elements().viewport ??
-      OverlayScrollbars(scrollContainer)?.elements().viewport ??
-      scrollContainer
+      OverlayScrollbars(scrollContainer)?.elements().viewport ?? scrollContainer
     );
   }, []);
 
@@ -367,92 +366,89 @@ export function DetailDrawer({
   useEffect(() => {
     if (!rendered || isCloseInteractionDisabled) return;
 
-    let shouldSuppressClick = false;
-    let clickSuppressTimer: number | null = null;
-
-    const clearClickSuppression = () => {
-      if (clickSuppressTimer !== null) {
-        window.clearTimeout(clickSuppressTimer);
+    const clearPointerGesture = () => {
+      pointerGestureRef.current = null;
+      if (pointerGestureResetTimerRef.current !== null) {
+        window.clearTimeout(pointerGestureResetTimerRef.current);
+        pointerGestureResetTimerRef.current = null;
       }
-      clickSuppressTimer = window.setTimeout(() => {
-        shouldSuppressClick = false;
-        clickSuppressTimer = null;
-      }, 0);
     };
 
-    const isInsideContent = (target: EventTarget | null) => {
-      const content = contentRef.current;
-      return target instanceof Node && Boolean(content?.contains(target));
+    const handlePointerDown = (event: PointerEvent) => {
+      clearPointerGesture();
+      pointerGestureRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+      };
     };
 
-    const stopOutsideEvent = (event: Event) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      event.stopPropagation();
-    };
+    const handlePointerMove = (event: PointerEvent) => {
+      const gesture = pointerGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
 
-    const handleOutsidePointerDown = (event: PointerEvent) => {
-      if (isInsideContent(event.target)) return;
-      if (hasHigherFloatingLayer(layerZIndex)) return;
-      shouldSuppressClick = true;
-      clearClickSuppression();
-      stopOutsideEvent(event);
-      handleClose();
-    };
-
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (isInsideContent(event.target)) return;
-      if (hasHigherFloatingLayer(layerZIndex)) return;
-      if (shouldSuppressClick) {
-        stopOutsideEvent(event);
-        return;
+      const deltaX = event.clientX - gesture.startX;
+      const deltaY = event.clientY - gesture.startY;
+      if (
+        deltaX * deltaX + deltaY * deltaY >
+        POINTER_DRAG_THRESHOLD_PX * POINTER_DRAG_THRESHOLD_PX
+      ) {
+        gesture.moved = true;
       }
-      stopOutsideEvent(event);
-      handleClose();
     };
 
-    window.addEventListener("pointerdown", handleOutsidePointerDown, true);
-    window.addEventListener("click", handleOutsideClick, true);
+    const schedulePointerGestureReset = (pointerId: number) => {
+      if (pointerGestureResetTimerRef.current !== null) {
+        window.clearTimeout(pointerGestureResetTimerRef.current);
+      }
+
+      pointerGestureResetTimerRef.current = window.setTimeout(() => {
+        if (pointerGestureRef.current?.pointerId === pointerId) {
+          pointerGestureRef.current = null;
+        }
+        pointerGestureResetTimerRef.current = null;
+      }, POINTER_GESTURE_RESET_MS);
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const gesture = pointerGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+      schedulePointerGestureReset(event.pointerId);
+    };
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      const gesture = pointerGestureRef.current;
+      if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+      gesture.moved = true;
+      schedulePointerGestureReset(event.pointerId);
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("pointermove", handlePointerMove, true);
+    window.addEventListener("pointerup", handlePointerUp, true);
+    window.addEventListener("pointercancel", handlePointerCancel, true);
 
     return () => {
-      window.removeEventListener("pointerdown", handleOutsidePointerDown, true);
-      window.removeEventListener("click", handleOutsideClick, true);
-      if (clickSuppressTimer !== null) {
-        window.clearTimeout(clickSuppressTimer);
-      }
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("pointerup", handlePointerUp, true);
+      window.removeEventListener("pointercancel", handlePointerCancel, true);
+      clearPointerGesture();
     };
-  }, [handleClose, isCloseInteractionDisabled, layerZIndex, rendered]);
+  }, [isCloseInteractionDisabled, rendered]);
 
-  useEffect(() => {
-    if (!mounted || !rendered) return;
-
-    const host = scrollContainerRef.current;
-    if (!host) return;
-    if (prepareNativeScrollbarHost(host)) return;
-
-    const existing = OverlayScrollbars(host);
-    const instance =
-      existing ?? OverlayScrollbars(host, DETAIL_DRAWER_SCROLLBAR_OPTIONS);
-
-    if (existing) {
-      existing.options(DETAIL_DRAWER_SCROLLBAR_OPTIONS);
+  const handleCloseFromOutside = useCallback(() => {
+    if (hasHigherFloatingLayer(layerZIndex)) return;
+    if (pointerGestureRef.current?.moved) {
+      pointerGestureRef.current = null;
+      return;
     }
-    scrollbarRef.current = instance;
-
-    const frame = window.requestAnimationFrame(() => {
-      instance.update();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      if (!existing) {
-        instance.destroy();
-      }
-      if (scrollbarRef.current === instance) {
-        scrollbarRef.current = null;
-      }
-    };
-  }, [drawerKey, mounted, rendered]);
+    pointerGestureRef.current = null;
+    handleClose();
+  }, [handleClose, layerZIndex]);
 
   useEffect(() => {
     if (!isClosing) return;
@@ -507,22 +503,21 @@ export function DetailDrawer({
           className={cn("fixed inset-0 z-[96]", rootClassName)}
           style={rootStyle}
         >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: isClosing ? 0 : 1 }}
-            transition={{ duration: 0.25 }}
-            className="fixed inset-0 z-0 bg-black/50 backdrop-blur-sm"
-            onClick={handleClose}
+          <AppOverlay
+            className="z-0 bg-black/50 backdrop-blur-sm"
+            layerId={layerId}
+            open={!isClosing}
+            zIndex={0}
+            onClick={handleCloseFromOutside}
           />
 
           <div className="fixed inset-y-0 z-10" style={contentAreaStyle}>
-            <div
-              ref={scrollContainerRef}
-              data-overlayscrollbars-initialize={
-                nativeScrollbars ? undefined : ""
-              }
-              className="h-full min-h-0 overflow-y-auto overscroll-contain"
-              onClick={handleClose}
+            <VerticalScrollMask
+              hostRef={scrollContainerRef}
+              className="h-full min-h-0"
+              contentClassName="min-h-0 overscroll-contain"
+              scrollbarOptions={DETAIL_DRAWER_SCROLLBAR_OPTIONS}
+              onClick={handleCloseFromOutside}
             >
               <div className="pointer-events-none relative mx-auto flex max-w-[1400px] items-start gap-6 px-4 pb-[4em] pt-[8em] sm:px-5 md:px-6">
                 <motion.div
@@ -569,7 +564,7 @@ export function DetailDrawer({
                   <div className="relative h-full">{children}</div>
                 </motion.div>
               </div>
-            </div>
+            </VerticalScrollMask>
           </div>
         </div>
       </DetailDrawerReadyContext.Provider>

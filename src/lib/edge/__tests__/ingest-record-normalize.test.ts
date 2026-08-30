@@ -140,6 +140,28 @@ async function expectedVisitorSecret(): Promise<string> {
 }
 
 describe("normalizeIngestRecord rejection reasons", () => {
+  it("throws when visitor identity needs a secret but no root secret is configured", async () => {
+    const { context } = makeContext();
+    context.env = {} as typeof context.env;
+
+    await expect(
+      normalizeIngestRecord(
+        makeEnvelope(
+          {
+            kind: "pageview",
+            visitId: "visit-1",
+            visitorId: "",
+            hostname: "example.com",
+          },
+          { cf: { isEUCountry: true } },
+        ),
+        context,
+      ),
+    ).rejects.toThrow(
+      "MAIN_SECRET or DAILY_SALT_SECRET is required for visitor identity",
+    );
+  });
+
   it("rejects records missing required site, visit, hostname, user, or event fields", async () => {
     const { context } = makeContext();
 
@@ -273,6 +295,7 @@ describe("normalizeIngestRecord pageview records", () => {
     }
     expect(result.record.sessionId).not.toBe("");
     expect(result.record.previousVisitId).toBe("");
+    expect(result.record.previousVisitStartedAt).toBeNull();
   });
 
   it("preserves non-EU visitor fields, parses cross-site referrers, and prefers client timezone", async () => {
@@ -324,7 +347,8 @@ describe("normalizeIngestRecord pageview records", () => {
     expect(result.record).toMatchObject({
       kind: "pageview",
       visitorId: "visitor-1",
-      previousVisitId: "previous-visit-1",
+      previousVisitId: "",
+      previousVisitStartedAt: null,
       pathname: "/docs",
       hostname: "blog.example.com",
       referrerUrl: "https://search.example/results?q=docs",
@@ -361,6 +385,9 @@ describe("normalizeIngestRecord pageview records", () => {
     const { context } = makeContext({
       recentSession: {
         sessionId: "server-session-1",
+        visitId: "visit-1",
+        status: "open",
+        routeMatch: 1,
         startedAt: receivedAt - 10_000,
         lastActivityAt: receivedAt - 5_000,
       },
@@ -373,6 +400,8 @@ describe("normalizeIngestRecord pageview records", () => {
           visitId: "visit-2",
           visitorId: "visitor-1",
           previousVisitId: "visit-1",
+          navigation: "route",
+          referrerUrl: "https://example.com/previous",
           hostname: "example.com",
         }),
         context,
@@ -382,6 +411,7 @@ describe("normalizeIngestRecord pageview records", () => {
         kind: "pageview",
         sessionId: "server-session-1",
         previousVisitId: "visit-1",
+        previousVisitStartedAt: receivedAt - 10_000,
       },
     });
   });
@@ -431,7 +461,8 @@ describe("normalizeIngestRecord pageview records", () => {
       siteId: "s".repeat(120),
       visitId: "v".repeat(128),
       visitorId: expectedVisitorId,
-      previousVisitId: "previous-visit-1",
+      previousVisitId: "",
+      previousVisitStartedAt: null,
       referrerUrl: "not a url",
       referrerHost: "",
       utmSource: longUtm.slice(0, 255),
@@ -758,7 +789,7 @@ describe("normalizeIngestRecord custom event records", () => {
         visitId: "visit-1",
         occurredAt: receivedAt - 1_000,
         receivedAt,
-        sequence: 1,
+        sequence: 0,
         eventName: "signup",
         eventDataJson: '{"plan":"pro"}',
         userId: "",
@@ -827,7 +858,7 @@ describe("normalizeIngestRecord custom event records", () => {
     expect(result.record).toMatchObject({
       kind: "custom_event",
       eventId: "event-1",
-      sequence: 2,
+      sequence: 0,
       eventAt: receivedAt - 1_000,
       eventName: "signup",
       eventDataJson: '{"amount":12,"tags":["new"]}',

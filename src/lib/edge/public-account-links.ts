@@ -12,6 +12,10 @@ import {
   toPublicUser,
 } from "./admin-auth";
 import { jsonResponseFor, na, parseJson } from "./admin-response";
+import {
+  memberSiteIdsFromInvitePayload,
+  serializeMemberSiteIds,
+} from "./member-site-access";
 import { requireSession } from "./session-auth";
 import type { Env } from "./types";
 import { clampString } from "./utils";
@@ -91,12 +95,18 @@ async function completeTeamInviteForUser(input: {
   tokenId: string;
   teamId: string;
   role: TeamInviteRole;
+  siteIds: string[];
   userId: string;
 }) {
   await input.env.DB.prepare(
-    "INSERT INTO team_members (team_id,user_id,role,joined_at) VALUES (?,?,?,unixepoch()) ON CONFLICT(team_id,user_id) DO UPDATE SET role=excluded.role",
+    "INSERT INTO team_members (team_id,user_id,role,site_ids_json,joined_at) VALUES (?,?,?,?,unixepoch()) ON CONFLICT(team_id,user_id) DO UPDATE SET role=excluded.role, site_ids_json=excluded.site_ids_json",
   )
-    .bind(input.teamId, input.userId, input.role)
+    .bind(
+      input.teamId,
+      input.userId,
+      input.role,
+      serializeMemberSiteIds(input.role === "member" ? input.siteIds : []),
+    )
     .run();
   await markAccountActionTokenUsed(input.env, {
     tokenId: input.tokenId,
@@ -187,6 +197,10 @@ export async function handlePublicAccountLinks(
   if (!team) return fail(req, "Team not found", 404);
 
   const role = teamRoleFromPayload(publicToken.payload);
+  const siteIds =
+    role === "member"
+      ? memberSiteIdsFromInvitePayload(publicToken.payload)
+      : [];
   const user = await currentUser(env, req);
   if (user) {
     if (publicToken.email && !emailsMatch(user.email, publicToken.email)) {
@@ -198,6 +212,7 @@ export async function handlePublicAccountLinks(
       tokenId: publicToken.id,
       teamId: publicToken.teamId,
       role,
+      siteIds,
       userId: user.id,
     });
   }
@@ -236,8 +251,13 @@ export async function handlePublicAccountLinks(
       "INSERT INTO users (id,username,email,name,password_hash,system_role,created_at,updated_at) VALUES (?,?,?,?,?,'user',unixepoch(),unixepoch())",
     ).bind(userId, username, email, name, passwordHash),
     env.DB.prepare(
-      "INSERT INTO team_members (team_id,user_id,role,joined_at) VALUES (?,?,?,unixepoch())",
-    ).bind(publicToken.teamId, userId, role),
+      "INSERT INTO team_members (team_id,user_id,role,site_ids_json,joined_at) VALUES (?,?,?,?,unixepoch())",
+    ).bind(
+      publicToken.teamId,
+      userId,
+      role,
+      serializeMemberSiteIds(role === "member" ? siteIds : []),
+    ),
     env.DB.prepare(
       "UPDATE account_action_tokens SET used_at = COALESCE(used_at, unixepoch()), used_by_user_id = COALESCE(used_by_user_id, ?) WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL",
     ).bind(userId, publicToken.id),

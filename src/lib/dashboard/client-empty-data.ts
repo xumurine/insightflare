@@ -10,6 +10,7 @@ import type {
   EventsSummaryData,
   EventsTrendData,
   EventTypeDetailData,
+  JourneyEventDetailData,
   OverviewClientDimensionTabsData as OverviewClientDimensionTabsResponse,
   OverviewData,
   OverviewGeoDimensionTabsData as OverviewGeoDimensionTabsResponse,
@@ -114,11 +115,10 @@ export function emptyVisitors(): VisitorsData {
     ok: true,
     data: [],
     meta: {
-      page: 1,
       pageSize: 0,
       returned: 0,
       hasMore: false,
-      nextPage: null,
+      nextCursor: null,
     },
   };
 }
@@ -128,11 +128,10 @@ export function emptySessions(): SessionsData {
     ok: true,
     data: [],
     meta: {
-      page: 1,
       pageSize: 0,
       returned: 0,
       hasMore: false,
-      nextPage: null,
+      nextCursor: null,
     },
   };
 }
@@ -193,11 +192,10 @@ export function emptyEventsRecords(pageSize = 0): EventsRecordsData {
     ok: true,
     data: [],
     meta: {
-      page: 1,
       pageSize,
       returned: 0,
       hasMore: false,
-      nextPage: null,
+      nextCursor: null,
     },
   };
 }
@@ -268,6 +266,10 @@ export function emptyEventAnalyticsContextCards(): EventTypeDetailData["cards"] 
 }
 
 export function emptyEventRecordDetail(): EventRecordDetailData {
+  return { ok: true, data: null };
+}
+
+export function emptyJourneyEventDetail(): JourneyEventDetailData {
   return { ok: true, data: null };
 }
 

@@ -1,5 +1,3 @@
-"use client";
-
 import {
   type FormEvent,
   type ReactNode,
@@ -17,6 +15,7 @@ import {
   RiFilter2Line,
   RiSave3Line,
 } from "@remixicon/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -45,17 +44,18 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogClose,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogFooter,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import {
   Select,
   SelectContent,
@@ -78,18 +78,21 @@ import {
   fetchFunnels,
   fetchOverviewPageCardTab,
 } from "@/lib/dashboard/client-data";
+import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
 import {
   intlLocale,
   numberFormat,
   percentFormat,
 } from "@/lib/dashboard/format";
-import type { DashboardFilters, TimeWindow } from "@/lib/dashboard/query-state";
+import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   FunnelAnalysisStep,
   FunnelDefinition,
   FunnelDetailData,
+  FunnelListData,
   FunnelStep,
 } from "@/lib/edge-client";
+import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
@@ -130,7 +133,7 @@ function detailQueryTarget(
   const params = new URLSearchParams(searchParams.toString());
   params.set(DETAIL_QUERY_PARAM, funnelId);
   params.delete("funnelId");
-  const query = params.toString();
+  const query = serializeDashboardSearchParams(params);
   return query ? `${pathname}?${query}` : pathname;
 }
 
@@ -371,126 +374,132 @@ function CreateFunnelDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <form onSubmit={submit} className="space-y-5">
-          <DialogHeader>
-            <DialogTitle icon={RiFilter2Line}>{labels.createTitle}</DialogTitle>
-            <DialogDescription>{labels.createDescription}</DialogDescription>
-          </DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent desktopClassName="max-w-2xl">
+        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col gap-5">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle icon={RiFilter2Line}>
+              {labels.createTitle}
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              {labels.createDescription}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
 
-          <div className="space-y-2">
-            <Label htmlFor="funnel-name">{labels.nameLabel}</Label>
-            <Input
-              id="funnel-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={labels.namePlaceholder}
-            />
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <Label>{labels.stepsLabel}</Label>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setSteps((current) => [
-                    ...current,
-                    { type: "pageview", value: "" },
-                  ])
-                }
-              >
-                <RiAddLine />
-                {labels.addStep}
-              </Button>
-            </div>
-
+          <ResponsiveDialogBody className="space-y-5">
             <div className="space-y-2">
-              {steps.map((step, index) => {
-                const listId =
-                  step.type === "pageview"
-                    ? "funnel-pageview-options"
-                    : "funnel-event-options";
-                return (
-                  <div
-                    key={index}
-                    className="grid min-w-0 gap-2 border bg-muted/20 p-2 md:grid-cols-[2.2rem_9rem_minmax(0,1fr)_2rem]"
-                  >
-                    <div className="flex h-8 items-center justify-center border bg-background font-mono text-xs text-muted-foreground">
-                      {numberFormat(locale, index + 1)}
-                    </div>
-                    <Select
-                      value={step.type}
-                      onValueChange={(value) =>
-                        updateStep(index, {
-                          type: value === "event" ? "event" : "pageview",
-                          value: "",
-                        })
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pageview">
-                          {labels.stepTypePageview}
-                        </SelectItem>
-                        <SelectItem value="event">
-                          {labels.stepTypeEvent}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      className="min-w-0"
-                      value={step.value}
-                      onChange={(event) =>
-                        updateStep(index, { value: event.target.value })
-                      }
-                      list={listId}
-                      aria-label={labels.stepValueLabel}
-                      placeholder={
-                        step.type === "pageview"
-                          ? labels.pageviewPlaceholder
-                          : labels.eventPlaceholder
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={labels.removeStep}
-                      disabled={steps.length <= 2}
-                      onClick={() => removeStep(index)}
-                    >
-                      <RiDeleteBinLine />
-                    </Button>
-                  </div>
-                );
-              })}
+              <Label htmlFor="funnel-name">{labels.nameLabel}</Label>
+              <Input
+                id="funnel-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder={labels.namePlaceholder}
+              />
             </div>
-          </div>
 
-          <datalist id="funnel-pageview-options">
-            {candidates.pageviews.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
-          <datalist id="funnel-event-options">
-            {candidates.events.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label>{labels.stepsLabel}</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    setSteps((current) => [
+                      ...current,
+                      { type: "pageview", value: "" },
+                    ])
+                  }
+                >
+                  <RiAddLine />
+                  {labels.addStep}
+                </Button>
+              </div>
 
-          <DialogFooter>
-            <DialogClose asChild>
+              <div className="space-y-2">
+                {steps.map((step, index) => {
+                  const listId =
+                    step.type === "pageview"
+                      ? "funnel-pageview-options"
+                      : "funnel-event-options";
+                  return (
+                    <div
+                      key={index}
+                      className="grid min-w-0 gap-2 border bg-muted/20 p-2 md:grid-cols-[2.2rem_9rem_minmax(0,1fr)_2rem]"
+                    >
+                      <div className="flex h-8 items-center justify-center border bg-background font-mono text-xs text-muted-foreground">
+                        {numberFormat(locale, index + 1)}
+                      </div>
+                      <Select
+                        value={step.type}
+                        onValueChange={(value) =>
+                          updateStep(index, {
+                            type: value === "event" ? "event" : "pageview",
+                            value: "",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pageview">
+                            {labels.stepTypePageview}
+                          </SelectItem>
+                          <SelectItem value="event">
+                            {labels.stepTypeEvent}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        className="min-w-0"
+                        value={step.value}
+                        onChange={(event) =>
+                          updateStep(index, { value: event.target.value })
+                        }
+                        list={listId}
+                        aria-label={labels.stepValueLabel}
+                        placeholder={
+                          step.type === "pageview"
+                            ? labels.pageviewPlaceholder
+                            : labels.eventPlaceholder
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={labels.removeStep}
+                        disabled={steps.length <= 2}
+                        onClick={() => removeStep(index)}
+                      >
+                        <RiDeleteBinLine />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <datalist id="funnel-pageview-options">
+              {candidates.pageviews.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+            <datalist id="funnel-event-options">
+              {candidates.events.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+          </ResponsiveDialogBody>
+
+          <ResponsiveDialogFooter>
+            <ResponsiveDialogClose asChild>
               <Button type="button" variant="outline" disabled={submitting}>
                 <RiCloseLine className="size-4" />
                 <span>{labels.cancel}</span>
               </Button>
-            </DialogClose>
+            </ResponsiveDialogClose>
             <Button type="submit" disabled={!canSubmit}>
               {submitting ? (
                 <>
@@ -504,10 +513,10 @@ function CreateFunnelDialog({
                 </>
               )}
             </Button>
-          </DialogFooter>
+          </ResponsiveDialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 
@@ -515,22 +524,53 @@ function FunnelMetric({
   label,
   value,
   detail,
+  loading = false,
 }: {
   label: string;
   value: string;
   detail: string;
+  loading?: boolean;
 }) {
   return (
     <div className="min-w-0 bg-card p-4">
       <p className="truncate text-[11px] uppercase text-muted-foreground">
         {label}
       </p>
-      <p className="mt-3 truncate font-mono text-xl leading-7 font-semibold">
-        {value}
-      </p>
-      <p className="mt-3 truncate text-[11px] text-muted-foreground">
-        {detail}
-      </p>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : value}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+        className="mt-3 h-7"
+      >
+        {loading ? (
+          <Skeleton key="loading" className="h-7 w-20" />
+        ) : (
+          <p
+            key="ready"
+            className="truncate font-mono text-xl leading-7 font-semibold"
+          >
+            {value}
+          </p>
+        )}
+      </AutoTransition>
+      <AutoTransition
+        initial={false}
+        transitionKey={loading ? "loading" : detail}
+        duration={0.18}
+        type="fade"
+        presenceMode="wait"
+        className="mt-3 h-4"
+      >
+        {loading ? (
+          <Skeleton key="loading" className="h-3 w-32" />
+        ) : (
+          <p key="ready" className="truncate text-[11px] text-muted-foreground">
+            {detail}
+          </p>
+        )}
+      </AutoTransition>
     </div>
   );
 }
@@ -539,10 +579,12 @@ function FunnelStepRow({
   locale,
   labels,
   step,
+  loading = false,
 }: {
   locale: Locale;
   labels: FunnelCopy;
   step: FunnelAnalysisStep;
+  loading?: boolean;
 }) {
   const width = `${Math.max(2, Math.min(100, step.conversionRate * 100))}%`;
 
@@ -553,83 +595,188 @@ function FunnelStepRow({
       </div>
       <div className="min-w-0 space-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Badge variant="outline">{stepTypeLabel(labels, step.type)}</Badge>
-          <p className="min-w-0 truncate font-mono font-medium">{step.label}</p>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : step.type}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="h-5"
+          >
+            {loading ? (
+              <Skeleton key="loading" className="h-5 w-20" />
+            ) : (
+              <Badge key="ready" variant="outline">
+                {stepTypeLabel(labels, step.type)}
+              </Badge>
+            )}
+          </AutoTransition>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : step.label}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="min-w-0 h-5 flex-1"
+          >
+            {loading ? (
+              <Skeleton key="loading" className="h-5 w-[min(22rem,72%)]" />
+            ) : (
+              <p key="ready" className="min-w-0 truncate font-mono font-medium">
+                {step.label}
+              </p>
+            )}
+          </AutoTransition>
         </div>
-        <div className="h-2 overflow-hidden bg-muted">
-          <div
-            className="h-full bg-primary transition-[width]"
-            style={{ width }}
-          />
-        </div>
+        <AutoTransition
+          initial={false}
+          transitionKey={loading ? "loading" : width}
+          duration={0.18}
+          type="fade"
+          presenceMode="wait"
+          className="h-2"
+        >
+          {loading ? (
+            <Skeleton key="loading" className="h-2 w-full" />
+          ) : (
+            <div key="ready" className="h-2 overflow-hidden bg-muted">
+              <div
+                className="h-full bg-primary transition-[width]"
+                style={{ width }}
+              />
+            </div>
+          )}
+        </AutoTransition>
       </div>
       <div className="grid min-w-0 grid-cols-2 gap-3 text-xs">
         <div>
           <p className="text-muted-foreground">{labels.sessions}</p>
-          <p className="mt-1 font-mono">
-            {numberFormat(locale, step.sessions)}
-          </p>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : step.sessions}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="mt-1 h-4"
+          >
+            {loading ? (
+              <Skeleton key="loading" className="h-4 w-14" />
+            ) : (
+              <p key="ready" className="font-mono">
+                {numberFormat(locale, step.sessions)}
+              </p>
+            )}
+          </AutoTransition>
         </div>
         <div>
           <p className="text-muted-foreground">{labels.visitors}</p>
-          <p className="mt-1 font-mono">
-            {numberFormat(locale, step.visitors)}
-          </p>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : step.visitors}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="mt-1 h-4"
+          >
+            {loading ? (
+              <Skeleton key="loading" className="h-4 w-14" />
+            ) : (
+              <p key="ready" className="font-mono">
+                {numberFormat(locale, step.visitors)}
+              </p>
+            )}
+          </AutoTransition>
         </div>
       </div>
       <div className="grid min-w-0 grid-cols-2 gap-3 text-xs">
         <div>
           <p className="text-muted-foreground">{labels.stepConversion}</p>
-          <p className="mt-1 font-mono">
-            {percentFormat(locale, step.stepConversionRate)}
-          </p>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : step.stepConversionRate}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="mt-1 h-4"
+          >
+            {loading ? (
+              <Skeleton key="loading" className="h-4 w-14" />
+            ) : (
+              <p key="ready" className="font-mono">
+                {percentFormat(locale, step.stepConversionRate)}
+              </p>
+            )}
+          </AutoTransition>
         </div>
         <div>
           <p className="text-muted-foreground">{labels.dropOff}</p>
-          <p className="mt-1 font-mono">
-            {numberFormat(locale, step.dropOffSessions)}
-          </p>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : step.dropOffSessions}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="mt-1 h-4"
+          >
+            {loading ? (
+              <Skeleton key="loading" className="h-4 w-14" />
+            ) : (
+              <p key="ready" className="font-mono">
+                {numberFormat(locale, step.dropOffSessions)}
+              </p>
+            )}
+          </AutoTransition>
         </div>
       </div>
     </div>
   );
 }
 
-function FunnelDetailLoading({ labels }: { labels: FunnelCopy }) {
-  return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div className="space-y-2">
-        <Skeleton className="h-5 w-56" />
-        <Skeleton className="h-3 w-80 max-w-full" />
-      </div>
-      <Card className="min-w-0 py-0">
-        <CardContent className="p-0">
-          <div className="grid gap-px overflow-hidden bg-border/70 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }, (_, index) => (
-              <div key={index} className="bg-card p-4">
-                <Skeleton className="h-3 w-24" />
-                <Skeleton className="mt-3 h-7 w-20" />
-                <Skeleton className="mt-3 h-3 w-32" />
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle className="inline-flex items-center gap-2">
-            <RiArrowRightLine className="size-4" />
-            {labels.step}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-16 w-full" />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
+function createFunnelDetailPlaceholder(
+  siteId: string,
+  funnelId: string,
+): FunnelDetailData {
+  const steps: FunnelStep[] = [
+    { type: "pageview", value: "" },
+    { type: "event", value: "" },
+    { type: "event", value: "" },
+    { type: "pageview", value: "" },
+  ];
+
+  return {
+    ok: true,
+    data: {
+      funnel: {
+        id: funnelId,
+        siteId,
+        name: "",
+        steps,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      analysis: {
+        steps: steps.map((step, index) => ({
+          index,
+          label: step.value,
+          type: step.type,
+          sessions: 0,
+          visitors: 0,
+          conversionRate: 0,
+          stepConversionRate: 0,
+          dropOffSessions: 0,
+          dropOffRate: 0,
+        })),
+        summary: {
+          totalSessions: 0,
+          convertedSessions: 0,
+          totalVisitors: 0,
+          convertedVisitors: 0,
+          overallConversionRate: 0,
+          largestDropOffStepIndex: null,
+        },
+      },
+    },
+  };
 }
 
 function FunnelDetailContent({
@@ -637,13 +784,15 @@ function FunnelDetailContent({
   labels,
   payload,
   onDelete,
+  loading = false,
 }: {
   locale: Locale;
   labels: FunnelCopy;
   payload: FunnelDetailData;
   onDelete: (funnel: FunnelDefinition) => void;
+  loading?: boolean;
 }) {
-  const { funnel, analysis } = payload;
+  const { funnel, analysis } = payload.data;
   const largestDropOffStep =
     analysis.summary.largestDropOffStepIndex === null
       ? null
@@ -654,19 +803,61 @@ function FunnelDetailContent({
       <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0 space-y-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h2 className="truncate text-xl font-semibold">{funnel.name}</h2>
-            <Badge variant="outline">
-              {numberFormat(locale, funnel.steps.length)}
-            </Badge>
+            <AutoTransition
+              initial={false}
+              transitionKey={loading ? "loading" : funnel.name}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              className="h-7 min-w-0 flex-1"
+            >
+              {loading ? (
+                <Skeleton key="loading" className="h-7 w-56 max-w-full" />
+              ) : (
+                <h2 key="ready" className="truncate text-xl font-semibold">
+                  {funnel.name}
+                </h2>
+              )}
+            </AutoTransition>
+            <AutoTransition
+              initial={false}
+              transitionKey={loading ? "loading" : funnel.steps.length}
+              duration={0.18}
+              type="fade"
+              presenceMode="wait"
+              className="h-5"
+            >
+              {loading ? (
+                <Skeleton key="loading" className="h-5 w-8 rounded-full" />
+              ) : (
+                <Badge key="ready" variant="outline">
+                  {numberFormat(locale, funnel.steps.length)}
+                </Badge>
+              )}
+            </AutoTransition>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {updatedLabel(locale, labels, funnel.updatedAt)}
-          </p>
+          <AutoTransition
+            initial={false}
+            transitionKey={loading ? "loading" : funnel.updatedAt}
+            duration={0.18}
+            type="fade"
+            presenceMode="wait"
+            className="h-5"
+          >
+            {loading ? (
+              <Skeleton key="loading" className="h-4 w-44" />
+            ) : (
+              <p key="ready" className="text-sm text-muted-foreground">
+                {updatedLabel(locale, labels, funnel.updatedAt)}
+              </p>
+            )}
+          </AutoTransition>
         </div>
         <Button
           type="button"
           variant="destructive"
           className="w-full sm:w-auto md:justify-self-end"
+          disabled={loading}
           onClick={() => onDelete(funnel)}
         >
           <RiDeleteBinLine />
@@ -687,16 +878,19 @@ function FunnelDetailContent({
                 locale,
                 analysis.summary.totalSessions,
               )} ${labels.sessions}`}
+              loading={loading}
             />
             <FunnelMetric
               label={labels.startedSessions}
               value={numberFormat(locale, analysis.summary.totalSessions)}
               detail={numberFormat(locale, analysis.summary.totalVisitors)}
+              loading={loading}
             />
             <FunnelMetric
               label={labels.convertedSessions}
               value={numberFormat(locale, analysis.summary.convertedSessions)}
               detail={`${numberFormat(locale, analysis.summary.convertedVisitors)} ${labels.convertedVisitors}`}
+              loading={loading}
             />
             <FunnelMetric
               label={labels.largestDropOff}
@@ -713,6 +907,7 @@ function FunnelDetailContent({
                     )}`
                   : labels.noDropOff
               }
+              loading={loading}
             />
           </div>
         </CardContent>
@@ -733,6 +928,7 @@ function FunnelDetailContent({
               locale={locale}
               labels={labels}
               step={step}
+              loading={loading}
             />
           ))}
         </CardContent>
@@ -756,49 +952,32 @@ function FunnelDetailDrawer({
 }) {
   const labels = messages.funnels;
   const { filters, window: timeWindow } = useDashboardQuery() as {
-    filters: DashboardFilters;
+    filters: FilterDocument;
     window: TimeWindow;
   };
-  const [payload, setPayload] = useState<FunnelDetailData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const {
+    data: payload,
+    isError: error,
+    isPending,
+  } = useQuery({
+    queryKey: [
+      "dashboard",
+      "funnel-detail",
+      siteId,
+      funnelId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: ({ signal }) =>
+      fetchFunnelDetail(siteId, funnelId, timeWindow, filters, { signal }),
+    enabled: typeof window !== "undefined" && Boolean(funnelId),
+  });
+  const loading = isPending && !payload;
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(false);
-
-    fetchFunnelDetail(siteId, funnelId, timeWindow, filters)
-      .then((data) => {
-        if (cancelled) return;
-        setPayload(data);
-        setError(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPayload(null);
-        setError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    filters,
-    filtersKey,
-    funnelId,
-    siteId,
-    timeWindow.from,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
-
-  if (loading) return <FunnelDetailLoading labels={labels} />;
-  if (error || !payload) {
+  if (error && !payload) {
     return (
       <div className="p-4 md:p-6">
         <FunnelStateCard
@@ -813,8 +992,9 @@ function FunnelDetailDrawer({
     <FunnelDetailContent
       locale={locale}
       labels={labels}
-      payload={payload}
+      payload={payload ?? createFunnelDetailPlaceholder(siteId, funnelId)}
       onDelete={onDelete}
+      loading={loading}
     />
   );
 }
@@ -827,80 +1007,65 @@ export function FunnelsClientPage({
 }: FunnelsClientPageProps) {
   const labels = messages.funnels;
   const { filters, window: timeWindow } = useDashboardQuery() as {
-    filters: DashboardFilters;
+    filters: FilterDocument;
     window: TimeWindow;
   };
   const searchParams = useLiveSearchParams();
   const detailFunnelId = searchParams.get(DETAIL_QUERY_PARAM)?.trim() || "";
   const openedDetailFromListRef = useRef(false);
-  const [funnels, setFunnels] = useState<FunnelDefinition[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<FunnelDefinition | null>(
     null,
   );
   const [deleting, setDeleting] = useState(false);
-  const [candidates, setCandidates] =
-    useState<FunnelCandidateState>(emptyCandidates);
   const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-
-  const loadFunnels = useCallback(async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const payload = await fetchFunnels(siteId);
-      setFunnels(payload.funnels);
-    } catch {
-      setFunnels([]);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [siteId]);
-
-  useEffect(() => {
-    void loadFunnels();
-  }, [loadFunnels]);
+  const funnelsQueryKey = useMemo(
+    () => ["dashboard", "funnels", siteId] as const,
+    [siteId],
+  );
+  const {
+    data: funnelsData,
+    isError: error,
+    isPending: loading,
+  } = useQuery({
+    queryKey: funnelsQueryKey,
+    queryFn: ({ signal }) => fetchFunnels(siteId, { signal }),
+    enabled: typeof window !== "undefined",
+  });
+  const funnels = funnelsData?.data?.funnels ?? [];
 
   useEffect(() => {
     if (!detailFunnelId) openedDetailFromListRef.current = false;
   }, [detailFunnelId]);
 
-  useEffect(() => {
-    if (!createOpen) return;
-    let cancelled = false;
-
-    void Promise.all([
-      fetchOverviewPageCardTab(siteId, timeWindow, "path", filters, {
-        limit: 100,
-      }),
-      fetchEventTypesTab(siteId, timeWindow, filters, { limit: 100 }),
-    ])
-      .then(([pageviews, events]) => {
-        if (cancelled) return;
-        setCandidates({
-          pageviews: pageviews.map((row) => row.label).filter(Boolean),
-          events: events.map((row) => row.label).filter(Boolean),
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setCandidates(emptyCandidates());
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    createOpen,
-    filters,
-    filtersKey,
-    siteId,
-    timeWindow.from,
-    timeWindow.timeZone,
-    timeWindow.to,
-  ]);
+  const candidatesQuery = useQuery({
+    queryKey: [
+      "dashboard",
+      "funnel-candidates",
+      siteId,
+      timeWindow.from,
+      timeWindow.to,
+      timeWindow.timeZone,
+      filtersKey,
+    ],
+    queryFn: async ({ signal }) => {
+      const [pageviews, events] = await Promise.all([
+        fetchOverviewPageCardTab(siteId, timeWindow, "path", filters, {
+          limit: 100,
+          signal,
+        }),
+        fetchEventTypesTab(siteId, timeWindow, filters, { limit: 100, signal }),
+      ]);
+      return {
+        pageviews: pageviews.map((row) => row.label).filter(Boolean),
+        events: events.map((row) => row.label).filter(Boolean),
+      };
+    },
+    enabled: typeof window !== "undefined" && createOpen,
+  });
+  const candidates = candidatesQuery.data ?? emptyCandidates();
 
   const openFunnelDetail = useCallback(
     (funnelId: string) => {
@@ -923,7 +1088,7 @@ export function FunnelsClientPage({
     }
 
     params.delete(DETAIL_QUERY_PARAM);
-    const query = params.toString();
+    const query = serializeDashboardSearchParams(params);
     replaceUrlWithoutNavigation(query ? `${pathname}?${query}` : pathname);
   }, [pathname]);
 
@@ -932,10 +1097,18 @@ export function FunnelsClientPage({
       setCreating(true);
       try {
         const payload = await createFunnel(siteId, name, steps);
-        setFunnels((current) => [payload.funnel, ...current]);
+        queryClient.setQueryData<FunnelListData>(
+          funnelsQueryKey,
+          (current) => ({
+            ok: true,
+            data: {
+              funnels: [payload.data.funnel, ...(current?.data?.funnels ?? [])],
+            },
+          }),
+        );
         setCreateOpen(false);
         toast.success(labels.created);
-        openFunnelDetail(payload.funnel.id);
+        openFunnelDetail(payload.data.funnel.id);
       } catch (error) {
         const message =
           error instanceof Error && error.message
@@ -946,7 +1119,14 @@ export function FunnelsClientPage({
         setCreating(false);
       }
     },
-    [labels.createFailed, labels.created, openFunnelDetail, siteId],
+    [
+      funnelsQueryKey,
+      labels.createFailed,
+      labels.created,
+      openFunnelDetail,
+      queryClient,
+      siteId,
+    ],
   );
 
   const handleDelete = useCallback(async () => {
@@ -955,8 +1135,17 @@ export function FunnelsClientPage({
     setDeleting(true);
     try {
       await deleteFunnel(siteId, target.id);
-      setFunnels((current) =>
-        current.filter((funnel) => funnel.id !== target.id),
+      queryClient.setQueryData<FunnelListData>(funnelsQueryKey, (current) =>
+        current
+          ? {
+              ...current,
+              data: {
+                funnels: current.data.funnels.filter(
+                  (funnel) => funnel.id !== target.id,
+                ),
+              },
+            }
+          : current,
       );
       if (detailFunnelId === target.id) closeFunnelDetail();
       setDeleteTarget(null);
@@ -974,8 +1163,10 @@ export function FunnelsClientPage({
     closeFunnelDetail,
     deleteTarget,
     detailFunnelId,
+    funnelsQueryKey,
     labels.deleteFailed,
     labels.deleted,
+    queryClient,
     siteId,
   ]);
 

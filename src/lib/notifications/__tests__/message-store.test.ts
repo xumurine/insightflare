@@ -105,7 +105,9 @@ describe("notification message store", () => {
   });
 
   it("creates messages with defaults, truncation, and sent timestamps", async () => {
-    vi.spyOn(crypto, "randomUUID").mockReturnValue("msg-new");
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "msg-new" as ReturnType<Crypto["randomUUID"]>,
+    );
     const inserted: unknown[][] = [];
     const env = {
       DB: {
@@ -184,7 +186,9 @@ describe("notification message store", () => {
   });
 
   it("creates failed messages with explicit optional fields and attention override", async () => {
-    vi.spyOn(crypto, "randomUUID").mockReturnValue("msg-failed");
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "msg-failed" as ReturnType<Crypto["randomUUID"]>,
+    );
     const inserted: unknown[][] = [];
     const env = {
       DB: {

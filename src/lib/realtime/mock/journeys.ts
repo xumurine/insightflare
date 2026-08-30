@@ -180,7 +180,6 @@ import {
 } from "@/lib/realtime/mock/site-curves";
 import type {
   DemoDimensionRow,
-  DemoEventPayloadFilterRule,
   DemoFactDataset,
   DemoFilteredFacts,
   DemoQueryFilters,
@@ -190,8 +189,6 @@ import type {
   ParsedDemoGeoFilter,
 } from "@/lib/realtime/mock/types";
 import {
-  DEMO_EMPTY_HASH_VALUE,
-  DEMO_EMPTY_QUERY_VALUE,
   demoHashFragmentForVisit,
   demoOperatingSystemLabel,
   demoQueryStringForVisit,
@@ -200,18 +197,88 @@ import {
 import {
   getVisitorFingerprint,
   sampleActiveVisitors,
+  visitorIndexFromId,
 } from "@/lib/realtime/mock/visitor-pool";
+
+function isDemoVisitorIdForSite(siteId: string, visitorId: string): boolean {
+  const normalizedSiteId = siteId.trim();
+  const normalizedVisitorId = visitorId.trim();
+  if (!normalizedSiteId || !normalizedVisitorId) return false;
+  if (!normalizedVisitorId.startsWith(`v-${normalizedSiteId.slice(-3)}-`)) {
+    return false;
+  }
+  return Number.isFinite(visitorIndexFromId(normalizedVisitorId));
+}
+
+function fallbackDemoSessionId(siteId: string, visitorId: string): string {
+  return `${siteId}-demo-${visitorId}`;
+}
+
+function fallbackDemoVisitorId(
+  siteId: string,
+  sessionId: string,
+): string | null {
+  const prefix = `${siteId}-demo-`;
+  const visitorId = sessionId.startsWith(prefix)
+    ? sessionId.slice(prefix.length).trim()
+    : "";
+  return isDemoVisitorIdForSite(siteId, visitorId) ? visitorId : null;
+}
+
+function createFallbackDemoVisit(
+  siteId: string,
+  visitorId: string,
+  from: number,
+  to: number,
+  sessionId = fallbackDemoSessionId(siteId, visitorId),
+): DemoVisitFact {
+  const profile = findSiteProfile(siteId);
+  const fingerprint = getVisitorFingerprint(siteId, visitorId);
+  const pathname = normalizePath(profile.paths[0] || "/") || "/";
+  const title = profile.titles[0]?.trim() || titleFromPath(pathname);
+  const startedAt = Math.max(from, Math.min(to - 1, Date.now() - 30_000));
+
+  return {
+    visitId: `${sessionId}-v-000`,
+    sessionId,
+    visitorId,
+    startedAt,
+    pathname,
+    title,
+    hostname: profile.domain,
+    referrerHost: "",
+    referrerUrl: "",
+    browser: fingerprint.browser,
+    browserVersion: fingerprint.browserVersion,
+    osVersion: fingerprint.osVersion,
+    deviceType: fingerprint.deviceType,
+    language: fingerprint.language,
+    screenSize: fingerprint.screenSize,
+    country: fingerprint.country,
+    regionCode: fingerprint.regionCode,
+    regionName: fingerprint.regionName,
+    region: fingerprint.region,
+    cityName: fingerprint.cityName,
+    city: fingerprint.city,
+    continent: fingerprint.continent,
+    timezone: fingerprint.timezone,
+    organization: fingerprint.organization,
+    latitude: fingerprint.latitude,
+    longitude: fingerprint.longitude,
+    eventType: profile.eventNames[0] || "pageview",
+    durationMs: 30_000,
+  };
+}
 
 export function generateDemoVisitors(
   siteId: string,
   params: Record<string, string | number>,
 ): Record<string, unknown> {
-  const paged = params.page !== undefined || params.pageSize !== undefined;
-  const page = paged ? parseDemoLimit(params.page, 1, 1, 10_000) : 1;
+  const paged = params.cursor !== undefined || params.pageSize !== undefined;
   const pageSize = paged
     ? parseDemoLimit(params.pageSize, 80, 1, 120)
     : parseDemoLimit(params.limit, 100, 1, 500);
-  const offset = paged ? (page - 1) * pageSize : 0;
+  const offset = paged ? parseDemoLimit(params.cursor, 0, 0, 1_000_000) : 0;
   const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const filters = parseDemoFilters(params);
@@ -309,11 +376,10 @@ export function generateDemoVisitors(
     ok: true,
     data: rows,
     meta: {
-      page,
       pageSize,
       returned: rows.length,
       hasMore,
-      nextPage: hasMore ? page + 1 : null,
+      nextCursor: hasMore ? String(offset + pageSize) : null,
     },
   };
 }
@@ -322,12 +388,11 @@ export function generateDemoSessions(
   siteId: string,
   params: Record<string, string | number>,
 ): Record<string, unknown> {
-  const paged = params.page !== undefined || params.pageSize !== undefined;
-  const page = paged ? parseDemoLimit(params.page, 1, 1, 10_000) : 1;
+  const paged = params.cursor !== undefined || params.pageSize !== undefined;
   const pageSize = paged
     ? parseDemoLimit(params.pageSize, 80, 1, 120)
     : parseDemoLimit(params.limit, 100, 1, 500);
-  const offset = paged ? (page - 1) * pageSize : 0;
+  const offset = paged ? parseDemoLimit(params.cursor, 0, 0, 1_000_000) : 0;
   const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
   const to = parseDemoNumber(params.to, Date.now());
   const filters = parseDemoFilters(params);
@@ -368,11 +433,10 @@ export function generateDemoSessions(
     ok: true,
     data: rows,
     meta: {
-      page,
       pageSize,
       returned: rows.length,
       hasMore,
-      nextPage: hasMore ? page + 1 : null,
+      nextCursor: hasMore ? String(offset + pageSize) : null,
     },
   };
 }
@@ -392,9 +456,15 @@ export function generateDemoVisitorDetail(
   const visits = filtered.visits.filter(
     (visit) => visit.visitorId === visitorId,
   );
-  if (visits.length === 0) return { ok: true, data: null };
+  const detailVisits =
+    visits.length > 0
+      ? visits
+      : isDemoVisitorIdForSite(siteId, visitorId)
+        ? [createFallbackDemoVisit(siteId, visitorId, from, to)]
+        : [];
+  if (detailVisits.length === 0) return { ok: true, data: null };
 
-  const sessions = Array.from(demoVisitsBySession(visits).entries())
+  const sessions = Array.from(demoVisitsBySession(detailVisits).entries())
     .map(([sessionId, sessionVisits]) =>
       createDemoJourneySession(sessionId, sessionVisits),
     )
@@ -403,18 +473,22 @@ export function generateDemoVisitorDetail(
       (left, right) =>
         Number(right.startedAt ?? 0) - Number(left.startedAt ?? 0),
     );
-  const events = createDemoJourneyEvents(visits, { includeSessionStart: true });
+  const events = createDemoJourneyEvents(detailVisits, {
+    includeSessionStart: true,
+  });
   const customEventCount = events.filter(
     (event) => event.kind === "custom",
   ).length;
   const latest =
-    [...visits].sort((left, right) => right.startedAt - left.startedAt)[0] ??
-    visits[0];
+    [...detailVisits].sort(
+      (left, right) => right.startedAt - left.startedAt,
+    )[0] ?? detailVisits[0];
   const earliest =
-    [...visits].sort((left, right) => left.startedAt - right.startedAt)[0] ??
-    visits[0];
-  const firstSeenAt = Math.min(...visits.map((visit) => visit.startedAt));
-  const lastSeenAt = Math.max(...visits.map((visit) => visit.startedAt));
+    [...detailVisits].sort(
+      (left, right) => left.startedAt - right.startedAt,
+    )[0] ?? detailVisits[0];
+  const firstSeenAt = Math.min(...detailVisits.map((visit) => visit.startedAt));
+  const lastSeenAt = Math.max(...detailVisits.map((visit) => visit.startedAt));
   const screen = parseDemoScreenSize(latest.screenSize);
   const durationValues = sessions.map((session) =>
     Number(session.durationMs ?? 0),
@@ -430,7 +504,7 @@ export function generateDemoVisitorDetail(
     visitorId,
     firstSeenAt,
     lastSeenAt,
-    views: visits.length,
+    views: detailVisits.length,
     sessions: sessions.length,
     events: customEventCount,
     country: latest.country,
@@ -454,7 +528,7 @@ export function generateDemoVisitorDetail(
       metrics: {
         totalEvents: customEventCount,
         sessions: sessions.length,
-        views: visits.length,
+        views: detailVisits.length,
         avgEventsPerSession:
           sessions.length > 0 ? customEventCount / sessions.length : 0,
         bounceRate:
@@ -478,7 +552,7 @@ export function generateDemoVisitorDetail(
       visitedPages: summarizeDemoVisitedPages(events),
       eventDistribution: summarizeDemoEventDistribution(events),
       activity: summarizeDemoActivity(events, timeZone),
-      performance: summarizeDemoJourneyPerformance(siteId, visits),
+      performance: summarizeDemoJourneyPerformance(siteId, detailVisits),
     },
   };
 }
@@ -497,13 +571,29 @@ export function generateDemoSessionDetail(
   const visits = filtered.visits.filter(
     (visit) => visit.sessionId === sessionId,
   );
-  const session = createDemoJourneySession(sessionId, visits);
+  const fallbackVisitorId =
+    visits.length === 0 ? fallbackDemoVisitorId(siteId, sessionId) : null;
+  const detailVisits =
+    visits.length > 0
+      ? visits
+      : fallbackVisitorId
+        ? [
+            createFallbackDemoVisit(
+              siteId,
+              fallbackVisitorId,
+              from,
+              to,
+              sessionId,
+            ),
+          ]
+        : [];
+  const session = createDemoJourneySession(sessionId, detailVisits);
   if (!session) return { ok: true, data: null };
-  const events = createDemoJourneyEvents(visits, {
+  const events = createDemoJourneyEvents(detailVisits, {
     includeSessionStart: true,
     includeSessionEnd: true,
   });
-  const locationPoints = createDemoJourneyLocationPoints(visits);
+  const locationPoints = createDemoJourneyLocationPoints(detailVisits);
 
   return {
     ok: true,
@@ -513,7 +603,256 @@ export function generateDemoSessionDetail(
       events,
       visitedPages: summarizeDemoVisitedPages(events),
       eventDistribution: summarizeDemoEventDistribution(events),
-      performance: summarizeDemoJourneyPerformance(siteId, visits),
+      performance: summarizeDemoJourneyPerformance(siteId, detailVisits),
+    },
+  };
+}
+
+const DEMO_EU_COUNTRIES = new Set([
+  "AT",
+  "BE",
+  "BG",
+  "HR",
+  "CY",
+  "CZ",
+  "DE",
+  "DK",
+  "EE",
+  "ES",
+  "FI",
+  "FR",
+  "GR",
+  "HU",
+  "IE",
+  "IT",
+  "LT",
+  "LU",
+  "LV",
+  "MT",
+  "NL",
+  "PL",
+  "PT",
+  "RO",
+  "SE",
+  "SI",
+  "SK",
+]);
+
+type DemoStandardJourneyEventKind = "pageview" | "session_start" | "leave";
+
+function demoStandardEventKind(
+  value: string,
+): DemoStandardJourneyEventKind | null {
+  return value === "pageview" || value === "session_start" || value === "leave"
+    ? value
+    : null;
+}
+
+function demoVisitPerformance(visit: DemoVisitFact) {
+  return {
+    ttfb: Math.max(45, Math.round(80 + visit.durationMs * 0.02)),
+    fcp: Math.max(120, Math.round(260 + visit.durationMs * 0.03)),
+    lcp: Math.max(280, Math.round(620 + visit.durationMs * 0.05)),
+    cls: Number((0.02 + (visit.durationMs % 17) / 1000).toFixed(3)),
+    inp: Math.max(35, Math.round(110 + visit.durationMs * 0.01)),
+  };
+}
+
+/**
+ * Resolves the standard JourneyEvent detail used by the session and visitor
+ * drawers. It intentionally shares the journey-event fixtures and never
+ * includes custom-event payload data.
+ */
+export function generateDemoJourneyEventDetail(
+  siteId: string,
+  params: Record<string, string | number>,
+): Record<string, unknown> {
+  const eventId = String(params.eventId ?? "").trim();
+  if (!eventId) return { ok: true, data: null };
+
+  const rawEventKind = String(params.eventKind ?? "").trim();
+  const eventKind = rawEventKind
+    ? demoStandardEventKind(rawEventKind)
+    : undefined;
+  if (rawEventKind && !eventKind) return { ok: true, data: null };
+
+  const from = parseDemoNumber(params.from, Date.now() - 7 * 24 * 3600 * 1000);
+  const to = parseDemoNumber(params.to, Date.now());
+  const filters = parseDemoFilters(params);
+  const dataset = buildDemoFactDataset(siteId, from, to);
+  const filtered = applyDemoFilters(dataset, filters);
+  const requestedSessionId = String(params.sessionId ?? "").trim();
+  const sessionVisits = requestedSessionId
+    ? filtered.visits.filter((visit) => visit.sessionId === requestedSessionId)
+    : filtered.visits;
+  const detailVisits =
+    requestedSessionId && sessionVisits.length === 0
+      ? (() => {
+          const fallbackVisitorId = fallbackDemoVisitorId(
+            siteId,
+            requestedSessionId,
+          );
+          return fallbackVisitorId
+            ? [
+                createFallbackDemoVisit(
+                  siteId,
+                  fallbackVisitorId,
+                  from,
+                  to,
+                  requestedSessionId,
+                ),
+              ]
+            : [];
+        })()
+      : sessionVisits;
+  const events = createDemoJourneyEvents(detailVisits, {
+    includeSessionStart: true,
+    includeSessionEnd: true,
+  });
+  const event = events.find(
+    (candidate) =>
+      String(candidate.id ?? "") === eventId &&
+      (eventKind === undefined || candidate.kind === eventKind),
+  );
+  if (!event) return { ok: true, data: null };
+  const occurredAt = Number(event.occurredAt ?? 0);
+  if (!Number.isFinite(occurredAt) || occurredAt < from || occurredAt >= to) {
+    return { ok: true, data: null };
+  }
+
+  const resolvedSessionId = String(event.sessionId ?? "");
+  const resolvedSessionVisits = detailVisits.filter(
+    (visit) => visit.sessionId === resolvedSessionId,
+  );
+  const session = createDemoJourneySession(
+    resolvedSessionId,
+    resolvedSessionVisits,
+  ) as Record<string, unknown>;
+  const orderedVisits = [...resolvedSessionVisits].sort(
+    (left, right) =>
+      left.startedAt - right.startedAt ||
+      left.visitId.localeCompare(right.visitId),
+  );
+  const sourceVisit =
+    resolvedSessionVisits.find(
+      (visit) => visit.visitId === String(event.visitId ?? ""),
+    ) ?? (event.kind === "leave" ? orderedVisits.at(-1) : orderedVisits[0]);
+  const resolvedSourceVisit = sourceVisit as DemoVisitFact;
+  const previousVisit =
+    event.kind === "pageview"
+      ? (orderedVisits
+          .filter(
+            (visit) =>
+              visit.startedAt < resolvedSourceVisit.startedAt ||
+              (visit.startedAt === resolvedSourceVisit.startedAt &&
+                visit.visitId < resolvedSourceVisit.visitId),
+          )
+          .at(-1) ?? null)
+      : null;
+  const screen = parseDemoScreenSize(resolvedSourceVisit.screenSize);
+  const sourceEndedAt =
+    resolvedSourceVisit.startedAt + Math.max(0, resolvedSourceVisit.durationMs);
+  const isBoundaryEvent = event.kind !== "pageview";
+  const startedAt = isBoundaryEvent
+    ? Number(session.startedAt)
+    : resolvedSourceVisit.startedAt;
+  const lastActivityAt = isBoundaryEvent
+    ? Number(session.endedAt)
+    : sourceEndedAt;
+  const durationMs = isBoundaryEvent
+    ? Number(session.durationMs)
+    : Math.max(0, resolvedSourceVisit.durationMs);
+  const visitorId = String(event.visitorId ?? "");
+  const country = String(event.country ?? "");
+  const queryString = demoQueryStringForVisit(resolvedSourceVisit);
+  const hash = demoHashFragmentForVisit(resolvedSourceVisit);
+
+  return {
+    ok: true,
+    data: {
+      event: {
+        eventId,
+        eventName: String(event.eventType ?? ""),
+        eventKind: String(event.kind ?? "pageview"),
+        occurredAt,
+        receivedAt: occurredAt,
+        sequence: 0,
+        visitId: String(event.visitId ?? ""),
+        sessionId: resolvedSessionId,
+        visitorId,
+        pathname: String(event.pathname ?? ""),
+        title: String(event.title ?? ""),
+        hostname: String(event.hostname ?? ""),
+        referrerHost: String(event.referrerHost ?? ""),
+        country,
+        region: String(event.region ?? ""),
+        browser: String(event.browser ?? ""),
+        browserVersion: String(event.browserVersion ?? ""),
+        os: String(event.os ?? ""),
+        osVersion: String(event.osVersion ?? ""),
+        deviceType: String(event.deviceType ?? ""),
+        nodeCount: 0,
+        valueCount: 0,
+      },
+      context: {
+        visitId: String(event.visitId ?? ""),
+        sessionId: resolvedSessionId,
+        visitorId,
+        userId: visitorId ? `demo-user-${visitorId}` : "",
+        userName: visitorId
+          ? `Demo visitor ${visitorId.slice(-6).toUpperCase()}`
+          : "",
+        pathname: String(event.pathname ?? ""),
+        queryString,
+        hash,
+        title: String(event.title ?? ""),
+        hostname: String(event.hostname ?? ""),
+        referrerUrl: String(event.referrerUrl ?? ""),
+        referrerHost: String(event.referrerHost ?? ""),
+        utmSource: resolvedSourceVisit.utmSource ?? "",
+        utmMedium: resolvedSourceVisit.utmMedium ?? "",
+        utmCampaign: resolvedSourceVisit.utmCampaign ?? "",
+        utmTerm: "",
+        utmContent: "",
+        isEU: DEMO_EU_COUNTRIES.has(country.trim().toUpperCase()),
+        country,
+        region: String(event.region ?? ""),
+        regionCode: resolvedSourceVisit.regionCode,
+        city: String(event.city ?? ""),
+        continent: resolvedSourceVisit.continent,
+        latitude: resolvedSourceVisit.latitude,
+        longitude: resolvedSourceVisit.longitude,
+        postalCode: `${resolvedSourceVisit.country}-${resolvedSourceVisit.regionCode || "global"}`,
+        metroCode: `${resolvedSourceVisit.country}-${resolvedSourceVisit.regionCode || "global"}`,
+        timezone: resolvedSourceVisit.timezone,
+        organization: resolvedSourceVisit.organization,
+        browser: String(event.browser ?? ""),
+        browserVersion: String(event.browserVersion ?? ""),
+        os: String(event.os ?? ""),
+        osVersion: String(event.osVersion ?? ""),
+        deviceType: String(event.deviceType ?? ""),
+        userAgent: `Mozilla/5.0 (${event.os}; ${event.deviceType}) AppleWebKit/537.36 ${event.browser}/${event.browserVersion}`,
+        language: resolvedSourceVisit.language,
+        screenWidth: screen.screenWidth,
+        screenHeight: screen.screenHeight,
+        status: isBoundaryEvent
+          ? session.active
+            ? "open"
+            : "complete"
+          : "completed",
+        startedAt,
+        previousVisitId: previousVisit?.visitId ?? "",
+        previousVisitStartedAt: previousVisit?.startedAt ?? null,
+        lastActivityAt,
+        endedAt: isBoundaryEvent ? lastActivityAt : sourceEndedAt,
+        finalizedAt: isBoundaryEvent ? null : sourceEndedAt + 80,
+        durationMs,
+        durationSource: isBoundaryEvent ? "" : "mock",
+        exitReason: isBoundaryEvent ? "" : "navigation",
+        performance: isBoundaryEvent
+          ? { ttfb: null, fcp: null, lcp: null, cls: null, inp: null }
+          : demoVisitPerformance(resolvedSourceVisit),
+      },
     },
   };
 }

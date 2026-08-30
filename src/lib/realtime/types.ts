@@ -1,72 +1,24 @@
+import type {
+  RealtimeEvent as RealtimeEntityEvent,
+  RealtimeEventKind as RealtimeEntityEventKind,
+  RealtimeSnapshotData as RealtimeEntitySnapshotData,
+  RealtimeVisit as RealtimeEntityVisit,
+} from "@/schemas/realtime";
+
 export type RealtimeConnectionState =
   | "connecting"
   | "connected"
   | "disconnected"
   | "failed";
 
-export interface RealtimeEvent {
-  id: string;
-  eventType: string;
-  eventAt: number;
-  visitId: string;
-  sessionId: string;
-  pathname: string;
-  hash: string;
-  title: string;
-  hostname: string;
-  referrerUrl: string;
-  referrerHost: string;
-  visitorId: string;
-  country: string;
-  region: string;
-  regionCode: string;
-  city: string;
-  continent: string;
-  timezone: string;
-  organization: string;
-  browser: string;
-  osVersion: string;
-  deviceType: string;
-  language: string;
-  screenSize: string;
-  latitude: number | null;
-  longitude: number | null;
-}
+export type RealtimeEventKind = RealtimeEntityEventKind;
+export type RealtimeEvent = RealtimeEntityEvent;
+export type RealtimeVisit = RealtimeEntityVisit;
 
-export interface RealtimeVisit {
-  visitId: string;
-  visitorId: string;
-  sessionId: string;
-  startedAt: number;
-  lastActivityAt: number;
-  pathname: string;
-  hash: string;
-  title: string;
-  hostname: string;
-  referrerUrl: string;
-  referrerHost: string;
-  country: string;
-  region: string;
-  regionCode: string;
-  city: string;
-  continent: string;
-  timezone: string;
-  organization: string;
-  browser: string;
-  osVersion: string;
-  deviceType: string;
-  language: string;
-  screenSize: string;
-  latitude: number | null;
-  longitude: number | null;
-}
-
-export interface RealtimeSnapshot {
+export type RealtimeSnapshot = Omit<RealtimeEntitySnapshotData, "activeNow"> & {
   activeNow: number | null;
-  events: RealtimeEvent[];
   points: RealtimeVisitorPoint[];
-  visits: RealtimeVisit[];
-}
+};
 
 export interface RealtimeVisitorPoint {
   visitorId: string;

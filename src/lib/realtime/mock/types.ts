@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 export interface DemoQueryFilters {
+  filterDocument?: FilterDocument;
   country?: string;
   device?: string;
   browser?: string;
@@ -18,6 +19,7 @@ export interface DemoQueryFilters {
   exit?: string;
   sourceDomain?: string;
   sourceLink?: string;
+  channel?: string;
   clientBrowser?: string;
   clientOsVersion?: string;
   clientDeviceType?: string;
@@ -27,13 +29,6 @@ export interface DemoQueryFilters {
   geoContinent?: string;
   geoTimezone?: string;
   geoOrganization?: string;
-  eventPayloadFilters?: DemoEventPayloadFilterRule[];
-}
-
-export interface DemoEventPayloadFilterRule {
-  path: string;
-  operator: "eq" | "ne";
-  value: string | number | boolean | null;
 }
 
 export interface ParsedDemoGeoFilter {
@@ -66,6 +61,9 @@ export interface DemoVisitFact {
   hostname: string;
   referrerHost: string;
   referrerUrl: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
   browser: string;
   browserVersion: string;
   osVersion: string;
@@ -109,3 +107,4 @@ export interface DemoDimensionRow {
   visitors: number;
   sessions: number;
 }
+import type { FilterDocument } from "@/lib/filter-contract";
