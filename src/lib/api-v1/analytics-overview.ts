@@ -24,16 +24,23 @@ import type {
 } from "@/lib/edge/analytics/application/service";
 import {
   type AnalyticsResult,
+  attachSavedFilterScopePreference,
   createQueryTime,
+  createScopedFilterPlan,
   filterConditionCount,
   type FilterDocument,
+  type FilterScopePreference,
   isReportingTimeZone,
   type OverviewQuery,
   type OverviewResult,
   parseApiV1FilterDocument,
+  reconcileFilterScopePreferences,
+  resolveFilterScope,
+  savedFilterScopePreferenceFromDocument,
 } from "@/lib/edge/analytics/contract";
 import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
 import { sha256Hex } from "@/lib/edge/utils";
+import { analyticsFilterRegistry, parseFilterDsl } from "@/lib/filter-contract";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const MAX_JSON_DEPTH = 16;
@@ -48,8 +55,32 @@ export async function aggregateCacheKey(input: {
   };
   readonly time: ReturnType<typeof createQueryTime>;
   readonly filters: FilterDocument;
+  readonly scopePreference?: FilterScopePreference;
   readonly extra?: unknown;
 }): Promise<string> {
+  const operation =
+    input.operation === "site.analytics.overview" ? "overview" : "trend";
+  const requestedScope = input.scopePreference ?? "auto";
+  const savedScope =
+    savedFilterScopePreferenceFromDocument(input.filters) ?? "auto";
+  let resolvedScope: string = "scope_conflict";
+  let scopePlan: unknown = null;
+  try {
+    const reconciledScope = reconcileFilterScopePreferences(
+      requestedScope,
+      savedScope,
+    );
+    resolvedScope = resolveFilterScope(operation, reconciledScope) ?? "none";
+    scopePlan = createScopedFilterPlan(
+      operation,
+      input.filters,
+      reconciledScope,
+    );
+  } catch {
+    // Invalid scope combinations are rejected by the application service;
+    // keeping a distinct key here prevents an invalid request from sharing a
+    // successful entry created for a different scope combination.
+  }
   return createOperationCacheKey({
     contractRevision: "1",
     operation: input.operation,
@@ -63,6 +94,8 @@ export async function aggregateCacheKey(input: {
       to: input.time.range.endExclusiveMs,
       timeZone: input.time.reportingTimeZone,
       filters: input.filters,
+      resolvedScope,
+      scopePlan,
       extra: input.extra ?? null,
     },
   });
@@ -172,6 +205,17 @@ export function toApiV1QueryTime(
   };
 }
 
+/**
+ * Parse the human-readable API v1 filter surface through the shared DSL
+ * contract, then apply the same API audience policy as the structured filter
+ * surface. Every API handler should receive a canonical FilterDocument.
+ */
+export function parseApiV1FilterDsl(expression: string): FilterDocument {
+  return parseApiV1FilterDocument(
+    parseFilterDsl(expression, analyticsFilterRegistry),
+  );
+}
+
 export async function resolveApiV1Filter(
   siteId: string,
   filter: SiteAnalyticsQueryBaseDto["filter"],
@@ -191,7 +235,13 @@ export async function resolveApiV1Filter(
         signal,
       });
       if (!definition) return { ok: false, error: { kind: "site_not_found" } };
-      return { ok: true, value: definition.document };
+      return {
+        ok: true,
+        value: attachSavedFilterScopePreference(
+          definition.document,
+          definition.scopePreference ?? "auto",
+        ),
+      };
     } catch (error) {
       if (error instanceof AnalysisDefinitionReadCancelledError) {
         return { ok: false, error: { kind: "request_cancelled" } };
@@ -200,6 +250,16 @@ export async function resolveApiV1Filter(
         return { ok: false, error: { kind: "internal_error" } };
       }
       return { ok: false, error: { kind: "internal_error" } };
+    }
+  }
+  if (filter.type === "dsl") {
+    try {
+      return { ok: true, value: parseApiV1FilterDsl(filter.expression) };
+    } catch {
+      return {
+        ok: false,
+        error: { kind: "invalid_input", reason: "invalid_filter" },
+      };
     }
   }
   try {
@@ -279,6 +339,7 @@ export async function executeApiV1SiteOverview(
           context: context.context,
           time: time.value,
           filters: filter.value,
+          scopePreference: parsed.value.scope ?? "auto",
         },
         providerRegistry,
         cache: {
@@ -287,6 +348,7 @@ export async function executeApiV1SiteOverview(
             context,
             time: time.value,
             filters: filter.value,
+            scopePreference: parsed.value.scope ?? "auto",
           }),
           policy: aggregateCachePolicy,
           isCacheable: (result) => result.ok,

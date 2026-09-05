@@ -1,3 +1,4 @@
+import { parseApiV1FilterDsl } from "@/lib/api-v1/analytics-overview";
 import {
   type TeamSitesQueryDto,
   TeamSitesQueryDtoSchema,
@@ -25,6 +26,7 @@ export interface TeamSitesReaderInput {
   readonly endExclusiveMs: number;
   readonly timeZone: string;
   readonly interval?: TeamSitesQueryDto["interval"];
+  readonly page: TeamSitesQueryDto["page"];
   readonly filters: FilterDocument;
   readonly signal?: AbortSignal;
 }
@@ -101,6 +103,13 @@ async function readBody(request: Request): Promise<unknown> {
 
 function filter(input: TeamSitesQueryDto): FilterDocument | null {
   if (!input.filter) return { version: 1, root: null };
+  if (input.filter.type === "dsl") {
+    try {
+      return parseApiV1FilterDsl(input.filter.expression);
+    } catch {
+      return null;
+    }
+  }
   try {
     return parseApiV1FilterDocument({
       version: 1,
@@ -181,7 +190,9 @@ export async function handlePlannedTeamSites(
       endExclusiveMs,
       timeZone,
       interval: input.interval,
+      page: input.page,
       filters,
+      scopePreference: input.scope ?? "auto",
     };
     const serviceResult = await createApiV1QueryApplicationAdapter().execute<
       TeamSitesReaderInput,
@@ -195,6 +206,7 @@ export async function handlePlannedTeamSites(
           principal.siteIds,
         ),
         query,
+        rawRequest: input,
         providerRegistry,
       },
       {
@@ -216,6 +228,8 @@ export async function handlePlannedTeamSites(
         return cancelledResponse();
       if (serviceResult.error.kind === "deadline-exceeded")
         return errorResponse("deadline_exceeded");
+      if (serviceResult.error.kind === "invalid-cursor")
+        return errorResponse("invalid_cursor");
       return errorResponse("unsupported_query");
     }
     const result = serviceResult.value;
@@ -231,7 +245,7 @@ export async function handlePlannedTeamSites(
       200,
       {
         data: {
-          sites: result.data.sites.map((site) => ({
+          items: result.data.items.map((site) => ({
             siteId: site.siteId,
             name: site.name,
             domain: site.domain,
@@ -280,6 +294,7 @@ export async function handlePlannedTeamSites(
                 ? null
                 : new Date(site.lastEventAtMs).toISOString(),
           })),
+          pagination: result.data.pagination,
         },
         meta: {
           requestId,
@@ -291,6 +306,9 @@ export async function handlePlannedTeamSites(
           },
           source: result.source,
           accuracy: result.approximateVisitors ? "approximate" : "exact",
+          ...(serviceResult.meta?.filterScope
+            ? { filterScope: serviceResult.meta.filterScope }
+            : {}),
         },
       },
       requestId,

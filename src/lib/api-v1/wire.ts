@@ -17,6 +17,13 @@ export const ApiV1ResponseMetaSchema = z
   .object({ requestId: z.string().min(1) })
   .strict();
 
+export const FilterScopeMetadataSchema = z
+  .object({
+    requested: z.enum(["auto", "event", "session", "visitor"]),
+    resolved: z.enum(["event", "session", "visitor"]),
+  })
+  .strict();
+
 export const ApiV1AnalyticsResponseMetaSchema = ApiV1ResponseMetaSchema.extend({
   generatedAt: z.string().datetime({ offset: true }),
   timeRange: z
@@ -28,6 +35,7 @@ export const ApiV1AnalyticsResponseMetaSchema = ApiV1ResponseMetaSchema.extend({
     .strict(),
   source: z.enum(["raw", "rollup", "realtime", "mixed", "mock"]),
   accuracy: z.enum(["exact", "approximate"]),
+  filterScope: FilterScopeMetadataSchema.optional(),
 });
 
 export const ApiV1ErrorSchema = z
@@ -59,6 +67,17 @@ export function apiV1SuccessEnvelopeSchema<
     })
     .strict();
 }
+
+/** Cursor pagination metadata shared by all newly paginated collections. */
+export const AnalyticsPaginationSchema = z
+  .object({
+    limit: z.number().int().positive(),
+    returned: z.number().int().nonnegative(),
+    hasMore: z.boolean(),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+export type AnalyticsPagination = z.infer<typeof AnalyticsPaginationSchema>;
 
 export const TypedBatchItemResponseSchema = z
   .object({
@@ -125,6 +144,7 @@ export const ApiV1ComparisonAnalyticsResponseMetaSchema =
     bTimeRange: ApiV1AnalyticsResponseMetaSchema.shape.timeRange,
     source: z.enum(["raw", "rollup", "realtime", "mixed", "mock"]),
     accuracy: z.enum(["exact", "approximate"]),
+    filterScope: FilterScopeMetadataSchema.optional(),
   });
 export const AnalyticsComparisonOverviewResponseSchema =
   apiV1SuccessEnvelopeSchema(
@@ -214,7 +234,10 @@ export const TeamAnalyticsSiteSchema = z
 export type TeamAnalyticsSite = z.infer<typeof TeamAnalyticsSiteSchema>;
 
 export const TeamAnalyticsSitesDataSchema = z
-  .object({ sites: z.array(TeamAnalyticsSiteSchema) })
+  .object({
+    items: z.array(TeamAnalyticsSiteSchema),
+    pagination: AnalyticsPaginationSchema,
+  })
   .strict();
 export type TeamAnalyticsSitesData = z.infer<
   typeof TeamAnalyticsSitesDataSchema
@@ -429,7 +452,10 @@ export const AnalyticsPageItemSchema = z
   })
   .strict();
 export const AnalyticsPagesDataSchema = z
-  .object({ items: z.array(AnalyticsPageItemSchema) })
+  .object({
+    items: z.array(AnalyticsPageItemSchema),
+    pagination: AnalyticsPaginationSchema,
+  })
   .strict();
 export type AnalyticsPagesData = z.infer<typeof AnalyticsPagesDataSchema>;
 export const AnalyticsPagesResponseSchema = apiV1SuccessEnvelopeSchema(
@@ -446,7 +472,10 @@ export const AnalyticsReferrerItemSchema = z
   })
   .strict();
 export const AnalyticsReferrersDataSchema = z
-  .object({ items: z.array(AnalyticsReferrerItemSchema) })
+  .object({
+    items: z.array(AnalyticsReferrerItemSchema),
+    pagination: AnalyticsPaginationSchema,
+  })
   .strict();
 export type AnalyticsReferrersData = z.infer<
   typeof AnalyticsReferrersDataSchema
@@ -484,13 +513,7 @@ export const AnalyticsFilterValuesDataSchema = z
   .object({
     field: z.string().min(1),
     items: z.array(AnalyticsFilterValueSchema),
-    page: z
-      .object({
-        limit: z.number().int().positive(),
-        hasMore: z.literal(false),
-        nextCursor: z.null(),
-      })
-      .strict(),
+    pagination: AnalyticsPaginationSchema,
   })
   .strict();
 export type AnalyticsFilterValuesData = z.infer<
@@ -782,13 +805,7 @@ const AnalyticsEventRecordSchema = z
 export const AnalyticsEventsSearchDataSchema = z
   .object({
     items: z.array(AnalyticsEventRecordSchema),
-    page: z
-      .object({
-        limit: z.number().int().positive(),
-        hasMore: z.boolean(),
-        nextCursor: z.string().nullable(),
-      })
-      .strict(),
+    pagination: AnalyticsPaginationSchema,
   })
   .strict();
 export type AnalyticsEventsSearchData = z.infer<
@@ -886,7 +903,7 @@ const AnalyticsEventTypeItemSchema = z
 export const AnalyticsEventTypesDataSchema = z
   .object({
     items: z.array(AnalyticsEventTypeItemSchema),
-    page: z.object({ limit: z.number().int().positive() }).strict(),
+    pagination: AnalyticsPaginationSchema,
   })
   .strict();
 export type AnalyticsEventTypesData = z.infer<
@@ -918,8 +935,8 @@ const AnalyticsEventFieldSchema = z
 export const AnalyticsEventFieldsDataSchema = z
   .object({
     eventName: z.string(),
-    fields: z.array(AnalyticsEventFieldSchema),
-    page: z.object({ limit: z.number().int().positive() }).strict(),
+    items: z.array(AnalyticsEventFieldSchema),
+    pagination: AnalyticsPaginationSchema,
   })
   .strict();
 export type AnalyticsEventFieldsData = z.infer<
@@ -952,7 +969,7 @@ export const AnalyticsEventFieldValuesDataSchema = z
       "array",
     ]),
     items: z.array(AnalyticsEventFieldValueSchema),
-    page: z.object({ limit: z.number().int().positive() }).strict(),
+    pagination: AnalyticsPaginationSchema,
   })
   .strict();
 export type AnalyticsEventFieldValuesData = z.infer<
@@ -1203,8 +1220,6 @@ export const AnalyticsVisitorDetailDataSchema = z
         avgTimeBetweenSessionsMs: z.number(),
       })
       .strict(),
-    sessions: z.array(AnalyticsSessionSchema),
-    events: z.array(AnalyticsJourneyEventSchema),
     visitedPages: z.array(AnalyticsJourneyPageSchema),
     eventDistribution: z.array(AnalyticsJourneyEventCountSchema),
     activity: z.array(
@@ -1237,7 +1252,6 @@ export const AnalyticsSessionDetailDataSchema = z
         })
         .strict(),
     ),
-    events: z.array(AnalyticsJourneyEventSchema),
     visitedPages: z.array(AnalyticsJourneyPageSchema),
     eventDistribution: z.array(AnalyticsJourneyEventCountSchema),
     performance: AnalyticsJourneyPerformanceSchema,
@@ -1253,13 +1267,7 @@ export const AnalyticsSessionDetailResponseSchema = apiV1SuccessEnvelopeSchema(
 export const AnalyticsVisitorsSearchDataSchema = z
   .object({
     items: z.array(AnalyticsVisitorSchema),
-    page: z
-      .object({
-        limit: z.number().int().positive(),
-        hasMore: z.boolean(),
-        nextCursor: z.string().nullable(),
-      })
-      .strict(),
+    pagination: AnalyticsPaginationSchema,
   })
   .strict();
 export type AnalyticsVisitorsSearchData = z.infer<
@@ -1272,13 +1280,7 @@ export const AnalyticsVisitorsSearchResponseSchema = apiV1SuccessEnvelopeSchema(
 export const AnalyticsSessionsSearchDataSchema = z
   .object({
     items: z.array(AnalyticsSessionSchema),
-    page: z
-      .object({
-        limit: z.number().int().positive(),
-        hasMore: z.boolean(),
-        nextCursor: z.string().nullable(),
-      })
-      .strict(),
+    pagination: AnalyticsPaginationSchema,
   })
   .strict();
 export type AnalyticsSessionsSearchData = z.infer<
@@ -1289,7 +1291,10 @@ export const AnalyticsSessionsSearchResponseSchema = apiV1SuccessEnvelopeSchema(
   ApiV1AnalyticsResponseMetaSchema,
 );
 export const AnalyticsJourneyEventsDataSchema = z
-  .object({ items: z.array(AnalyticsJourneyEventSchema) })
+  .object({
+    items: z.array(AnalyticsJourneyEventSchema),
+    pagination: AnalyticsPaginationSchema,
+  })
   .strict();
 export type AnalyticsJourneyEventsData = z.infer<
   typeof AnalyticsJourneyEventsDataSchema
@@ -1320,7 +1325,10 @@ export const AnalyticsJourneyEventDetailResponseSchema =
     ApiV1AnalyticsResponseMetaSchema,
   );
 export const AnalyticsJourneySessionsDataSchema = z
-  .object({ items: z.array(AnalyticsSessionSchema) })
+  .object({
+    items: z.array(AnalyticsSessionSchema),
+    pagination: AnalyticsPaginationSchema,
+  })
   .strict();
 export type AnalyticsJourneySessionsData = z.infer<
   typeof AnalyticsJourneySessionsDataSchema
@@ -1405,6 +1413,34 @@ const AnalyticsSchemaFilterFieldSchema = z
   })
   .strict();
 
+const AnalyticsSchemaFilterProtocolJsonSchema = z
+  .object({
+    documentVersion: z.number().int().positive(),
+    fields: z.array(AnalyticsSchemaFilterFieldSchema),
+    operators: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+
+const AnalyticsSchemaFilterProtocolDslSchema = z
+  .object({
+    version: z.number().int().positive(),
+    maxLength: z.number().int().positive(),
+    operators: z.array(z.string().min(1)).min(1),
+    syntax: z
+      .object({
+        condition: z.string().min(1),
+        boolean: z.string().min(1),
+        grouping: z.string().min(1),
+        value: z.string().min(1),
+        list: z.string().min(1),
+        payloadTarget: z.string().min(1),
+        caseSensitivity: z.string().min(1),
+      })
+      .strict(),
+    examples: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+
 export const AnalyticsSchemaDataSchema = z
   .object({
     metrics: z.array(AnalyticsSchemaMetricSchema),
@@ -1415,6 +1451,8 @@ export const AnalyticsSchemaDataSchema = z
       .object({
         version: z.number().int().positive(),
         fields: z.array(AnalyticsSchemaFilterFieldSchema),
+        json: AnalyticsSchemaFilterProtocolJsonSchema,
+        dsl: AnalyticsSchemaFilterProtocolDslSchema,
       })
       .strict(),
     intervals: z.array(z.enum(["minute", "hour", "day", "week", "month"])),

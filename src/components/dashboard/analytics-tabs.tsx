@@ -33,9 +33,10 @@ import {
   prepareNativeScrollbarHost,
   useNativeScrollbars,
 } from "@/components/ui/overlay-scrollbar";
+import { useLiveSearchParams } from "@/lib/client-history";
 import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
 import Link from "@/lib/router";
-import { usePathname, useSearchParams } from "@/lib/router";
+import { usePathname } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
 type AnalyticsTabKey =
@@ -138,7 +139,8 @@ function globalNavigationSearchParams(
       key.startsWith("filter[") ||
       key === "range" ||
       key === "interval" ||
-      key === "timeZone"
+      key === "timeZone" ||
+      key === "scope"
     ) {
       next.append(key, value);
     }
@@ -150,7 +152,7 @@ export const AnalyticsTabs = memo(function AnalyticsTabs({
   items,
 }: AnalyticsTabsProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const searchParams = useLiveSearchParams();
   const normalizedPathname = normalizePathname(pathname || "");
   const scrollHostRef = useRef<HTMLDivElement | null>(null);
   const scrollbarRef = useRef<ReturnType<typeof OverlayScrollbars> | null>(
@@ -218,8 +220,7 @@ export const AnalyticsTabs = memo(function AnalyticsTabs({
       const current =
         container ??
         (scrollbarRef.current?.elements().viewport as
-          | HTMLDivElement
-          | undefined) ??
+          HTMLDivElement | undefined) ??
         scrollHostRef.current;
       if (!current) {
         applyMaskVisibility(false, false);

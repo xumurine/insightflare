@@ -46,7 +46,7 @@ export async function queryVisitorForDetailFromD1(
 WITH
 ${buildTargetVisitSourceCte("visitor_id")},
 filtered_visits AS (
-  SELECT *
+  SELECT visit_source.*, 1 AS is_visit_observation
   FROM visit_source
 ),
 ${buildDetailCustomEventSourceCte()},
@@ -67,7 +67,7 @@ export async function querySessionsForDetailFromD1(
 WITH
 ${buildTargetVisitSourceCte(detailTargetColumn(target))},
 filtered_visits AS (
-  SELECT *
+  SELECT visit_source.*, 1 AS is_visit_observation
   FROM visit_source
 ),
 ${buildDetailCustomEventSourceCte()},
@@ -905,4 +905,21 @@ export async function querySessionDetailFromD1(
     eventDistribution: summarizeEventDistribution(events),
     performance: summarizeJourneyPerformance(events),
   };
+}
+
+export function stripVisitorDetailCollections<
+  T extends {
+    readonly sessions: readonly unknown[];
+    readonly events: readonly unknown[];
+  },
+>(detail: T) {
+  const { sessions: _sessions, events: _events, ...summary } = detail;
+  return summary;
+}
+
+export function stripSessionDetailCollections<
+  T extends { readonly events: readonly unknown[] },
+>(detail: T) {
+  const { events: _events, ...summary } = detail;
+  return summary;
 }

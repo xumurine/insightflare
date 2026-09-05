@@ -21,7 +21,12 @@ import {
   RiSearchLine,
   RiUserLine,
 } from "@remixicon/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { Popover } from "radix-ui";
 
@@ -63,6 +68,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { VerticalScrollMask } from "@/components/ui/vertical-scroll-mask";
 import type { DashboardFilterOptionKey } from "@/lib/dashboard/client-data";
 import {
@@ -75,10 +85,7 @@ import {
   updateSavedFilter,
 } from "@/lib/dashboard/client-data";
 import { describeFilterExpression } from "@/lib/dashboard/filter-description";
-import {
-  formatFilterPanelExpression,
-  parseFilterPanelExpression,
-} from "@/lib/dashboard/filter-panel-expression";
+import { resolveSuggestionScope } from "@/lib/dashboard/filter-suggestion-scope";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import {
   SYSTEM_FILTER_PRESETS,
@@ -90,6 +97,7 @@ import {
 import type { EventField } from "@/lib/edge-client";
 import {
   analyticsFilterRegistry,
+  attachFilterScopePreference,
   type CanonicalJsonPath,
   FILTER_DOCUMENT_VERSION,
   type FilterCondition,
@@ -99,10 +107,14 @@ import {
   type FilterFieldId,
   filterFingerprint,
   type FilterOperator,
+  type FilterScope,
+  type FilterScopePreference,
   FilterValidationError,
   type FilterValue,
   type FilterValueKind,
+  formatFilterDsl,
   normalizeFilterDocument,
+  parseFilterDsl,
 } from "@/lib/filter-contract";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
@@ -120,6 +132,7 @@ const EMPTY_SAVED_FILTER_FORM = {
   name: "",
   description: "",
   visibility: "private",
+  scopePreference: "auto",
 } as const satisfies Omit<SavedFilterInput, "filterDsl">;
 type SavedFilterForm = Omit<SavedFilterInput, "filterDsl">;
 type ValueSuggestion = {
@@ -127,6 +140,77 @@ type ValueSuggestion = {
   readonly occurrences?: number;
   readonly label?: string;
 };
+type ValueSuggestionPage = {
+  readonly items: readonly ValueSuggestion[];
+  readonly pagination: {
+    readonly limit: number;
+    readonly returned: number;
+    readonly hasMore: boolean;
+    readonly nextCursor: string | null;
+  };
+};
+
+function filterDocumentWithRoot(
+  document: FilterDocument,
+  root: FilterExpression | null,
+): FilterDocument {
+  const result = { version: document.version, root } as FilterDocument;
+  for (const key of Reflect.ownKeys(document)) {
+    if (typeof key !== "symbol") continue;
+    const descriptor = Object.getOwnPropertyDescriptor(document, key);
+    if (descriptor) Object.defineProperty(result, key, descriptor);
+  }
+  return result;
+}
+
+function stripSuggestionFacet(
+  document: FilterDocument,
+  field: string,
+  payloadPath: string,
+): FilterDocument {
+  const matchesFacet = (expression: FilterExpression): boolean => {
+    if (expression.kind !== "condition") return false;
+    if (field === "event.payload") {
+      return (
+        expression.target.kind === "event-payload" &&
+        Boolean(payloadPath) &&
+        expression.target.path === payloadPath
+      );
+    }
+    return (
+      expression.target.kind === "field" && expression.target.field === field
+    );
+  };
+  const hasFacet = (expression: FilterExpression | null): boolean => {
+    if (!expression) return false;
+    if (matchesFacet(expression)) return true;
+    if (expression.kind === "not") return hasFacet(expression.child);
+    if (expression.kind === "condition") return false;
+    return expression.children.some(hasFacet);
+  };
+  const removeFacet = (
+    expression: FilterExpression,
+  ): FilterExpression | null => {
+    if (matchesFacet(expression)) return null;
+    if (expression.kind === "condition") return expression;
+    if (expression.kind === "not") {
+      const child = removeFacet(expression.child);
+      return child ? { kind: "not", child } : null;
+    }
+    const children = expression.children
+      .map(removeFacet)
+      .filter((child): child is FilterExpression => child !== null);
+    if (children.length === 0) return null;
+    if (children.length === 1) return children[0]!;
+    return { kind: expression.kind, children };
+  };
+
+  if (!hasFacet(document.root)) return document;
+  return filterDocumentWithRoot(
+    document,
+    document.root ? removeFacet(document.root) : null,
+  );
+}
 
 function systemPresetItem(messages: AppMessages, id: SystemFilterPresetId) {
   const items = {
@@ -196,12 +280,16 @@ interface FilterPanelProps {
   readonly messages: AppMessages;
   readonly open: boolean;
   readonly siteId?: string;
+  /** Concrete scope resolved by the parent page for the active operation. */
+  readonly resolvedScope?: FilterScope;
+  readonly scopePreference: FilterScopePreference;
   readonly window?: TimeWindow;
   readonly onApply: (
     document: FilterDocument,
     rawDsl?: string,
     options?: { readonly closePanel?: boolean },
   ) => void;
+  readonly onScopeChange: (preference: FilterScopePreference) => void;
 }
 
 const VALUELESS_OPERATORS = new Set<FilterOperator>([
@@ -472,7 +560,7 @@ function expressionTextFromEditor(root: EditorGroup): string {
     // Do not normalize before formatting. Normalization is required when a
     // filter is applied, but it sorts and deduplicates equivalent branches.
     // The expression field should instead mirror the editor's current tree.
-    return formatFilterPanelExpression({
+    return formatFilterDsl({
       version: FILTER_DOCUMENT_VERSION,
       root: displayRootExpression(root),
     });
@@ -917,6 +1005,36 @@ function SavedFilterFormFields({
         />
       </div>
       <div className="space-y-1.5">
+        <Label>{messages.filterBuilder.scopeLabel}</Label>
+        <Select
+          value={form.scopePreference ?? "auto"}
+          onValueChange={(scopePreference) =>
+            onChange({
+              ...form,
+              scopePreference: scopePreference as FilterScopePreference,
+            })
+          }
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">
+              {messages.filterBuilder.scopeAuto}
+            </SelectItem>
+            <SelectItem value="event">
+              {messages.filterBuilder.scopeEvent}
+            </SelectItem>
+            <SelectItem value="session">
+              {messages.filterBuilder.scopeSession}
+            </SelectItem>
+            <SelectItem value="visitor">
+              {messages.filterBuilder.scopeVisitor}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
         <Label>{messages.filterBuilder.savedFilterVisibility}</Label>
         <Select
           value={form.visibility}
@@ -974,6 +1092,7 @@ function SearchablePayloadPathInput({
   needsValue,
   onChange,
   onSelect,
+  resolvedScope,
   siteId,
   window,
 }: {
@@ -984,14 +1103,20 @@ function SearchablePayloadPathInput({
   needsValue: boolean;
   onChange: (payloadPath: string) => void;
   onSelect: (field: EventField) => void;
+  resolvedScope?: FilterScope;
   siteId: string | undefined;
   window: TimeWindow | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [searchToken, setSearchToken] = useState("");
   const deferredSearchToken = useDeferredValue(searchToken);
-  const canSearch = Boolean(siteId && window);
-  const fieldsQuery = useQuery<{ fields: EventField[] }>({
+  const canSearch = Boolean(siteId && window && resolvedScope);
+  const suggestionFilters = useMemo(
+    () =>
+      stripSuggestionFacet(document, condition.field, condition.payloadPath),
+    [condition.field, condition.payloadPath, document],
+  );
+  const fieldsQuery = useInfiniteQuery({
     queryKey: [
       "dashboard",
       "event-field-paths",
@@ -1000,14 +1125,26 @@ function SearchablePayloadPathInput({
       window?.to,
       window?.timeZone,
       eventName,
-      document,
+      resolvedScope ?? "unresolved",
+      suggestionFilters,
       needsValue,
     ],
-    queryFn: ({ signal }) =>
-      fetchEventTypeFields(siteId!, window!, eventName, document, { signal }),
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) =>
+      fetchEventTypeFields(siteId!, window!, eventName, suggestionFilters, {
+        limit: 100,
+        cursor: pageParam,
+        signal,
+        resolvedScope,
+      }),
     enabled: open && canSearch,
+    getNextPageParam: (lastPage) =>
+      lastPage.data?.pagination?.hasMore
+        ? lastPage.data.pagination.nextCursor
+        : undefined,
   });
-  const fields = fieldsQuery.data?.fields ?? [];
+  const fields =
+    fieldsQuery.data?.pages.flatMap((page) => page.data.items) ?? [];
   const suggestions = useMemo(() => {
     const search = deferredSearchToken.trim().toLocaleLowerCase();
     return fields
@@ -1115,6 +1252,7 @@ function SearchableValueInput({
   messages,
   onChange,
   onListChange,
+  resolvedScope,
   siteId,
   valueKind,
   window,
@@ -1126,6 +1264,7 @@ function SearchableValueInput({
   messages: AppMessages;
   onChange: (valueText: string) => void;
   onListChange: (values: readonly FilterValue[]) => void;
+  resolvedScope?: FilterScope;
   siteId: string | undefined;
   valueKind: FilterValueKind;
   window: TimeWindow | undefined;
@@ -1134,6 +1273,11 @@ function SearchableValueInput({
   const [searchToken, setSearchToken] = useState("");
   const deferredSearchToken = useDeferredValue(searchToken);
   const isPayload = condition.field === "event.payload";
+  const suggestionFilters = useMemo(
+    () =>
+      stripSuggestionFacet(document, condition.field, condition.payloadPath),
+    [condition.field, condition.payloadPath, document],
+  );
   const isList = LIST_OPERATORS.has(condition.operator);
   const selectedValues = isList
     ? (condition.listValues ??
@@ -1142,11 +1286,12 @@ function SearchableValueInput({
   const canSearch = Boolean(
     siteId &&
     window &&
+    resolvedScope &&
     (isPayload
       ? condition.payloadPath.trim()
       : condition.field !== "event.payload"),
   );
-  const suggestionsQuery = useQuery<ValueSuggestion[]>({
+  const suggestionsQuery = useInfiniteQuery<ValueSuggestionPage>({
     queryKey: [
       "dashboard",
       isPayload ? "event-field-values" : "filter-values",
@@ -1158,9 +1303,11 @@ function SearchableValueInput({
         ? [eventName, condition.payloadPath, condition.scalarKind]
         : [condition.field]),
       deferredSearchToken,
-      ...(isPayload ? [document] : []),
+      resolvedScope ?? "unresolved",
+      suggestionFilters,
     ],
-    queryFn: ({ signal }) => {
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) => {
       if (isPayload) {
         return fetchEventTypeFieldValues(
           siteId!,
@@ -1168,21 +1315,46 @@ function SearchableValueInput({
           eventName,
           condition.payloadPath,
           condition.scalarKind,
-          document,
-          { limit: 12, search: deferredSearchToken, signal },
-        ).then((result) => result.data);
+          suggestionFilters,
+          {
+            limit: 12,
+            cursor: pageParam as string | null,
+            search: deferredSearchToken,
+            signal,
+            resolvedScope,
+          },
+        ).then((result) => ({
+          items: result.data.items.map((item) => ({
+            value: item.value,
+            occurrences: item.occurrences,
+            label: String(item.value ?? ""),
+          })),
+          pagination: result.data.pagination,
+        }));
       }
       return fetchFilterValues(
         siteId!,
         window!,
         condition.field as DashboardFilterOptionKey,
-        undefined,
-        { limit: 12, search: deferredSearchToken, signal },
-      );
+        suggestionFilters,
+        {
+          limit: 12,
+          cursor: pageParam as string | null,
+          search: deferredSearchToken,
+          signal,
+          resolvedScope,
+        },
+      ).then((result) => ({
+        items: result.items,
+        pagination: result.pagination,
+      }));
     },
     enabled: open && canSearch && !disabled,
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination?.hasMore ? lastPage.pagination.nextCursor : undefined,
   });
-  const suggestions = suggestionsQuery.data ?? [];
+  const suggestions =
+    suggestionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const inputMode =
     valueKind === "number" || condition.scalarKind === "number"
       ? "decimal"
@@ -1242,23 +1414,36 @@ function SearchableValueInput({
         >
           {isList && selectedValues.length > 0 ? (
             <div className="flex flex-wrap gap-1 border-b border-border px-2 py-1.5">
-              {selectedValues.map((value) => (
-                <button
-                  key={filterValueKey(value)}
-                  type="button"
-                  className="max-w-full truncate bg-muted px-1.5 py-0.5 text-xs hover:bg-accent"
-                  onClick={() =>
-                    onListChange(
-                      selectedValues.filter(
-                        (selected) =>
-                          filterValueKey(selected) !== filterValueKey(value),
-                      ),
-                    )
-                  }
-                >
-                  {filterValueText(value)}
-                </button>
-              ))}
+              {selectedValues.map((value) => {
+                const removeValueLabel = formatI18nTemplate(
+                  messages.filterBuilder.removeValue,
+                  { value: filterValueText(value) },
+                );
+
+                return (
+                  <Tooltip key={filterValueKey(value)}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="max-w-full truncate bg-muted px-1.5 py-0.5 text-xs hover:bg-accent"
+                        aria-label={removeValueLabel}
+                        onClick={() =>
+                          onListChange(
+                            selectedValues.filter(
+                              (selected) =>
+                                filterValueKey(selected) !==
+                                filterValueKey(value),
+                            ),
+                          )
+                        }
+                      >
+                        {filterValueText(value)}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{removeValueLabel}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
             </div>
           ) : null}
           <div className="relative">
@@ -1382,6 +1567,7 @@ function ConditionEditor({
   eventName,
   messages,
   path,
+  resolvedScope,
   onChange,
   onRemove,
   siteId,
@@ -1393,6 +1579,7 @@ function ConditionEditor({
   eventName: string | undefined;
   messages: AppMessages;
   path: readonly number[];
+  resolvedScope?: FilterScope;
   onChange: (update: (condition: EditorCondition) => EditorCondition) => void;
   onRemove: () => void;
   siteId: string | undefined;
@@ -1494,6 +1681,7 @@ function ConditionEditor({
             eventName={eventName}
             messages={messages}
             needsValue={needsValue}
+            resolvedScope={resolvedScope}
             siteId={siteId}
             window={window}
             onChange={(payloadPath) => {
@@ -1640,6 +1828,7 @@ function ConditionEditor({
               eventName={eventName}
               messages={messages}
               siteId={siteId}
+              resolvedScope={resolvedScope}
               valueKind={editorValueKind}
               window={window}
               onChange={(valueText) => {
@@ -1701,6 +1890,7 @@ function GroupEditor({
   isRoot,
   messages,
   path,
+  resolvedScope,
   onAddCondition,
   onAddGroup,
   onChange,
@@ -1715,6 +1905,7 @@ function GroupEditor({
   isRoot: boolean;
   messages: AppMessages;
   path: readonly number[];
+  resolvedScope?: FilterScope;
   onAddCondition: (groupId: string) => void;
   onAddGroup: (groupId: string) => void;
   onChange: (id: string, update: (node: EditorNode) => EditorNode) => void;
@@ -1817,6 +2008,7 @@ function GroupEditor({
                     eventName={eventName}
                     messages={messages}
                     path={[...path, index + 1]}
+                    resolvedScope={resolvedScope}
                     siteId={siteId}
                     window={window}
                     onChange={(update) => {
@@ -1835,6 +2027,7 @@ function GroupEditor({
                     isRoot={false}
                     messages={messages}
                     path={[...path, index + 1]}
+                    resolvedScope={resolvedScope}
                     onAddCondition={onAddCondition}
                     onAddGroup={onAddGroup}
                     onChange={onChange}
@@ -1883,9 +2076,12 @@ export function FilterPanel({
   expressionText: restoredExpressionText,
   messages,
   open,
+  resolvedScope: pageResolvedScope,
   siteId,
+  scopePreference,
   window,
   onApply,
+  onScopeChange,
 }: FilterPanelProps) {
   const nextIdRef = useRef(conditionIdFactory());
   const createId = useCallback(() => nextIdRef.current(), []);
@@ -1932,6 +2128,10 @@ export function FilterPanel({
     [expressionRegistry, messages, root],
   );
   const eventName = directEventName(root);
+  const suggestionScope = resolveSuggestionScope(
+    scopePreference,
+    pageResolvedScope,
+  );
   const savedFiltersEnabled =
     audience === "private-dashboard" && open && Boolean(siteId);
   const savedFiltersQuery = useQuery({
@@ -1940,7 +2140,7 @@ export function FilterPanel({
     enabled: savedFiltersEnabled,
     staleTime: 60_000,
   });
-  const savedFilters = savedFiltersQuery.data?.filters ?? [];
+  const savedFilters = savedFiltersQuery.data?.items ?? [];
   const currentFilterFingerprint = useMemo(() => {
     try {
       return filterFingerprint(
@@ -2021,15 +2221,13 @@ export function FilterPanel({
   const matchedSavedFilter = useMemo(() => {
     if (expressionError || root.children.length === 0) return undefined;
     const matches = savedFilters.filter((filter) => {
+      if (filter.scopePreference !== scopePreference) return false;
       if (filter.filterDsl === expressionText) return true;
       if (!currentFilterFingerprint) return false;
       try {
         return (
           filterFingerprint(
-            parseFilterPanelExpression(
-              filter.filterDsl,
-              analyticsFilterRegistry,
-            ),
+            parseFilterDsl(filter.filterDsl, analyticsFilterRegistry),
             analyticsFilterRegistry,
           ) === currentFilterFingerprint
         );
@@ -2044,6 +2242,7 @@ export function FilterPanel({
     expressionText,
     root.children.length,
     savedFilters,
+    scopePreference,
   ]);
   const matchedSystemPreset = useMemo(() => {
     if (matchedSavedFilter || expressionError || root.children.length === 0) {
@@ -2056,10 +2255,7 @@ export function FilterPanel({
       try {
         return (
           filterFingerprint(
-            parseFilterPanelExpression(
-              preset.filterDsl,
-              analyticsFilterRegistry,
-            ),
+            parseFilterDsl(preset.filterDsl, analyticsFilterRegistry),
             analyticsFilterRegistry,
           ) === currentFilterFingerprint
         );
@@ -2119,10 +2315,7 @@ export function FilterPanel({
     if (restoredExpressionText !== undefined) {
       try {
         nextRoot = editorRootFromDocument(
-          parseFilterPanelExpression(
-            restoredExpressionText,
-            expressionRegistry,
-          ),
+          parseFilterDsl(restoredExpressionText, expressionRegistry),
           createId,
         );
       } catch {
@@ -2159,7 +2352,7 @@ export function FilterPanel({
       try {
         return source.trim()
           ? editorRootFromDocument(
-              parseFilterPanelExpression(source, expressionRegistry),
+              parseFilterDsl(source, expressionRegistry),
               createId,
             )
           : emptyEditorGroup(createId);
@@ -2271,11 +2464,17 @@ export function FilterPanel({
   }, [commitExpressionText, messages.filterBuilder.invalid, onApply]);
 
   const applyFilterDsl = useCallback(
-    (filterDsl: string) => {
+    (
+      filterDsl: string,
+      scopeOverride: FilterScopePreference = scopePreference,
+    ) => {
       const nextRoot = rootFromExpressionText(filterDsl);
       if (!nextRoot) return;
       try {
-        const nextDocument = documentFromEditor(nextRoot);
+        const nextDocument = attachFilterScopePreference(
+          documentFromEditor(nextRoot),
+          scopeOverride,
+        );
         preservedDocumentKeyRef.current = JSON.stringify(nextDocument);
         setExpressionText(filterDsl);
         setExpressionRoot(nextRoot);
@@ -2294,27 +2493,35 @@ export function FilterPanel({
       messages.filterBuilder.invalid,
       onApply,
       rootFromExpressionText,
+      scopePreference,
       setExpressionRoot,
     ],
   );
   const applySavedFilter = useCallback(
-    (filter: SavedFilter) => applyFilterDsl(filter.filterDsl),
-    [applyFilterDsl],
+    (filter: SavedFilter) => {
+      onScopeChange(filter.scopePreference);
+      applyFilterDsl(filter.filterDsl, filter.scopePreference);
+    },
+    [applyFilterDsl, onScopeChange],
   );
   const applySystemPreset = useCallback(
     (preset: SystemFilterPreset) => applyFilterDsl(preset.filterDsl),
     [applyFilterDsl],
   );
 
-  const openSavedFilterCreate = useCallback((source?: SavedFilter) => {
-    setSavedFilterForm({
-      name: source?.name ?? "",
-      description: source?.description ?? "",
-      visibility: "private",
-    });
-    setSavedFilterOperationError(null);
-    setCreateSavedFilterOpen(true);
-  }, []);
+  const openSavedFilterCreate = useCallback(
+    (source?: SavedFilter) => {
+      setSavedFilterForm({
+        name: source?.name ?? "",
+        description: source?.description ?? "",
+        visibility: "private",
+        scopePreference: source?.scopePreference ?? scopePreference,
+      });
+      setSavedFilterOperationError(null);
+      setCreateSavedFilterOpen(true);
+    },
+    [scopePreference],
+  );
 
   const clearSavedFilter = useCallback(() => {
     const nextRoot = emptyEditorGroup(createId);
@@ -2333,6 +2540,7 @@ export function FilterPanel({
       name: filter.name,
       description: filter.description,
       visibility: filter.visibility,
+      scopePreference: filter.scopePreference,
     });
     setSavedFilterOperationError(null);
     setManageSavedFilterOpen(true);
@@ -2347,11 +2555,17 @@ export function FilterPanel({
         name: editingSavedFilter.name,
         description: editingSavedFilter.description,
         visibility: editingSavedFilter.visibility,
+        scopePreference: savedFilterForm.scopePreference ?? "auto",
       },
       filterDsl: expressionText,
       finishEditing: true,
     });
-  }, [editingSavedFilter, expressionText, updateSavedFilterMutation]);
+  }, [
+    editingSavedFilter,
+    expressionText,
+    savedFilterForm.scopePreference,
+    updateSavedFilterMutation,
+  ]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -2499,6 +2713,38 @@ export function FilterPanel({
           </AutoResizer>
         </div>
 
+        <div className="mb-4 border-b border-border pb-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="filter-panel-scope">
+              {messages.filterBuilder.scopeLabel}
+            </Label>
+            <Select
+              value={scopePreference}
+              onValueChange={(value) =>
+                onScopeChange(value as FilterScopePreference)
+              }
+            >
+              <SelectTrigger id="filter-panel-scope" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">
+                  {messages.filterBuilder.scopeAuto}
+                </SelectItem>
+                <SelectItem value="event">
+                  {messages.filterBuilder.scopeEvent}
+                </SelectItem>
+                <SelectItem value="session">
+                  {messages.filterBuilder.scopeSession}
+                </SelectItem>
+                <SelectItem value="visitor">
+                  {messages.filterBuilder.scopeVisitor}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <GroupEditor
           audience={audience}
           document={document}
@@ -2507,6 +2753,7 @@ export function FilterPanel({
           isRoot
           messages={messages}
           path={[]}
+          resolvedScope={suggestionScope}
           onAddCondition={addCondition}
           onAddGroup={addGroup}
           onChange={updateNode}
@@ -2540,7 +2787,6 @@ export function FilterPanel({
                 <div
                   aria-label={messages.filterBuilder.naturalLanguageDescription}
                   className="min-h-8 px-4 py-2 text-xs leading-4 text-muted-foreground"
-                  title={messages.filterBuilder.naturalLanguageDescription}
                 >
                   <RiChatQuoteLine
                     className="mr-2 inline-block size-4 align-text-bottom"

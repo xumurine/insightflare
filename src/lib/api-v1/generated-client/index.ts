@@ -122,7 +122,7 @@ import {
   TeamComparisonQueryDtoSchema,
   type TeamOverviewQueryDto,
   TeamOverviewQueryDtoSchema,
-  type TeamSitesQueryDto,
+  type TeamSitesQueryDtoInput,
   TeamSitesQueryDtoSchema,
   type TeamTimeseriesQueryDto,
   TeamTimeseriesQueryDtoSchema,
@@ -254,8 +254,7 @@ export interface ApiV1GeneratedFailure {
 }
 
 export type ApiV1GeneratedResult<T> =
-  | ApiV1GeneratedSuccess<T>
-  | ApiV1GeneratedFailure;
+  ApiV1GeneratedSuccess<T> | ApiV1GeneratedFailure;
 
 export class ApiV1GeneratedTransportError extends Error {
   constructor(message: string) {
@@ -722,7 +721,7 @@ export interface ApiV1GeneratedClient {
     options?: ApiV1GeneratedRequestOptions,
   ): Promise<ApiV1GeneratedResult<AnalyticsTimeseriesData>>;
   teamAnalyticsSites(
-    input: TeamSitesQueryDto,
+    input: TeamSitesQueryDtoInput,
     options?: ApiV1GeneratedRequestOptions,
   ): Promise<ApiV1GeneratedResult<TeamAnalyticsSitesData>>;
   teamAnalyticsBreakdown(
@@ -1496,8 +1495,9 @@ export function createApiV1GeneratedClient(
         ...(input ?? {}),
       });
       const query = new URLSearchParams();
-      if (parsed.limit !== 100) query.set("limit", String(parsed.limit));
-      if (parsed.cursor) query.set("cursor", parsed.cursor);
+      if (parsed.page.limit !== 100)
+        query.set("limit", String(parsed.page.limit));
+      if (parsed.page.cursor) query.set("cursor", parsed.page.cursor);
       const suffix = query.toString() ? `?${query.toString()}` : "";
       return request(transport, {
         path:

@@ -1,7 +1,7 @@
 import {
-  defaultBotAnalyticsConfig,
-  redactBotAnalyticsConfig,
-} from "@/lib/bot-analytics-config";
+  defaultAnalyticsEngineConfig,
+  redactAnalyticsEngineConfig,
+} from "@/lib/analytics-engine-config";
 import { normalizeTimeZone } from "@/lib/dashboard/time-zone";
 import type { NotificationPreferencesData } from "@/lib/edge-client";
 import type {
@@ -43,6 +43,7 @@ import {
   getDemoTeams,
   getDemoUser,
   getDemoUsers,
+  updateDemoScheduledTasks,
 } from "@/lib/realtime/mock/admin";
 import {
   generateDemoDimension,
@@ -51,6 +52,7 @@ import {
   generateDemoPagesDashboard,
   generateDemoPerformance,
   generateDemoReferrers,
+  generateDemoReferrerSummary,
   generateDemoRetention,
   generateDemoTrend,
 } from "@/lib/realtime/mock/analytics";
@@ -91,6 +93,11 @@ import {
   generateDemoVisitorDetail,
   generateDemoVisitors,
 } from "@/lib/realtime/mock/journeys";
+import {
+  DemoInvalidCursorError,
+  demoPage,
+  type DemoPagination,
+} from "@/lib/realtime/mock/pagination";
 import { generateDemoRequestObservationData } from "@/lib/realtime/mock/request-observation";
 import { handleDemoSavedFilters } from "@/lib/realtime/mock/saved-filters";
 import {
@@ -134,6 +141,77 @@ const demoNotificationPreferences: NotificationPreferencesData = {
 
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
+}
+
+function paginateDemoEnvelope(
+  result: unknown,
+  params: Record<string, string | number>,
+  fallbackLimit: number,
+  operation = "demo-collection",
+): unknown {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return result;
+  }
+  const record = result as Record<string, unknown>;
+  if (!Array.isArray(record.data)) return result;
+  const page = demoPage(
+    record.data,
+    params,
+    {
+      operation,
+      siteId: params.siteId ?? null,
+      from: params.from ?? null,
+      to: params.to ?? null,
+      search: String(params.search ?? "")
+        .trim()
+        .toLowerCase(),
+      filterKey: params.filterKey ?? null,
+      tab: params.tab ?? null,
+      dimension: params.dimension ?? null,
+    },
+    fallbackLimit,
+  );
+  return {
+    ...record,
+    data: page,
+  };
+}
+
+function paginateDemoDetailCollection(
+  result: unknown,
+  collectionKey: "events" | "sessions",
+  params: Record<string, string | number>,
+): { ok: boolean; data: { items: unknown[]; pagination: DemoPagination } } {
+  const record =
+    result && typeof result === "object"
+      ? (result as Record<string, unknown>)
+      : {};
+  const detail =
+    record.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : {};
+  const rows = Array.isArray(detail[collectionKey])
+    ? detail[collectionKey]
+    : [];
+  const collectionId =
+    collectionKey === "events"
+      ? String(params.visitorId ?? params.sessionId ?? "")
+      : String(params.visitorId ?? "");
+  const page = demoPage(
+    rows,
+    params,
+    {
+      operation:
+        collectionKey === "events" ? "detail-events" : "detail-sessions",
+      siteId: String(params.siteId ?? ""),
+      collectionKey,
+      collectionId,
+      from: params.from ?? null,
+      to: params.to ?? null,
+    },
+    100,
+  );
+  return { ok: record.ok !== false, data: page };
 }
 
 function requestRuleId(body: unknown): string {
@@ -512,7 +590,13 @@ function handleDemoRequestInner(options: {
   const locale = demoLocale(params.locale ?? bodyRecord.locale);
 
   if (path.startsWith("/api/private/saved-filters")) {
-    return handleDemoSavedFilters({ path, method, siteId, body: options.body });
+    return handleDemoSavedFilters({
+      path,
+      method,
+      siteId,
+      params,
+      body: options.body,
+    });
   }
 
   // Write operations → read-only stub
@@ -522,20 +606,39 @@ function handleDemoRequestInner(options: {
     method === "PUT" ||
     method === "DELETE"
   ) {
-    if (path.includes("/admin/bot-analytics-config")) {
+    if (path.includes("/admin/scheduled-tasks")) {
+      const retentionPatch =
+        bodyRecord.retention &&
+        typeof bodyRecord.retention === "object" &&
+        !Array.isArray(bodyRecord.retention)
+          ? (bodyRecord.retention as Record<string, unknown>)
+          : {};
+      if (bodyRecord.retentionDays !== undefined) {
+        retentionPatch.scheduledTaskLogsDays = bodyRecord.retentionDays;
+      }
+      updateDemoScheduledTasks({
+        taskKey: bodyRecord.taskKey,
+        enabled: bodyRecord.enabled,
+        retention:
+          Object.keys(retentionPatch).length > 0 ? retentionPatch : undefined,
+        retentionDays: bodyRecord.retentionDays,
+      });
+      return { ok: true, data: generateDemoScheduledTasks(params) };
+    }
+    if (path.includes("/admin/analytics-engine-config")) {
       const body = bodyRecord as {
         accountId?: unknown;
         apiToken?: unknown;
         clearApiToken?: unknown;
       };
-      const config = defaultBotAnalyticsConfig();
+      const config = defaultAnalyticsEngineConfig();
       config.accountId = String(body.accountId ?? "").trim();
       config.configured =
         body.clearApiToken !== true &&
         String(body.apiToken ?? "").trim() !== "";
       config.apiTokenHint = config.configured ? "••••demo" : "";
       config.updatedAt = Date.now();
-      return { ok: true, data: redactBotAnalyticsConfig(config) };
+      return { ok: true, data: redactAnalyticsEngineConfig(config) };
     }
     if (path.includes("/funnels")) {
       if (method === "DELETE") return deleteDemoFunnel(siteId, params);
@@ -933,12 +1036,12 @@ function handleDemoRequestInner(options: {
     const tid = teamId || getDemoTeams()[0].id;
     return { ok: true, data: generateDemoApiKeys(tid) };
   }
-  if (path.includes("/admin/bot-analytics-config")) {
-    const config = defaultBotAnalyticsConfig();
-    return { ok: true, data: redactBotAnalyticsConfig(config) };
+  if (path.includes("/admin/analytics-engine-config")) {
+    const config = defaultAnalyticsEngineConfig();
+    return { ok: true, data: redactAnalyticsEngineConfig(config) };
   }
-  if (path.includes("/admin/bot-analytics")) {
-    return demoBotAnalyticsResponse(params);
+  if (path.includes("/admin/request-observation")) {
+    return demoRequestObservationResponse(params);
   }
   if (path.includes("/admin/notification-rules")) {
     return {
@@ -1013,54 +1116,131 @@ function handleDemoRequestInner(options: {
 
   // Analytics query routes
   if (path.includes("/filter-values")) {
-    return generateDemoFilterValues(
-      siteId,
+    return paginateDemoEnvelope(
+      generateDemoFilterValues(
+        siteId,
+        params,
+        path.includes("/api/public/")
+          ? "public-share"
+          : path.includes("/api/v1/")
+            ? "api-v1"
+            : "private-dashboard",
+      ),
       params,
+      50,
       path.includes("/api/public/")
-        ? "public-share"
+        ? "filter-values:public"
         : path.includes("/api/v1/")
-          ? "api-v1"
-          : "private-dashboard",
+          ? "filter-values:api-v1"
+          : "filter-values:private",
     );
   }
   if (path.includes("/overview-page-path")) {
-    return generateDemoOverviewPageTab(siteId, params, "path");
+    return paginateDemoEnvelope(
+      generateDemoOverviewPageTab(siteId, params, "path"),
+      params,
+      100,
+      "overview-page-path",
+    );
   }
   if (path.includes("/overview-page-title")) {
-    return generateDemoOverviewPageTab(siteId, params, "title");
+    return paginateDemoEnvelope(
+      generateDemoOverviewPageTab(siteId, params, "title"),
+      params,
+      100,
+      "overview-page-title",
+    );
   }
   if (path.includes("/overview-page-hostname")) {
-    return generateDemoOverviewPageTab(siteId, params, "hostname");
+    return paginateDemoEnvelope(
+      generateDemoOverviewPageTab(siteId, params, "hostname"),
+      params,
+      100,
+      "overview-page-hostname",
+    );
   }
   if (path.includes("/overview-page-entry")) {
-    return generateDemoOverviewPageTab(siteId, params, "entry");
+    return paginateDemoEnvelope(
+      generateDemoOverviewPageTab(siteId, params, "entry"),
+      params,
+      100,
+      "overview-page-entry",
+    );
   }
   if (path.includes("/overview-page-exit")) {
-    return generateDemoOverviewPageTab(siteId, params, "exit");
+    return paginateDemoEnvelope(
+      generateDemoOverviewPageTab(siteId, params, "exit"),
+      params,
+      100,
+      "overview-page-exit",
+    );
   }
   if (path.includes("/overview-source-channel")) {
-    return generateDemoOverviewSourceTab(siteId, params, "channel");
+    return paginateDemoEnvelope(
+      generateDemoOverviewSourceTab(siteId, params, "channel"),
+      params,
+      100,
+      "overview-source-channel",
+    );
   }
   if (path.includes("/overview-source-domain")) {
-    return generateDemoOverviewSourceTab(siteId, params, "domain");
+    return paginateDemoEnvelope(
+      generateDemoOverviewSourceTab(siteId, params, "domain"),
+      params,
+      100,
+      "overview-source-domain",
+    );
   }
   if (path.includes("/overview-source-link")) {
-    return generateDemoOverviewSourceTab(siteId, params, "link");
+    return paginateDemoEnvelope(
+      generateDemoOverviewSourceTab(siteId, params, "link"),
+      params,
+      100,
+      "overview-source-link",
+    );
+  }
+  if (path.includes("/referrer-summary")) {
+    return generateDemoReferrerSummary(siteId, params);
   }
   if (path.includes("/overview-client-browser")) {
-    return generateDemoOverviewClientTab(siteId, params, "browser");
+    return paginateDemoEnvelope(
+      generateDemoOverviewClientTab(siteId, params, "browser"),
+      params,
+      100,
+      "overview-client-browser",
+    );
   }
   if (path.includes("/overview-client-os-version")) {
-    return generateDemoOverviewClientTab(siteId, params, "osVersion");
+    return paginateDemoEnvelope(
+      generateDemoOverviewClientTab(siteId, params, "osVersion"),
+      params,
+      100,
+      "overview-client-os-version",
+    );
   }
   if (path.includes("/overview-client-device-type")) {
-    return generateDemoOverviewClientTab(siteId, params, "deviceType");
+    return paginateDemoEnvelope(
+      generateDemoOverviewClientTab(siteId, params, "deviceType"),
+      params,
+      100,
+      "overview-client-device-type",
+    );
   }
   if (path.includes("/overview-client-language")) {
-    return generateDemoOverviewClientTab(siteId, params, "language");
+    return paginateDemoEnvelope(
+      generateDemoOverviewClientTab(siteId, params, "language"),
+      params,
+      100,
+      "overview-client-language",
+    );
   }
   if (path.includes("/overview-client-screen-size")) {
-    return generateDemoOverviewClientTab(siteId, params, "screenSize");
+    return paginateDemoEnvelope(
+      generateDemoOverviewClientTab(siteId, params, "screenSize"),
+      params,
+      100,
+      "overview-client-screen-size",
+    );
   }
   if (path.includes("/overview-geo-country")) {
     return generateDemoOverviewGeoTab(siteId, params, "country");
@@ -1088,6 +1268,27 @@ function handleDemoRequestInner(options: {
     path.includes("/journey-events/detail")
   ) {
     return generateDemoJourneyEventDetail(siteId, params);
+  }
+  if (path.includes("/visitor-events")) {
+    return paginateDemoDetailCollection(
+      generateDemoVisitorDetail(siteId, params),
+      "events",
+      params,
+    );
+  }
+  if (path.includes("/visitor-sessions")) {
+    return paginateDemoDetailCollection(
+      generateDemoVisitorDetail(siteId, params),
+      "sessions",
+      params,
+    );
+  }
+  if (path.includes("/session-events")) {
+    return paginateDemoDetailCollection(
+      generateDemoSessionDetail(siteId, params),
+      "events",
+      params,
+    );
   }
   if (path.includes("/event-record-detail")) {
     return generateDemoEventRecordDetail(siteId, params);
@@ -1238,6 +1439,8 @@ function handleDemoRequestInner(options: {
     if (subPath === "trend") return generateDemoTrend(siteId, params);
     if (subPath === "pages") return generateDemoPages(siteId, params);
     if (subPath === "referrers") return generateDemoReferrers(siteId, params);
+    if (subPath === "referrer-summary")
+      return generateDemoReferrerSummary(siteId, params);
     if (subPath === "performance")
       return generateDemoPerformance(siteId, params);
     if (subPath === "countries")
@@ -1308,7 +1511,7 @@ function handleDemoRequestInner(options: {
   return demoNotFoundResponse();
 }
 
-function demoBotAnalyticsResponse(
+function demoRequestObservationResponse(
   params: Record<string, string | number>,
 ): Record<string, unknown> {
   const from = Number(params.from);
@@ -1328,104 +1531,402 @@ function demoBotAnalyticsResponse(
   const data = generateDemoRequestObservationData(
     minutes,
     Number.isFinite(to) && to > 0 ? to : undefined,
-  ) as unknown as {
-    ok: true;
-    configured: boolean;
-    generatedAt: number;
-    events: Array<Record<string, unknown>>;
-    normal?: { events?: Array<Record<string, unknown>> };
-  } & Record<string, unknown>;
+  );
+  const serializeDetailEvent = (event: Record<string, unknown>) => {
+    const { sampleWeight: _sampleWeight, ...serialized } = event;
+    return serialized;
+  };
+  const serializeListEvent = (
+    event: Record<string, unknown>,
+    source: "blocked" | "included",
+  ) => {
+    const shared = {
+      timestamp: event.timestamp,
+      receivedAt: event.receivedAt,
+      siteId: event.siteId,
+      siteName: event.siteName,
+      siteDomain: event.siteDomain,
+      kind: event.kind,
+      category: event.category,
+      disposition: event.disposition,
+      pathname: event.pathname,
+      country: event.country,
+      region: event.region,
+      asOrganization: event.asOrganization,
+      asn: event.asn,
+      rayId: event.rayId,
+      traceId: event.traceId,
+    };
+    if (source === "blocked") {
+      return {
+        ...shared,
+        reasons: event.reasons,
+        ip: event.ip,
+        userAgent: event.userAgent,
+        verifiedBotCategory: event.verifiedBotCategory,
+        botScore: event.botScore,
+      };
+    }
+    return {
+      ...shared,
+      hostname: event.hostname,
+      colo: event.colo,
+      requestMethod: event.requestMethod,
+      edgeLatencyMs: event.edgeLatencyMs,
+    };
+  };
+  const blockedEvents = data.blockedEvents as unknown as Array<
+    Record<string, unknown>
+  >;
+  const includedEvents = data.includedEvents as unknown as Array<
+    Record<string, unknown>
+  >;
 
   if (params.detail === "1") {
     const traceId = String(params.traceId || "");
     const rayId = String(params.rayId || "");
-    const detail = data.events.find(
+    const detail = [...blockedEvents, ...includedEvents].find(
       (event) => event.traceId === traceId || event.rayId === rayId,
     );
     return {
       ok: true,
       configured: data.configured,
       generatedAt: data.generatedAt,
-      detail: detail ?? null,
+      sampling: data.sampling,
+      detail: detail ? serializeDetailEvent(detail) : null,
     };
   }
 
-  const source = params.page === "normal" ? "normal" : "abnormal";
-  const events =
-    source === "normal" ? (data.normal?.events ?? []) : data.events;
-  if (params.page === "normal" || params.page === "abnormal") {
-    const page = paginateDemoBotEvents(
+  const rawPage = String(params.source || "");
+  const source =
+    rawPage === "abnormal"
+      ? "blocked"
+      : rawPage === "normal"
+        ? "included"
+        : rawPage;
+  const events = source === "included" ? includedEvents : blockedEvents;
+  if (source === "blocked" || source === "included") {
+    const page = demoPage(
       events,
-      parseDemoBotAnalyticsLimit(params.limit),
-      params.cursor,
+      params,
+      {
+        operation: "request-observation-events",
+        source,
+        from,
+        to,
+        interval: minutes,
+        order: "timestamp:desc,receivedAt:desc,traceId:desc,rayId:desc",
+      },
+      parseRequestObservationLimit(params.limit),
+      100,
     );
     return {
       ok: true,
       configured: data.configured,
       generatedAt: data.generatedAt,
-      page: {
-        source,
-        ...page,
+      sampling: data.sampling,
+      source,
+      data: {
+        items: page.items.map((event) => serializeListEvent(event, source)),
+        pagination: page.pagination,
       },
     };
   }
 
   if (params.dimensionTab) {
-    const key = String(params.dimensionTab);
-    const counts = new Map<string, { count: number; highConfidence: number }>();
-    for (const event of events) {
-      const value = String(event[key] ?? "Unknown");
-      const current = counts.get(value) ?? { count: 0, highConfidence: 0 };
-      current.count += 1;
-      if (event.confidence === "high") current.highConfidence += 1;
-      counts.set(value, current);
+    const group = String(params.dimensionGroup || "");
+    const tab = String(params.dimensionTab);
+    const rawDimensionSource = String(params.dimensionSource || "blocked");
+    const dimensionSource =
+      rawDimensionSource === "abnormal"
+        ? "blocked"
+        : rawDimensionSource === "normal"
+          ? "included"
+          : rawDimensionSource === "included"
+            ? "included"
+            : "blocked";
+    const dimensionEvents =
+      dimensionSource === "included" ? includedEvents : blockedEvents;
+    const counts = new Map<
+      string,
+      DemoRequestObservationDimensionValue & {
+        count: number;
+        botCount: number;
+      }
+    >();
+    for (const event of dimensionEvents) {
+      for (const value of demoRequestObservationDimensionValues(
+        event,
+        group,
+        tab,
+      )) {
+        const current = counts.get(value.key) ?? {
+          ...value,
+          count: 0,
+          botCount: 0,
+        };
+        const sampleWeight = Math.max(1, Number(event.sampleWeight) || 1);
+        current.count += sampleWeight;
+        if (event.category === "bot") current.botCount += sampleWeight;
+        counts.set(value.key, current);
+      }
     }
     return {
       ok: true,
+      sampling: data.sampling,
       dimension: {
+        group,
+        tab,
+        source: dimensionSource,
         rows: [...counts.entries()]
-          .map(([key, value]) => ({ key, label: key, ...value }))
+          .map(([key, value]) => ({
+            key,
+            label: value.label,
+            count: value.count,
+            botCount: value.botCount,
+            ...(value.iconLabel ? { iconLabel: value.iconLabel } : {}),
+            ...(value.country ? { country: value.country } : {}),
+            ...(value.region ? { region: value.region } : {}),
+          }))
           .sort((left, right) => right.count - left.count)
           .slice(0, 30),
       },
     };
   }
 
-  const abnormalPage = paginateDemoBotEvents(
-    data.events,
-    parseDemoBotAnalyticsLimit(params.limit),
+  const blockedPage = demoPage(
+    blockedEvents,
+    params,
+    {
+      operation: "request-observation-events",
+      source: "blocked",
+      from,
+      to,
+      interval: minutes,
+      order: "timestamp:desc,receivedAt:desc,traceId:desc,rayId:desc",
+    },
+    parseRequestObservationLimit(params.limit),
+    100,
   );
-  const normalPage = paginateDemoBotEvents(
-    data.normal?.events ?? [],
-    parseDemoBotAnalyticsLimit(params.limit),
+  const includedPage = demoPage(
+    includedEvents,
+    params,
+    {
+      operation: "request-observation-events",
+      source: "included",
+      from,
+      to,
+      interval: minutes,
+      order: "timestamp:desc,receivedAt:desc,traceId:desc,rayId:desc",
+    },
+    parseRequestObservationLimit(params.limit),
+    100,
+  );
+  const serializedBlockedEvents = blockedPage.items.map((event) =>
+    serializeListEvent(event, "blocked"),
+  );
+  const serializedIncludedEvents = includedPage.items.map((event) =>
+    serializeListEvent(event, "included"),
   );
 
   return {
     ...data,
-    events: abnormalPage.events,
-    normalEvents: normalPage.events,
-    abnormal: data.abnormal
-      ? {
-          ...data.abnormal,
-          events: abnormalPage.events,
-          hasMore: abnormalPage.hasMore,
-          nextCursor: abnormalPage.nextCursor,
-        }
-      : data.abnormal,
-    normal: data.normal
-      ? {
-          ...data.normal,
-          events: normalPage.events,
-          hasMore: normalPage.hasMore,
-          nextCursor: normalPage.nextCursor,
-        }
-      : data.normal,
+    events: serializedBlockedEvents,
+    normalEvents: serializedIncludedEvents.filter(
+      (event) => event.category === "normal",
+    ),
+    blockedEvents: serializedBlockedEvents,
+    includedEvents: serializedIncludedEvents,
+    blocked: {
+      ...data.blocked,
+      events: serializedBlockedEvents,
+      pagination: blockedPage.pagination,
+    },
+    included: {
+      ...data.included,
+      events: serializedIncludedEvents,
+      pagination: includedPage.pagination,
+    },
   };
 }
 
-const DEMO_BOT_ANALYTICS_DEFAULT_LIMIT = 50;
+interface DemoRequestObservationDimensionValue {
+  key: string;
+  label: string;
+  iconLabel?: string;
+  country?: string;
+  region?: string;
+}
 
-function parseDemoBotAnalyticsLimit(value: unknown): number {
+function demoDimensionString(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+function demoBotScoreBucket(value: unknown): string {
+  const score = Number(value);
+  if (!Number.isFinite(score) || score <= 0) return "";
+  if (score < 20) return "1-19";
+  if (score < 40) return "20-39";
+  if (score < 60) return "40-59";
+  if (score < 80) return "60-79";
+  return "80-99";
+}
+
+function demoUserAgentLengthBucket(value: unknown): string {
+  const length = Number(value);
+  if (!Number.isFinite(length) || length <= 0) return "";
+  if (length < 80) return "1-79";
+  if (length < 160) return "80-159";
+  if (length < 256) return "160-255";
+  if (length < 512) return "256-511";
+  return "512+";
+}
+
+function demoIpPrefix(value: unknown): string {
+  const ip = demoDimensionString(value);
+  const ipv4 = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/);
+  if (ipv4) return `${ipv4[1]}.${ipv4[2]}.${ipv4[3]}.0/24`;
+  if (ip.includes(":")) {
+    const parts = ip.split(":").filter(Boolean);
+    if (parts.length >= 4) return `${parts.slice(0, 4).join(":")}::/64`;
+  }
+  return ip;
+}
+
+function demoRequestObservationDimensionValue(
+  value: unknown,
+  options?: Pick<
+    DemoRequestObservationDimensionValue,
+    "iconLabel" | "country" | "region"
+  >,
+): DemoRequestObservationDimensionValue {
+  const label = demoDimensionString(value) || "Unknown";
+  return {
+    key: label,
+    label,
+    ...options,
+  };
+}
+
+function demoRequestObservationDimensionValues(
+  event: Record<string, unknown>,
+  group: string,
+  tab: string,
+): DemoRequestObservationDimensionValue[] {
+  if (group === "detection") {
+    if (tab === "reason") {
+      const reasons = Array.isArray(event.reasons)
+        ? event.reasons.map(demoDimensionString).filter(Boolean)
+        : demoDimensionString(event.reasons)
+            .split(",")
+            .map((reason) => reason.trim())
+            .filter(Boolean);
+      return [demoRequestObservationDimensionValue(reasons.join(","))];
+    }
+    if (tab === "category") {
+      const category = demoDimensionString(event.category);
+      return [demoRequestObservationDimensionValue(category)];
+    }
+    if (tab === "kind") {
+      return [demoRequestObservationDimensionValue(event.kind)];
+    }
+    if (tab === "botScoreBucket") {
+      return [
+        demoRequestObservationDimensionValue(
+          demoBotScoreBucket(event.botScore),
+        ),
+      ];
+    }
+    if (tab === "verifiedBotCategory") {
+      return [demoRequestObservationDimensionValue(event.verifiedBotCategory)];
+    }
+  }
+
+  if (group === "target") {
+    if (tab === "site") {
+      const siteId = demoDimensionString(event.siteId);
+      const siteName =
+        demoDimensionString(event.siteName) ||
+        demoDimensionString(event.siteDomain) ||
+        siteId;
+      return [
+        demoRequestObservationDimensionValue(siteName, {
+          iconLabel: demoDimensionString(event.siteDomain) || undefined,
+        }),
+      ].map((value) => ({ ...value, key: siteId || value.key }));
+    }
+    if (tab === "hostname") {
+      return [demoRequestObservationDimensionValue(event.hostname)];
+    }
+    if (tab === "pathname") {
+      return [
+        demoRequestObservationDimensionValue(
+          demoDimensionString(event.pathname) || "/",
+        ),
+      ];
+    }
+    if (tab === "origin") {
+      return [demoRequestObservationDimensionValue(event.origin)];
+    }
+  }
+
+  if (group === "network") {
+    if (tab === "asOrganization") {
+      return [demoRequestObservationDimensionValue(event.asOrganization)];
+    }
+    if (tab === "asn") {
+      return [demoRequestObservationDimensionValue(event.asn)];
+    }
+    if (tab === "country") {
+      return [demoRequestObservationDimensionValue(event.country)];
+    }
+    if (tab === "region") {
+      return [
+        demoRequestObservationDimensionValue(event.region, {
+          country: demoDimensionString(event.country) || undefined,
+        }),
+      ];
+    }
+    if (tab === "city") {
+      return [
+        demoRequestObservationDimensionValue(event.city, {
+          country: demoDimensionString(event.country) || undefined,
+          region: demoDimensionString(event.region) || undefined,
+        }),
+      ];
+    }
+    if (tab === "colo") {
+      return [demoRequestObservationDimensionValue(event.colo)];
+    }
+  }
+
+  if (group === "client") {
+    if (tab === "ip") {
+      return [demoRequestObservationDimensionValue(event.ip)];
+    }
+    if (tab === "userAgent") {
+      return [demoRequestObservationDimensionValue(event.userAgent)];
+    }
+    if (tab === "userAgentLengthBucket") {
+      return [
+        demoRequestObservationDimensionValue(
+          demoUserAgentLengthBucket(event.userAgentLength),
+        ),
+      ];
+    }
+    if (tab === "ipPrefix") {
+      return [demoRequestObservationDimensionValue(demoIpPrefix(event.ip))];
+    }
+  }
+
+  return [demoRequestObservationDimensionValue(event[tab])];
+}
+
+const DEMO_REQUEST_OBSERVATION_DEFAULT_LIMIT = 50;
+
+function parseRequestObservationLimit(value: unknown): number {
   const parsed = Number(value);
   return Math.max(
     1,
@@ -1433,61 +1934,9 @@ function parseDemoBotAnalyticsLimit(value: unknown): number {
       100,
       Number.isFinite(parsed)
         ? Math.trunc(parsed)
-        : DEMO_BOT_ANALYTICS_DEFAULT_LIMIT,
+        : DEMO_REQUEST_OBSERVATION_DEFAULT_LIMIT,
     ),
   );
-}
-
-function parseDemoBotAnalyticsCursor(
-  value: unknown,
-): { timestamp: string; receivedAt: number } | null {
-  if (typeof value !== "string" || !value) return null;
-  try {
-    const parsed = JSON.parse(value) as {
-      timestamp?: unknown;
-      receivedAt?: unknown;
-    };
-    const timestamp = String(parsed.timestamp || "");
-    const receivedAt = Number(parsed.receivedAt);
-    if (!timestamp || !Number.isFinite(receivedAt)) return null;
-    return { timestamp, receivedAt };
-  } catch {
-    return null;
-  }
-}
-
-function paginateDemoBotEvents(
-  events: Array<Record<string, unknown>>,
-  limit: number,
-  cursorValue?: unknown,
-): {
-  events: Array<Record<string, unknown>>;
-  hasMore: boolean;
-  nextCursor: { timestamp: string; receivedAt: number } | null;
-} {
-  const cursor = parseDemoBotAnalyticsCursor(cursorValue);
-  const startIndex = cursor
-    ? Math.max(
-        0,
-        events.findIndex(
-          (event) =>
-            String(event.timestamp || "") === cursor.timestamp &&
-            Number(event.receivedAt) === cursor.receivedAt,
-        ) + 1,
-      )
-    : 0;
-  const pageEvents = events.slice(startIndex, startIndex + limit);
-  const hasMore = startIndex + pageEvents.length < events.length;
-  const lastEvent = pageEvents[pageEvents.length - 1];
-  const nextCursor =
-    hasMore && lastEvent
-      ? {
-          timestamp: String(lastEvent.timestamp || ""),
-          receivedAt: Number(lastEvent.receivedAt),
-        }
-      : null;
-
-  return { events: pageEvents, hasMore, nextCursor };
 }
 
 /**
@@ -1500,16 +1949,23 @@ function paginateDemoBotEvents(
 export function handleDemoRequest(
   options: Parameters<typeof handleDemoRequestInner>[0],
 ): unknown {
-  const result: unknown = handleDemoRequestInner(options);
-  if (
-    result &&
-    typeof result === "object" &&
-    (result as { ok?: unknown }).ok === true &&
-    typeof (result as { requestId?: unknown }).requestId !== "string"
-  ) {
-    return demoOk({ ...(result as Record<string, unknown>) });
+  try {
+    const result: unknown = handleDemoRequestInner(options);
+    if (
+      result &&
+      typeof result === "object" &&
+      (result as { ok?: unknown }).ok === true &&
+      typeof (result as { requestId?: unknown }).requestId !== "string"
+    ) {
+      return demoOk({ ...(result as Record<string, unknown>) });
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof DemoInvalidCursorError) {
+      return demoBadRequest("Invalid cursor");
+    }
+    throw error;
   }
-  return result;
 }
 
 /**

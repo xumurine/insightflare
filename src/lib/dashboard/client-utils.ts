@@ -1,15 +1,88 @@
-import type { PrivateRequestParams } from "@/lib/dashboard/client-data-types";
-import type { OverviewTabData } from "@/lib/edge-client";
+import type {
+  DashboardListRequestOptions,
+  PrivateRequestParams,
+} from "@/lib/dashboard/client-data-types";
+import type {
+  OverviewTabData,
+  PaginatedCollection,
+  PaginationMeta,
+} from "@/lib/edge-client";
 import {
   analyticsFilterRegistry,
   type FilterDocument,
+  type FilterScope,
+  filterScopePreferenceFromDocument,
   serializeFilterParams,
+  serializeFilterScopePreference,
 } from "@/lib/filter-contract";
 
 import type { OverviewTabRows } from "./client-data-types";
 
+function normalizedPagination(
+  value: unknown,
+  itemCount: number,
+): PaginationMeta {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("pagination_contract_violation");
+  }
+  const record = value as Record<string, unknown>;
+  const expectedKeys = ["limit", "returned", "hasMore", "nextCursor"];
+  if (
+    Object.keys(record).length !== expectedKeys.length ||
+    expectedKeys.some((key) => !(key in record))
+  ) {
+    throw new Error("pagination_contract_violation");
+  }
+  if (
+    typeof record.limit !== "number" ||
+    !Number.isSafeInteger(record.limit) ||
+    record.limit < 1 ||
+    typeof record.returned !== "number" ||
+    !Number.isSafeInteger(record.returned) ||
+    record.returned < 0 ||
+    record.returned !== itemCount ||
+    typeof record.hasMore !== "boolean" ||
+    (record.nextCursor !== null && typeof record.nextCursor !== "string") ||
+    record.hasMore !== (record.nextCursor !== null)
+  ) {
+    throw new Error("pagination_contract_violation");
+  }
+  return {
+    limit: record.limit,
+    returned: record.returned,
+    hasMore: record.hasMore,
+    nextCursor: record.nextCursor,
+  };
+}
+
+/** Normalize collection responses at the HTTP boundary before pagination code reads them. */
+export function normalizePaginatedCollection<T>(
+  value: unknown,
+): PaginatedCollection<T> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("pagination_contract_violation");
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).length !== 2 ||
+    !("items" in record) ||
+    !("pagination" in record) ||
+    !Array.isArray(record.items)
+  ) {
+    throw new Error("pagination_contract_violation");
+  }
+  const items = record.items as T[];
+  return {
+    items,
+    pagination: normalizedPagination(record.pagination, items.length),
+  };
+}
+
 export function normalizeOverviewRows(
-  rows: OverviewTabData["data"] | Array<Record<string, unknown>> | undefined,
+  rows:
+    | OverviewTabData["data"]["items"]
+    | Array<Record<string, unknown>>
+    | undefined,
 ): OverviewTabRows {
   if (!Array.isArray(rows)) return [];
   return rows.map((row) => ({
@@ -55,8 +128,21 @@ export function decodeQueryLabel(value: string): string {
 export function withFilters(
   params: PrivateRequestParams,
   filters?: FilterDocument,
+  resolvedScope?: FilterScope,
 ): PrivateRequestParams {
   const next = { ...params };
+  delete next.scope;
+  const scopePreference =
+    resolvedScope ??
+    (filters?.root ? filterScopePreferenceFromDocument(filters) : undefined);
+  if (scopePreference) {
+    const scopeParams = serializeFilterScopePreference(
+      new URLSearchParams(),
+      scopePreference,
+    );
+    const scope = scopeParams.get("scope");
+    if (scope) next.scope = scope;
+  }
   if (!filters) return next;
   for (const [key, value] of serializeFilterParams(
     filters,
@@ -65,6 +151,22 @@ export function withFilters(
     next[key] = value;
   }
   return next;
+}
+
+export function withPagination(
+  params: PrivateRequestParams,
+  options?: DashboardListRequestOptions,
+  defaultLimit?: number,
+): PrivateRequestParams {
+  return {
+    ...params,
+    ...(options?.limit !== undefined
+      ? { limit: options.limit }
+      : defaultLimit !== undefined
+        ? { limit: defaultLimit }
+        : {}),
+    ...(options?.cursor ? { cursor: options.cursor } : {}),
+  };
 }
 
 export function toQueryString(params?: PrivateRequestParams): string {

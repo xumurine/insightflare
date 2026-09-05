@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AnalyticsEnginePoint } from "@/lib/edge/analytics-engine/schema";
 import { IngestDurableObject } from "@/lib/edge/ingest-do";
 import type {
   Env,
@@ -83,6 +84,9 @@ const BUFFERED_VISIT_COLUMNS = [
   "dirty",
   "flush_attempts",
   "last_flush_error",
+  "next_due_at",
+  "flush_due_at",
+  "buffer_revision",
 ] as const;
 
 type VisitColumn = (typeof VISIT_COLUMNS)[number];
@@ -114,7 +118,8 @@ class SqliteSqlStorage {
     if (
       normalized.startsWith("SELECT") ||
       normalized.startsWith("PRAGMA") ||
-      normalized.startsWith("WITH")
+      normalized.startsWith("WITH") ||
+      normalized.startsWith("EXPLAIN")
     ) {
       return new SqlResult(
         statement.all(...bindings).map((row) => ({ ...row })),
@@ -165,6 +170,10 @@ class FakeD1Statement {
   }
 
   async first<T extends SqlRow = SqlRow>(): Promise<T | null> {
+    if (this.d1.failFirstCalls > 0) {
+      this.d1.failFirstCalls -= 1;
+      throw new Error("forced first failure");
+    }
     const row = this.d1.db.prepare(this.query).get(...this.bindings);
     return row ? ({ ...row } as T) : null;
   }
@@ -175,6 +184,7 @@ type FakeBatchHook = (statements: FakeD1Statement[]) => void | Promise<void>;
 class FakeD1Database {
   readonly db = new DatabaseSync(":memory:");
   failBatchCalls = 0;
+  failFirstCalls = 0;
   failRunCalls = 0;
   beforeBatch: FakeBatchHook | null = null;
   readonly prepare = vi.fn((query: string) => new FakeD1Statement(this, query));
@@ -507,6 +517,31 @@ function bufferedVisitRecord(
     last_flush_error: null,
     ...overrides,
   } as BufferedVisitRecord;
+  const dirty = Number(row.dirty) === 1;
+  const flushDueAt =
+    row.flush_due_at === null || row.flush_due_at === undefined
+      ? dirty
+        ? NOW + 60_000
+        : null
+      : Number(row.flush_due_at);
+  const lifecycleDueAt =
+    row.status === "open"
+      ? Number(row.last_activity_at) + VISIT_TIMEOUT_MS
+      : row.status === "hidden_pending"
+        ? Number(row.hidden_at ?? row.last_activity_at) +
+          (row.hidden_at === null || row.hidden_at === undefined
+            ? VISIT_TIMEOUT_MS
+            : 30 * 60 * 1000)
+        : null;
+  row.flush_due_at = flushDueAt;
+  row.next_due_at =
+    row.next_due_at ??
+    (flushDueAt === null
+      ? lifecycleDueAt
+      : lifecycleDueAt === null
+        ? flushDueAt
+        : Math.min(flushDueAt, lifecycleDueAt));
+  row.buffer_revision = row.buffer_revision ?? 1;
   return row;
 }
 
@@ -540,6 +575,9 @@ function insertBufferedCustomEvent(
     dirty: 1,
     flush_attempts: 0,
     last_flush_error: null,
+    next_due_at: NOW + 60_000,
+    flush_due_at: NOW + 60_000,
+    buffer_revision: 1,
     created_at: toSeconds(NOW),
     ...overrides,
   };
@@ -695,6 +733,17 @@ describe("IngestDurableObject", () => {
   it("exports a durable object class and rejects unknown or invalid request routes", async () => {
     const ctx = createTestDo({ ADMIN_WS_TOKEN: "secret-token" });
 
+    const bufferStoreContext = (
+      ctx.object as unknown as {
+        bufferStoreContext: () => {
+          sqlAll: <T>(query: string, ...bindings: SqlBinding[]) => T[];
+        };
+      }
+    ).bufferStoreContext();
+    expect(
+      bufferStoreContext.sqlAll<{ value: number }>("SELECT 1 AS value"),
+    ).toEqual([{ value: 1 }]);
+
     expect(IngestDurableObject).toBeTypeOf("function");
 
     const missing = await ctx.object.fetch(
@@ -707,6 +756,12 @@ describe("IngestDurableObject", () => {
       new Request("https://ingest.internal/ingest"),
     );
     expect(getIngest.status).toBe(404);
+
+    const reconcile = await ctx.object.fetch(
+      new Request("https://ingest.internal/reconcile", { method: "POST" }),
+    );
+    expect(reconcile.status).toBe(200);
+    await expect(reconcile.json()).resolves.toEqual({ ok: true });
 
     const badWsUpgrade = await ctx.object.fetch(
       new Request("https://ingest.internal/ws"),
@@ -997,6 +1052,9 @@ describe("IngestDurableObject", () => {
       },
       alarm: {
         scheduledAt: NOW + 60_000,
+        nextDueAt: NOW + 60_000,
+        nextDueKind: "flush",
+        nextDueEntity: "visit",
       },
     });
   });
@@ -1111,6 +1169,36 @@ describe("IngestDurableObject", () => {
         perf_inp_ms: 100,
       },
     ]);
+
+    const beforeDuplicateLeave = localRows<{ buffer_revision: number }>(
+      ctx.sql,
+      "SELECT buffer_revision FROM buffered_visits WHERE visit_id = ?",
+      "visit-2",
+    )[0];
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "leave",
+        visitId: "visit-2",
+        performanceVisitId: "visit-2",
+        timestamp: NOW - 5_000,
+        durationMs: 4_567.8,
+        performance: {
+          ttfb: 1.23456,
+          fcp: -1,
+          lcp: 2500,
+          cls: 0.12345,
+          inp: 99.9999,
+        },
+      }),
+    );
+    expect(
+      localRows<{ buffer_revision: number }>(
+        ctx.sql,
+        "SELECT buffer_revision FROM buffered_visits WHERE visit_id = ?",
+        "visit-2",
+      )[0],
+    ).toEqual(beforeDuplicateLeave);
   });
 
   it("reuses server sessions across browser contexts without closing other tabs", async () => {
@@ -1265,6 +1353,65 @@ describe("IngestDurableObject", () => {
     expect(rows[0]?.session_id).not.toBe(rows[1]?.session_id);
   });
 
+  it("writes pageview facts and emits one session-ended fact at expiry", async () => {
+    const points: AnalyticsEnginePoint[] = [];
+    const writeDataPoint = vi.fn((point: AnalyticsEnginePoint) => {
+      points.push(point);
+    });
+    const ctx = createTestDo({
+      SESSION_WINDOW_MINUTES: "1",
+      TRAFFIC_ANALYTICS: { writeDataPoint },
+    });
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "session-page-1",
+        startedAt: NOW - 10_000,
+        timestamp: NOW - 10_000,
+        pathname: "/first",
+      }),
+    );
+    await postIngest(
+      ctx.object,
+      envelope({
+        visitId: "session-page-2",
+        startedAt: NOW,
+        timestamp: NOW,
+        pathname: "/second",
+      }),
+    );
+
+    expect(
+      localRows<{ page_count: number }>(
+        ctx.sql,
+        "SELECT page_count FROM analytics_sessions WHERE session_id = ?",
+        localRows<{ session_id: string }>(
+          ctx.sql,
+          "SELECT session_id FROM buffered_visits WHERE visit_id = ?",
+          "session-page-2",
+        )[0]?.session_id,
+      )[0]?.page_count,
+    ).toBe(2);
+    expect(points.map((point) => point.doubles[0])).toEqual([1, 1]);
+    expect(points.map((point) => point.doubles[6])).toEqual([1, 2]);
+
+    vi.setSystemTime(NOW + 60_001);
+    await ctx.object.alarm();
+
+    expect(points.map((point) => point.doubles[0])).toEqual([1, 1, 3]);
+    expect(points[2]?.doubles[7]).toBe(2);
+    expect(
+      localRows<{ sessions: number }>(
+        ctx.sql,
+        "SELECT COUNT(*) AS sessions FROM analytics_sessions",
+      )[0]?.sessions,
+    ).toBe(0);
+
+    await ctx.object.alarm();
+    expect(points.map((point) => point.doubles[0])).toEqual([1, 1, 3]);
+  });
+
   it("keeps hidden visits pending and lets pagehide override within the grace window", async () => {
     const ctx = createTestDo();
 
@@ -1302,6 +1449,31 @@ describe("IngestDurableObject", () => {
         "hidden-visit",
       )[0],
     ).toEqual({ status: "hidden_pending", hidden_at: NOW - 10_000 });
+
+    const beforeDuplicateVisibility = localRows<{
+      last_activity_at: number;
+      buffer_revision: number;
+    }>(
+      ctx.sql,
+      "SELECT last_activity_at, buffer_revision FROM buffered_visits WHERE visit_id = ?",
+      "hidden-visit",
+    )[0];
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "visibility",
+        visitId: "hidden-visit",
+        visibilityState: "hidden",
+        timestamp: NOW - 9_000,
+      }),
+    );
+    expect(
+      localRows<{ last_activity_at: number; buffer_revision: number }>(
+        ctx.sql,
+        "SELECT last_activity_at, buffer_revision FROM buffered_visits WHERE visit_id = ?",
+        "hidden-visit",
+      )[0],
+    ).toEqual(beforeDuplicateVisibility);
 
     await postIngest(
       ctx.object,
@@ -1361,6 +1533,42 @@ describe("IngestDurableObject", () => {
         receivedAt: NOW,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("does not regress activity for an out-of-order legacy hidden visit", async () => {
+    const ctx = createTestDo();
+    insertBufferedVisit(ctx.sql, {
+      visit_id: "legacy-hidden-visit",
+      status: "hidden_pending",
+      hidden_at: null,
+      last_activity_at: NOW,
+    });
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "visibility",
+        visitId: "legacy-hidden-visit",
+        visibilityState: "hidden",
+        timestamp: NOW - 1_000,
+      }),
+    );
+
+    expect(
+      localRows<{
+        status: string;
+        hidden_at: number | null;
+        last_activity_at: number;
+      }>(
+        ctx.sql,
+        "SELECT status, hidden_at, last_activity_at FROM buffered_visits WHERE visit_id = ?",
+        "legacy-hidden-visit",
+      )[0],
+    ).toEqual({
+      status: "hidden_pending",
+      hidden_at: null,
+      last_activity_at: NOW,
+    });
   });
 
   it("finalizes stale hidden visits at hidden_at during flush", async () => {
@@ -1449,6 +1657,40 @@ describe("IngestDurableObject", () => {
       }),
     );
 
+    const beforeDuplicateIdentify = localRows<{
+      visitRevision: number;
+      eventRevision: number;
+    }>(
+      ctx.sql,
+      `
+        SELECT
+          (SELECT buffer_revision FROM buffered_visits WHERE visit_id = ?) AS visitRevision,
+          (SELECT buffer_revision FROM buffered_custom_events WHERE event_id = ?) AS eventRevision
+      `,
+      "visit-1",
+      "event-1",
+    )[0];
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "identify",
+        userId: "user-1",
+        userName: "Ada",
+      }),
+    );
+    expect(
+      localRows<{ visitRevision: number; eventRevision: number }>(
+        ctx.sql,
+        `
+          SELECT
+            (SELECT buffer_revision FROM buffered_visits WHERE visit_id = ?) AS visitRevision,
+            (SELECT buffer_revision FROM buffered_custom_events WHERE event_id = ?) AS eventRevision
+        `,
+        "visit-1",
+        "event-1",
+      )[0],
+    ).toEqual(beforeDuplicateIdentify);
+
     const [bufferedVisit] = localRows<{ user_id: string; user_name: string }>(
       ctx.sql,
       "SELECT user_id, user_name FROM buffered_visits WHERE visit_id = ?",
@@ -1498,6 +1740,22 @@ describe("IngestDurableObject", () => {
     );
     expect(waiting.status).toBe(202);
     await expect(waiting.text()).resolves.toBe("ignored:waiting_for_visit");
+    expect(ctx.getAlarmAt()).toBe(NOW + 60_000);
+    expect(
+      localRows<{
+        dirty: number;
+        flush_attempts: number;
+        last_flush_error: string | null;
+      }>(
+        ctx.sql,
+        "SELECT dirty, flush_attempts, last_flush_error FROM buffered_custom_events WHERE event_id = ?",
+        "event-waiting",
+      )[0],
+    ).toEqual({
+      dirty: 1,
+      flush_attempts: 0,
+      last_flush_error: "waiting_for_visit",
+    });
 
     const invalid = await postIngest(
       ctx.object,
@@ -1515,6 +1773,23 @@ describe("IngestDurableObject", () => {
     );
 
     await postIngest(ctx.object, envelope());
+    expect(
+      localRows<{
+        flush_due_at: number;
+        next_due_at: number;
+        flush_attempts: number;
+        last_flush_error: string | null;
+      }>(
+        ctx.sql,
+        "SELECT flush_due_at, next_due_at, flush_attempts, last_flush_error FROM buffered_custom_events WHERE event_id = ?",
+        "event-waiting",
+      )[0],
+    ).toEqual({
+      flush_due_at: NOW + 60_000,
+      next_due_at: NOW + 60_000,
+      flush_attempts: 0,
+      last_flush_error: null,
+    });
     await postIngest(
       ctx.object,
       envelope({
@@ -1530,6 +1805,8 @@ describe("IngestDurableObject", () => {
         sequence: 2,
       }),
     );
+
+    vi.setSystemTime(NOW + 60_000);
 
     expect(
       localRows<{ count: number }>(
@@ -1569,6 +1846,97 @@ describe("IngestDurableObject", () => {
         "event-live",
       )[0]?.dirty,
     ).toBe(0);
+  });
+
+  it("does not rewrite visit activity for an out-of-order custom event", async () => {
+    const ctx = createTestDo();
+    await postIngest(ctx.object, envelope());
+
+    const before = localRows<{
+      last_activity_at: number;
+      buffer_revision: number;
+    }>(
+      ctx.sql,
+      "SELECT last_activity_at, buffer_revision FROM buffered_visits WHERE visit_id = ?",
+      "visit-1",
+    )[0];
+
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "custom_event",
+        eventId: "event-out-of-order",
+        eventName: "Out of order",
+        eventData: { ok: true },
+        timestamp: NOW - 2_000,
+      }),
+    );
+
+    const after = localRows<{
+      last_activity_at: number;
+      buffer_revision: number;
+    }>(
+      ctx.sql,
+      "SELECT last_activity_at, buffer_revision FROM buffered_visits WHERE visit_id = ?",
+      "visit-1",
+    )[0];
+
+    expect(after).toEqual(before);
+    expect(
+      localRows<{ event_id: string }>(
+        ctx.sql,
+        "SELECT event_id FROM buffered_custom_events WHERE event_id = ?",
+        "event-out-of-order",
+      ),
+    ).toEqual([{ event_id: "event-out-of-order" }]);
+  });
+
+  it("force flushes pending ingest rows only for E2E flush requests", async () => {
+    const regular = createTestDo();
+    await postIngest(regular.object, envelope());
+
+    const regularFlush = await regular.object.fetch(
+      new Request("https://ingest.internal/flush?force=1", { method: "POST" }),
+    );
+
+    expect(regularFlush.status).toBe(200);
+    expect(
+      regular.d1.all<{ visit_id: string }>(
+        "SELECT visit_id FROM visits WHERE visit_id = ?",
+        "visit-1",
+      ),
+    ).toEqual([]);
+
+    const e2e = createTestDo({ INSIGHTFLARE_E2E: "1" });
+    await postIngest(e2e.object, envelope());
+    await postIngest(
+      e2e.object,
+      envelope({
+        kind: "custom_event",
+        eventId: "event-force",
+        eventName: "Force Flush",
+        eventData: { ok: true },
+        sequence: 1,
+      }),
+    );
+
+    const forced = await e2e.object.fetch(
+      new Request("https://ingest.internal/flush?force=1", { method: "POST" }),
+    );
+
+    expect(forced.status).toBe(200);
+    expect(
+      e2e.d1.all<{ visit_id: string }>(
+        "SELECT visit_id FROM visits WHERE visit_id = ?",
+        "visit-1",
+      ),
+    ).toEqual([{ visit_id: "visit-1" }]);
+    expect(
+      e2e.d1.all<{ event_id: string }>(
+        "SELECT event_id FROM custom_events WHERE event_id = ?",
+        "event-force",
+      ),
+    ).toEqual([{ event_id: "event-force" }]);
   });
 
   it("hydrates persisted visits when custom events arrive after the buffered row is gone", async () => {
@@ -1612,6 +1980,7 @@ describe("IngestDurableObject", () => {
     const ctx = createTestDo();
     ctx.d1.failBatchCalls = 1;
     await postIngest(ctx.object, envelope());
+    vi.setSystemTime(NOW + 60_000);
 
     const flush = await ctx.object.fetch(
       new Request("https://ingest.internal/flush", { method: "POST" }),
@@ -1634,10 +2003,11 @@ describe("IngestDurableObject", () => {
     ).toBe(0);
   });
 
-  it("deletes rows that cannot be flushed after batch and individual failures", async () => {
+  it("retains rows that cannot be flushed after batch and individual failures", async () => {
     const ctx = createTestDo();
     ctx.d1.failBatchCalls = 2;
     await postIngest(ctx.object, envelope());
+    vi.setSystemTime(NOW + 60_000);
 
     const flush = await ctx.object.fetch(
       new Request("https://ingest.internal/flush", { method: "POST" }),
@@ -1650,10 +2020,50 @@ describe("IngestDurableObject", () => {
         ctx.sql,
         "SELECT COUNT(*) AS count FROM buffered_visits",
       )[0]?.count,
-    ).toBe(0);
+    ).toBe(1);
+    expect(
+      localRows<{ dirty: number; flush_attempts: number }>(
+        ctx.sql,
+        "SELECT dirty, flush_attempts FROM buffered_visits WHERE visit_id = ?",
+        "visit-1",
+      )[0],
+    ).toEqual({ dirty: 1, flush_attempts: 1 });
   });
 
-  it("deletes custom events that still have no persisted visit during flush", async () => {
+  it("does not clear a newer local revision after D1 await", async () => {
+    const ctx = createTestDo();
+    await postIngest(ctx.object, envelope());
+    vi.setSystemTime(NOW + 60_000);
+    ctx.d1.beforeBatch = async () => {
+      await postIngest(
+        ctx.object,
+        envelope({
+          kind: "identify",
+          userId: "updated-during-flush",
+          userName: "Updated During Flush",
+        }),
+      );
+    };
+
+    const flush = await ctx.object.fetch(
+      new Request("https://ingest.internal/flush", { method: "POST" }),
+    );
+
+    expect(flush.status).toBe(200);
+    expect(
+      localRows<{
+        dirty: number;
+        user_id: string;
+        buffer_revision: number;
+      }>(
+        ctx.sql,
+        "SELECT dirty, user_id, buffer_revision FROM buffered_visits WHERE visit_id = ?",
+        "visit-1",
+      )[0],
+    ).toMatchObject({ dirty: 1, user_id: "updated-during-flush" });
+  });
+
+  it("backs off custom events that still have no persisted visit during flush", async () => {
     const ctx = createTestDo();
     await postIngest(
       ctx.object,
@@ -1664,6 +2074,7 @@ describe("IngestDurableObject", () => {
         eventData: { ok: true },
       }),
     );
+    vi.setSystemTime(NOW + 60_000);
 
     const flush = await ctx.object.fetch(
       new Request("https://ingest.internal/flush", { method: "POST" }),
@@ -1675,7 +2086,22 @@ describe("IngestDurableObject", () => {
         ctx.sql,
         "SELECT COUNT(*) AS count FROM buffered_custom_events",
       )[0]?.count,
-    ).toBe(0);
+    ).toBe(1);
+    expect(
+      localRows<{
+        dirty: number;
+        flush_attempts: number;
+        last_flush_error: string;
+      }>(
+        ctx.sql,
+        "SELECT dirty, flush_attempts, last_flush_error FROM buffered_custom_events WHERE event_id = ?",
+        "event-orphan",
+      )[0],
+    ).toEqual({
+      dirty: 1,
+      flush_attempts: 1,
+      last_flush_error: "waiting_for_visit",
+    });
     expect(
       ctx.d1.all<{ count: number }>(
         "SELECT COUNT(*) AS count FROM custom_events",
@@ -1742,6 +2168,7 @@ describe("IngestDurableObject", () => {
       last_activity_at: NOW - VISIT_TIMEOUT_MS - 1,
       dirty: 0,
     });
+    await ctx.state.storage.setAlarm(NOW);
 
     await ctx.object.alarm();
 
@@ -1772,8 +2199,37 @@ describe("IngestDurableObject", () => {
 
     await ctx.object.alarm();
 
+    expect(ctx.getAlarmAt()).toBe(NOW + VISIT_TIMEOUT_MS);
+    expect(ctx.state.storage.setAlarm).toHaveBeenCalledWith(
+      NOW + VISIT_TIMEOUT_MS,
+    );
+  });
+
+  it("only advances a later alarm and keeps an earlier alarm", async () => {
+    const ctx = createTestDo();
+    await postIngest(ctx.object, envelope());
+
+    await ctx.state.storage.setAlarm(NOW + 2 * 60 * 60 * 1000);
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "identify",
+        userId: "user-1",
+        userName: "User One",
+      }),
+    );
     expect(ctx.getAlarmAt()).toBe(NOW + 60_000);
-    expect(ctx.state.storage.setAlarm).toHaveBeenCalledWith(NOW + 60_000);
+
+    await ctx.state.storage.setAlarm(NOW + 30_000);
+    await postIngest(
+      ctx.object,
+      envelope({
+        kind: "identify",
+        userId: "user-2",
+        userName: "User Two",
+      }),
+    );
+    expect(ctx.getAlarmAt()).toBe(NOW + 30_000);
   });
 
   it("ignores additional invalid validation shapes without buffering rows", async () => {
@@ -2162,7 +2618,7 @@ describe("IngestDurableObject", () => {
     });
   });
 
-  it("deletes custom events when D1 custom event flush expansion or insert verification fails", async () => {
+  it("retains custom events when D1 custom event flush expansion or insert verification fails", async () => {
     const invalidJsonCtx = createTestDo();
     invalidJsonCtx.d1.insertVisit({ visit_id: "visit-invalid-json" });
     insertBufferedCustomEvent(invalidJsonCtx.sql, {
@@ -2170,6 +2626,7 @@ describe("IngestDurableObject", () => {
       visit_id: "visit-invalid-json",
       event_data_json: "{not-json",
     });
+    vi.setSystemTime(NOW + 60_000);
 
     const invalidJsonFlush = await invalidJsonCtx.object.fetch(
       new Request("https://ingest.internal/flush", { method: "POST" }),
@@ -2181,7 +2638,7 @@ describe("IngestDurableObject", () => {
         invalidJsonCtx.sql,
         "SELECT COUNT(*) AS events FROM buffered_custom_events",
       )[0]?.events,
-    ).toBe(0);
+    ).toBe(1);
 
     const missingInsertCtx = createTestDo();
     missingInsertCtx.d1.insertVisit({ visit_id: "visit-removed-before-batch" });
@@ -2207,7 +2664,7 @@ describe("IngestDurableObject", () => {
         missingInsertCtx.sql,
         "SELECT COUNT(*) AS events FROM buffered_custom_events",
       )[0]?.events,
-    ).toBe(0);
+    ).toBe(1);
     expect(
       missingInsertCtx.d1.all<{ events: number }>(
         "SELECT COUNT(*) AS events FROM custom_events",
@@ -2220,11 +2677,11 @@ describe("IngestDurableObject", () => {
     ctx.d1.insertVisit({
       visit_id: "late-persisted",
       status: "complete",
-      ended_at: NOW - VISIT_TIMEOUT_MS - 5_000,
-      finalized_at: NOW - VISIT_TIMEOUT_MS - 5_000,
+      ended_at: NOW - 1_000,
+      finalized_at: NOW - 1_000,
     });
 
-    for (let index = 0; index < 10; index += 1) {
+    for (let index = 0; index < 8; index += 1) {
       insertBufferedCustomEvent(ctx.sql, {
         event_id: `event-old-${index}`,
         visit_id: `missing-${index}`,
@@ -2238,6 +2695,8 @@ describe("IngestDurableObject", () => {
       visit_id: "late-persisted",
       occurred_at: NOW - VISIT_TIMEOUT_MS - 1_000,
       received_at: NOW - VISIT_TIMEOUT_MS - 1_000,
+      flush_due_at: NOW + 60 * 60 * 1000,
+      next_due_at: NOW + 60 * 60 * 1000,
       created_at: toSeconds(NOW - VISIT_TIMEOUT_MS - 1_000),
     });
     insertBufferedCustomEvent(ctx.sql, {
@@ -2247,6 +2706,8 @@ describe("IngestDurableObject", () => {
       received_at: NOW - VISIT_TIMEOUT_MS - 500,
       created_at: toSeconds(NOW - VISIT_TIMEOUT_MS - 500),
     });
+
+    vi.setSystemTime(NOW + 60_000);
 
     const flush = await ctx.object.fetch(
       new Request("https://ingest.internal/flush", { method: "POST" }),
@@ -2425,7 +2886,16 @@ describe("IngestDurableObject", () => {
         legacySql,
         "PRAGMA table_info(buffered_custom_events)",
       ).map((column) => column.name),
-    ).toEqual(expect.arrayContaining(["received_at", "sequence", "user_id"]));
+    ).toEqual(
+      expect.arrayContaining([
+        "received_at",
+        "sequence",
+        "user_id",
+        "next_due_at",
+        "flush_due_at",
+        "buffer_revision",
+      ]),
+    );
 
     const missingUserSql = new SqliteSqlStorage();
     missingUserSql.exec(`
@@ -2452,7 +2922,113 @@ describe("IngestDurableObject", () => {
         missingUserSql,
         "PRAGMA table_info(buffered_custom_events)",
       ).map((column) => column.name),
-    ).toContain("user_id");
+    ).toEqual(
+      expect.arrayContaining([
+        "user_id",
+        "next_due_at",
+        "flush_due_at",
+        "buffer_revision",
+      ]),
+    );
+  });
+
+  it("uses deadline indexes for alarm selection and flush selection", () => {
+    const ctx = createTestDo();
+    const visitIndexes = localRows<{ name: string }>(
+      ctx.sql,
+      "PRAGMA index_list(buffered_visits)",
+    ).map((row) => row.name);
+    const eventIndexes = localRows<{ name: string }>(
+      ctx.sql,
+      "PRAGMA index_list(buffered_custom_events)",
+    ).map((row) => row.name);
+
+    expect(visitIndexes).toEqual(
+      expect.arrayContaining([
+        "idx_buffered_visits_next_due",
+        "idx_buffered_visits_dirty_flush_due",
+      ]),
+    );
+    expect(
+      localRows<{ name: string; seqno: number }>(
+        ctx.sql,
+        "PRAGMA index_info(idx_buffered_visits_dirty_flush_due)",
+      )
+        .sort((left, right) => left.seqno - right.seqno)
+        .map((row) => row.name),
+    ).toEqual(["dirty", "flush_due_at", "flush_attempts"]);
+    expect(visitIndexes).not.toEqual(
+      expect.arrayContaining([
+        "idx_buffered_visits_dirty_updated",
+        "idx_buffered_visits_status_last_activity",
+        "idx_buffered_visits_site_visit_status",
+        "idx_buffered_visits_started_at",
+        "idx_buffered_visits_ended_at",
+      ]),
+    );
+    expect(eventIndexes).toEqual(
+      expect.arrayContaining([
+        "idx_buffered_custom_events_next_due",
+        "idx_buffered_custom_events_dirty_flush_due",
+      ]),
+    );
+    expect(eventIndexes).not.toContain(
+      "idx_buffered_custom_events_dirty_occurred",
+    );
+
+    const visitPlan = localRows<{ detail: string }>(
+      ctx.sql,
+      `EXPLAIN QUERY PLAN
+       SELECT next_due_at
+       FROM buffered_visits
+       WHERE next_due_at IS NOT NULL
+       ORDER BY next_due_at ASC, visit_id ASC
+       LIMIT 1`,
+    );
+    const flushPlan = localRows<{ detail: string }>(
+      ctx.sql,
+      `EXPLAIN QUERY PLAN
+       SELECT visit_id
+       FROM buffered_visits
+       WHERE dirty = 1 AND flush_due_at IS NOT NULL AND flush_due_at <= ?
+       ORDER BY flush_due_at ASC, updated_at ASC, flush_attempts ASC
+       LIMIT ?`,
+      NOW,
+      10,
+    );
+    const eventPlan = localRows<{ detail: string }>(
+      ctx.sql,
+      `EXPLAIN QUERY PLAN
+       SELECT next_due_at
+       FROM buffered_custom_events
+       WHERE next_due_at IS NOT NULL
+       ORDER BY next_due_at ASC, event_id ASC
+       LIMIT 1`,
+    );
+    const eventFlushPlan = localRows<{ detail: string }>(
+      ctx.sql,
+      `EXPLAIN QUERY PLAN
+       SELECT event_id
+       FROM buffered_custom_events
+       WHERE dirty = 1 AND flush_due_at IS NOT NULL AND flush_due_at <= ?
+       ORDER BY flush_due_at ASC, created_at ASC, flush_attempts ASC
+       LIMIT ?`,
+      NOW,
+      10,
+    );
+
+    expect(visitPlan.map((row) => row.detail).join(" ")).toContain(
+      "idx_buffered_visits_next_due",
+    );
+    expect(flushPlan.map((row) => row.detail).join(" ")).toContain(
+      "idx_buffered_visits_dirty_flush_due",
+    );
+    expect(eventPlan.map((row) => row.detail).join(" ")).toContain(
+      "idx_buffered_custom_events_next_due",
+    );
+    expect(eventFlushPlan.map((row) => row.detail).join(" ")).toContain(
+      "idx_buffered_custom_events_dirty_flush_due",
+    );
   });
 
   it("reschedules alarms when dirty custom events remain after the alarm flush budget", async () => {
@@ -2473,9 +3049,11 @@ describe("IngestDurableObject", () => {
       });
     }
 
+    vi.setSystemTime(NOW + 60_000);
+
     await ctx.object.alarm();
 
-    expect(ctx.getAlarmAt()).toBe(NOW + 60_000);
+    expect(ctx.getAlarmAt()).toBe(NOW + 120_000);
     expect(
       localRows<{ dirty: number }>(
         ctx.sql,
@@ -2497,9 +3075,11 @@ describe("IngestDurableObject", () => {
       });
     }
 
+    vi.setSystemTime(NOW + 60_000);
+
     await ctx.object.alarm();
 
-    expect(ctx.getAlarmAt()).toBe(NOW + 60_000);
+    expect(ctx.getAlarmAt()).toBe(NOW + 120_000);
     expect(
       localRows<{ dirty: number }>(
         ctx.sql,
@@ -2526,6 +3106,8 @@ describe("IngestDurableObject", () => {
       received_at: NOW - RECENT_EVENT_RETENTION_MS - 1,
       created_at: toSeconds(NOW - RECENT_EVENT_RETENTION_MS - 1),
     });
+
+    vi.setSystemTime(NOW + 60_000);
 
     const flush = await ctx.object.fetch(
       new Request("https://ingest.internal/flush", { method: "POST" }),
@@ -2768,5 +3350,18 @@ describe("IngestDurableObject", () => {
         "persisted-failing-identify",
       )[0],
     ).toEqual({ user_id: "", user_name: "" });
+
+    const lookupFailingCtx = createTestDo();
+    lookupFailingCtx.d1.failFirstCalls = 1;
+    const lookupFailingIdentify = await postIngest(
+      lookupFailingCtx.object,
+      envelope({
+        kind: "identify",
+        visitId: "missing-persisted-visit",
+        userId: "lookup-failed-user",
+        userName: "",
+      }),
+    );
+    expect(lookupFailingIdentify.status).toBe(202);
   });
 });

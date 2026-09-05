@@ -10,16 +10,22 @@ import {
   LabelWithOptionalIcon,
   REFERRER_FILTER_CONTROL_BY_TAB,
   type ReferrerBreakdownRow,
-  type ReferrerRowsByTab,
+  type ReferrerSortKey,
   type ReferrerTab,
 } from "@/components/dashboard/referrer-utils";
 import {
   TabbedDataTableCard,
   type TabbedDataTableColumn,
+  type TabbedDataTableLoader,
   type TabbedDataTableTab,
 } from "@/components/dashboard/tabbed-data-table-card";
 import { TrafficChannelIcon } from "@/components/dashboard/traffic-channel-icon";
 import { Clickable } from "@/components/ui/clickable";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   replaceUrlWithoutNavigation,
   useLiveSearchParams,
@@ -31,22 +37,27 @@ import {
   withDashboardFilterSearchParams,
 } from "@/lib/dashboard/filter-state";
 import { numberFormat } from "@/lib/dashboard/format";
-import type { FilterDocument } from "@/lib/filter-contract";
+import {
+  type FilterDocument,
+  filterScopePreferenceFromDocument,
+} from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
 import { usePathname } from "@/lib/router";
 import { cn } from "@/lib/utils";
 
-type ReferrerSortKey = "views" | "visitors";
-
 interface ReferrerBreakdownCardProps {
   locale: Locale;
   messages: AppMessages;
   pathname: string;
   filters: FilterDocument;
-  rowsByTab: ReferrerRowsByTab;
-  loading: boolean;
+  requestKey: string;
+  loader: TabbedDataTableLoader<
+    ReferrerTab,
+    ReferrerBreakdownRow,
+    ReferrerSortKey
+  >;
   showSourceLinkTab?: boolean;
 }
 
@@ -55,8 +66,8 @@ export const ReferrerBreakdownCard = memo(function ReferrerBreakdownCard({
   messages,
   pathname,
   filters,
-  rowsByTab,
-  loading,
+  requestKey,
+  loader,
   showSourceLinkTab = true,
 }: ReferrerBreakdownCardProps) {
   const searchParams = useLiveSearchParams();
@@ -111,14 +122,6 @@ export const ReferrerBreakdownCard = memo(function ReferrerBreakdownCard({
     ],
     [locale, messages.common.views, messages.common.visitors],
   );
-  const loadingByTab = useMemo(
-    () => ({
-      domain: loading,
-      link: loading,
-      channel: loading,
-    }),
-    [loading],
-  );
   const activeFilterValueByTab = useMemo(
     () => ({
       domain:
@@ -133,6 +136,12 @@ export const ReferrerBreakdownCard = memo(function ReferrerBreakdownCard({
     }),
     [filters],
   );
+  // Session/Visitor scope first selects matching entities, then expands back
+  // to all of their observations. Do not apply the selected referrer again
+  // to the already-expanded result rows.
+  const entityScopedOutput =
+    filterScopePreferenceFromDocument(filters) === "session" ||
+    filterScopePreferenceFromDocument(filters) === "visitor";
 
   function setFilter(next: { tab: ReferrerTab; value: string } | null) {
     const activeTab = next?.tab ?? "domain";
@@ -199,18 +208,24 @@ export const ReferrerBreakdownCard = memo(function ReferrerBreakdownCard({
             unknownLabel={messages.overview.direct}
           />
           {row.targetUrl ? (
-            <Clickable
-              className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
-              onClick={(event) => openTarget(row.targetUrl!, event)}
-              aria-label={displayLabel}
-              title={displayLabel}
-            >
-              {activeTab === "link" ? (
-                <RiArrowRightUpLine size="1.4em" />
-              ) : (
-                <RiSearchLine size="1.2em" />
-              )}
-            </Clickable>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Clickable
+                  className="inline-flex text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                  onClick={(event) => openTarget(row.targetUrl!, event)}
+                  aria-label={`${messages.common.open}: ${displayLabel}`}
+                >
+                  {activeTab === "link" ? (
+                    <RiArrowRightUpLine size="1.4em" />
+                  ) : (
+                    <RiSearchLine size="1.2em" />
+                  )}
+                </Clickable>
+              </TooltipTrigger>
+              <TooltipContent>
+                {`${messages.common.open}: ${displayLabel}`}
+              </TooltipContent>
+            </Tooltip>
           ) : null}
         </span>
       );
@@ -230,7 +245,7 @@ export const ReferrerBreakdownCard = memo(function ReferrerBreakdownCard({
     activeTab: ReferrerTab,
   ) => {
     const activeValue = activeFilterValueByTab[activeTab];
-    return activeValue
+    return !entityScopedOutput && activeValue
       ? rows.filter((row) => row.filterValue === activeValue)
       : [...rows];
   };
@@ -263,12 +278,15 @@ export const ReferrerBreakdownCard = memo(function ReferrerBreakdownCard({
   ) => (
     <TabbedDataTableCard<ReferrerTab, ReferrerBreakdownRow, ReferrerSortKey>
       tabs={tabs}
-      rowsByTab={rowsByTab}
-      loadingByTab={loadingByTab}
+      loader={loader}
+      requestKey={requestKey}
       columns={columns}
       rowAdapter={rowAdapter}
       filterRows={filterRows}
       compareRows={compareRows}
+      sortActionLabel={(label) =>
+        formatI18nTemplate(messages.common.sortBy, { label })
+      }
       loadingLabel={messages.common.loading}
       emptyLabel={messages.common.noData}
       className="h-full min-h-[420px]"

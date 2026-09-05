@@ -37,8 +37,7 @@ export function applyDemoFilters(
   const equalsCaseInsensitive = (left: string, right: string) =>
     left.trim().toLowerCase() === right.toLowerCase();
   const channel = filters.channel?.trim().toLowerCase() as
-    | TrafficChannelId
-    | undefined;
+    TrafficChannelId | undefined;
 
   for (const visit of dataset.visits) {
     if (
@@ -179,6 +178,35 @@ export function applyDemoFilters(
       visit.sessionId,
       (result.visitsBySession.get(visit.sessionId) ?? 0) + 1,
     );
+  }
+
+  // The demo dataset is intentionally visit-backed, but it still mirrors the
+  // resolved scope contract for the common historical dimensions: first find
+  // the matching Event observations, then expand to all in-window
+  // observations belonging to the matching Session or Visitor.  The D1
+  // provider performs the same expansion through its final relations.
+  if (filters.scope === "session" || filters.scope === "visitor") {
+    const matchingEntities = new Set(
+      result.visits.map((visit) =>
+        filters.scope === "session" ? visit.sessionId : visit.visitorId,
+      ),
+    );
+    result.visits = dataset.visits.filter((visit) =>
+      matchingEntities.has(
+        filters.scope === "session" ? visit.sessionId : visit.visitorId,
+      ),
+    );
+    result.sessions.clear();
+    result.visitors.clear();
+    result.visitsBySession.clear();
+    for (const visit of result.visits) {
+      result.sessions.add(visit.sessionId);
+      result.visitors.add(visit.visitorId);
+      result.visitsBySession.set(
+        visit.sessionId,
+        (result.visitsBySession.get(visit.sessionId) ?? 0) + 1,
+      );
+    }
   }
 
   return result;

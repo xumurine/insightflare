@@ -53,6 +53,7 @@ import {
   useLiveSearchParams,
 } from "@/lib/client-history";
 import { fetchVisitors } from "@/lib/dashboard/client-data";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
 import { numberFormat } from "@/lib/dashboard/format";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
@@ -60,6 +61,7 @@ import type { VisitorsData } from "@/lib/edge-client";
 import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
 
 interface VisitorsClientPageProps {
@@ -69,7 +71,7 @@ interface VisitorsClientPageProps {
   pathname: string;
 }
 
-type VisitorRow = VisitorsData["data"][number];
+type VisitorRow = VisitorsData["data"]["items"][number];
 
 const VISITOR_PAGE_SIZE = 50;
 const VISITOR_SKELETON_ROWS = 25;
@@ -186,6 +188,7 @@ function SortIndicator({
 
 function SortHeader({
   label,
+  ariaLabel,
   active,
   direction,
   onClick,
@@ -193,6 +196,7 @@ function SortHeader({
   className,
 }: {
   label: string;
+  ariaLabel?: string;
   active: boolean;
   direction: SortDirection;
   onClick: () => void;
@@ -215,6 +219,7 @@ function SortHeader({
       >
         <button
           type="button"
+          aria-label={ariaLabel ?? label}
           className={cn(
             "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
             active ? "text-foreground" : "text-muted-foreground",
@@ -574,6 +579,9 @@ const VisitorAnalyticsTable = memo(function VisitorAnalyticsTable({
       firstSeen: (
         <SortHeader
           label={labels.firstSeen}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.firstSeen,
+          })}
           active={sort.key === "firstSeenAt"}
           direction={sort.direction}
           onClick={() => onToggleSort("firstSeenAt")}
@@ -584,6 +592,9 @@ const VisitorAnalyticsTable = memo(function VisitorAnalyticsTable({
       lastSeen: (
         <SortHeader
           label={labels.lastSeen}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.lastSeen,
+          })}
           active={sort.key === "lastSeenAt"}
           direction={sort.direction}
           onClick={() => onToggleSort("lastSeenAt")}
@@ -594,6 +605,9 @@ const VisitorAnalyticsTable = memo(function VisitorAnalyticsTable({
       sessions: (
         <SortHeader
           label={labels.sessions}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.sessions,
+          })}
           active={sort.key === "sessions"}
           direction={sort.direction}
           onClick={() => onToggleSort("sessions")}
@@ -604,6 +618,9 @@ const VisitorAnalyticsTable = memo(function VisitorAnalyticsTable({
       pageViews: (
         <SortHeader
           label={labels.pageViews}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.pageViews,
+          })}
           active={sort.key === "views"}
           direction={sort.direction}
           onClick={() => onToggleSort("views")}
@@ -623,7 +640,13 @@ const VisitorAnalyticsTable = memo(function VisitorAnalyticsTable({
         <TableHead className="pr-4 text-center">{labels.screenSize}</TableHead>
       ),
     }),
-    [labels, messages.visitorDetail.visitorId, onToggleSort, sort],
+    [
+      labels,
+      messages.common.sortBy,
+      messages.visitorDetail.visitorId,
+      onToggleSort,
+      sort,
+    ],
   );
   const header = useMemo(
     () => (
@@ -728,7 +751,7 @@ export function VisitorsClientPage({
   const [nestedDetails, setNestedDetails] = useState<NestedJourneyDetail[]>([]);
   const nestedDetailKeyRef = useRef(0);
   const openedDetailFromListRef = useRef(false);
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -774,7 +797,7 @@ export function VisitorsClientPage({
     queryFn: ({ pageParam, signal }) =>
       fetchVisitors(siteId, timeWindow, filters, {
         cursor: pageParam,
-        pageSize: VISITOR_PAGE_SIZE,
+        limit: VISITOR_PAGE_SIZE,
         sortBy: sort.key,
         sortDir: sort.direction,
         search: debouncedQuery,
@@ -782,13 +805,15 @@ export function VisitorsClientPage({
       }),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) =>
-      lastPage.meta.hasMore ? lastPage.meta.nextCursor : undefined,
+      lastPage.data.pagination.hasMore
+        ? lastPage.data.pagination.nextCursor
+        : undefined,
     enabled: typeof window !== "undefined",
   });
   const rows = useMemo(
     () =>
       data?.pages.reduce<VisitorRow[]>(
-        (current, page) => appendUniqueVisitors(current, page.data),
+        (current, page) => appendUniqueVisitors(current, page.data.items),
         [],
       ) ?? [],
     [data?.pages],

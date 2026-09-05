@@ -16,6 +16,12 @@ import {
   ANALYTICS_DIMENSIONS,
   ANALYTICS_METRICS,
 } from "@/lib/edge/analytics/contract/catalog";
+import {
+  FILTER_SCOPE_CAPABILITIES,
+  type FilterScopeCapability,
+} from "@/lib/edge/analytics/contract/scoped-filter";
+
+import { API_V1_QUERY_OPERATION_MAP } from "./query-operation-map";
 export interface TeamSitesResult {
   readonly sites: readonly unknown[];
 }
@@ -29,6 +35,8 @@ export interface AnalyticsOperationDescriptor<Id extends string, Result> {
   readonly audiences: readonly AnalyticsAudience[];
   readonly cache: "aggregate" | "bypass";
   readonly operationRevision: string;
+  /** Explicit scope capability for this public operation. */
+  readonly scopedFiltering: FilterScopeCapability;
   readonly schema: {
     readonly metrics: readonly string[];
     readonly dimensions: readonly string[];
@@ -37,9 +45,19 @@ export interface AnalyticsOperationDescriptor<Id extends string, Result> {
 }
 
 function operation<Id extends string, Result>(
-  descriptor: AnalyticsOperationDescriptor<Id, Result>,
+  descriptor: Omit<AnalyticsOperationDescriptor<Id, Result>, "scopedFiltering">,
 ): AnalyticsOperationDescriptor<Id, Result> {
-  return descriptor;
+  const canonical =
+    API_V1_QUERY_OPERATION_MAP[
+      descriptor.id as keyof typeof API_V1_QUERY_OPERATION_MAP
+    ];
+  const scopedFiltering = canonical
+    ? FILTER_SCOPE_CAPABILITIES[canonical]
+    : undefined;
+  if (!scopedFiltering) {
+    throw new Error(`Missing filter scope capability for ${descriptor.id}`);
+  }
+  return { ...descriptor, scopedFiltering };
 }
 
 export const analyticsOperationRegistry = [
@@ -292,7 +310,10 @@ export const analyticsOperationRegistry = [
     operationRevision: "1",
     schema: { metrics: ANALYTICS_METRICS, dimensions: ANALYTICS_DIMENSIONS },
     result: (
-      _result: AnalyticsResult<{ items: readonly unknown[]; page: unknown }>,
+      _result: AnalyticsResult<{
+        items: readonly unknown[];
+        pagination: unknown;
+      }>,
     ) => undefined,
   }),
   operation({
@@ -332,7 +353,10 @@ export const analyticsOperationRegistry = [
     operationRevision: "1",
     schema: { metrics: ANALYTICS_METRICS, dimensions: ANALYTICS_DIMENSIONS },
     result: (
-      _result: AnalyticsResult<{ items: readonly unknown[]; page: unknown }>,
+      _result: AnalyticsResult<{
+        items: readonly unknown[];
+        pagination: unknown;
+      }>,
     ) => undefined,
   }),
   operation({
@@ -364,7 +388,7 @@ export const analyticsOperationRegistry = [
       _result: AnalyticsResult<{
         eventName: string;
         fields: readonly unknown[];
-        page: unknown;
+        pagination: unknown;
       }>,
     ) => undefined,
   }),
@@ -381,7 +405,7 @@ export const analyticsOperationRegistry = [
         fieldPath: string;
         fieldValueType: string;
         items: readonly unknown[];
-        page: unknown;
+        pagination: unknown;
       }>,
     ) => undefined,
   }),
@@ -424,7 +448,10 @@ export const analyticsOperationRegistry = [
     operationRevision: "1",
     schema: { metrics: ANALYTICS_METRICS, dimensions: ANALYTICS_DIMENSIONS },
     result: (
-      _result: AnalyticsResult<{ items: readonly unknown[]; page: unknown }>,
+      _result: AnalyticsResult<{
+        items: readonly unknown[];
+        pagination: unknown;
+      }>,
     ) => undefined,
   }),
   operation({
@@ -435,7 +462,10 @@ export const analyticsOperationRegistry = [
     operationRevision: "1",
     schema: { metrics: ANALYTICS_METRICS, dimensions: ANALYTICS_DIMENSIONS },
     result: (
-      _result: AnalyticsResult<{ items: readonly unknown[]; page: unknown }>,
+      _result: AnalyticsResult<{
+        items: readonly unknown[];
+        pagination: unknown;
+      }>,
     ) => undefined,
   }),
   operation({

@@ -55,6 +55,7 @@ export const SavedFilterDefinitionSchema = z
     name: z.string().min(1).max(120),
     description: z.string().max(2_000),
     visibility: z.literal("team"),
+    scopePreference: z.enum(["auto", "event", "session", "visitor"]),
     filter: z
       .object({
         version: z.literal(1),
@@ -69,12 +70,12 @@ export const SavedFilterDefinitionSchema = z
 export const SavedFilterPageSchema = z
   .object({
     items: z.array(SavedFilterDefinitionSchema),
-    page: z
+    pagination: z
       .object({
-        kind: z.literal("keyset"),
         limit: z.number().int().min(1).max(1000),
         nextCursor: z.string().max(12_288).nullable(),
         hasMore: z.boolean(),
+        returned: z.number().int().min(0).max(1000),
       })
       .strict(),
   })
@@ -83,8 +84,13 @@ export const SavedFilterPageSchema = z
 export const ListTeamVisibleSavedFiltersInputSchema = z
   .object({
     siteId: z.string().min(1).max(256),
-    limit: z.number().int().min(1).max(1000).default(100),
-    cursor: z.string().min(1).max(12_288).nullable().default(null),
+    page: z
+      .object({
+        limit: z.number().int().min(1).max(1000).default(100),
+        cursor: z.string().min(1).max(12_288).nullable().optional(),
+      })
+      .strict()
+      .default({ limit: 100 }),
   })
   .strict();
 
@@ -296,9 +302,7 @@ export type TrackingScript = z.infer<typeof TrackingScriptSchema>;
 export type FunnelResource = z.infer<typeof FunnelResourceSchema>;
 
 export type ApiV1ApplicationErrorCode =
-  | "not_found"
-  | "internal_error"
-  | "invalid_cursor";
+  "not_found" | "internal_error" | "invalid_cursor";
 
 export interface ApiV1ApplicationSuccess<Result, Meta = undefined> {
   readonly data: Result;

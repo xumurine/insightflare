@@ -1,17 +1,23 @@
-import { useMemo } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { ReferrerBreakdownCard } from "@/components/dashboard/referrer-breakdown-card";
 import { ReferrerPerformanceRadarCard } from "@/components/dashboard/referrer-performance-radar-card";
 import { ReferrerShareTrendCard } from "@/components/dashboard/referrer-share-trend-card";
 import { ReferrerSummarySection } from "@/components/dashboard/referrer-summary-section";
-import { buildReferrerRowsByTab } from "@/components/dashboard/referrer-utils";
+import {
+  buildReferrerRowsByTab,
+  type ReferrerSortKey,
+  type ReferrerTab,
+} from "@/components/dashboard/referrer-utils";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import type { TabbedDataTableLoader } from "@/components/dashboard/tabbed-data-table-card";
 import {
   fetchOverviewSourceCardTab,
-  type OverviewTabRows,
+  fetchReferrerSummary,
 } from "@/lib/dashboard/client-data";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
@@ -25,8 +31,6 @@ interface ReferrersClientPageProps {
   showSourceLinkTab?: boolean;
 }
 
-const EMPTY_ROWS: OverviewTabRows = [];
-
 export function ReferrersClientPage({
   locale,
   messages,
@@ -38,8 +42,8 @@ export function ReferrersClientPage({
     filters: FilterDocument;
     window: TimeWindow;
   };
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestFilters = useMemo(() => ({ ...filters }), [filtersKey]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
+  const requestFilters = filters;
   const requestWindow = useMemo(
     () => ({
       preset: window.preset,
@@ -50,67 +54,67 @@ export function ReferrersClientPage({
     }),
     [window.from, window.interval, window.preset, window.timeZone, window.to],
   );
-
-  const { data: rowsByTab, isFetching: loading } = useQuery({
+  const requestKey = `${siteId}:${window.from}:${window.to}:${window.interval}:${window.timeZone}:${locale}:${filtersKey}`;
+  const summaryQuery = useQuery({
     queryKey: [
       "dashboard",
-      "referrer-breakdown",
+      "referrer-summary",
       siteId,
-      showSourceLinkTab,
       window.from,
       window.to,
       window.interval,
       window.timeZone,
       filtersKey,
     ],
-    queryFn: async ({ signal }) => {
-      const [domain, link, channel] = await Promise.all([
-        fetchOverviewSourceCardTab(
-          siteId,
-          requestWindow,
-          "domain",
-          requestFilters,
-          { limit: 100, signal },
-        ),
-        showSourceLinkTab
-          ? fetchOverviewSourceCardTab(
-              siteId,
-              requestWindow,
-              "link",
-              requestFilters,
-              { limit: 100, signal },
-            )
-          : Promise.resolve(EMPTY_ROWS),
-        fetchOverviewSourceCardTab(
-          siteId,
-          requestWindow,
-          "channel",
-          requestFilters,
-          { limit: 100, signal },
-        ),
-      ]);
-      return { domain, link, channel };
-    },
-    placeholderData: keepPreviousData,
+    queryFn: ({ signal }) =>
+      fetchReferrerSummary(siteId, requestWindow, requestFilters, {
+        topN: 5,
+        signal,
+      }),
     enabled: typeof window !== "undefined",
   });
-  const resolvedRowsByTab = rowsByTab ?? {
-    domain: EMPTY_ROWS,
-    link: EMPTY_ROWS,
-    channel: EMPTY_ROWS,
-  };
-
-  const normalizedRowsByTab = useMemo(
-    () =>
-      buildReferrerRowsByTab(
-        resolvedRowsByTab,
+  const loader = useCallback<
+    TabbedDataTableLoader<
+      ReferrerTab,
+      ReturnType<typeof buildReferrerRowsByTab>["domain"][number],
+      ReferrerSortKey
+    >
+  >(
+    async ({ tab, cursor, limit, search, sort, signal }) => {
+      const page = await fetchOverviewSourceCardTab(
+        siteId,
+        requestWindow,
+        tab,
+        requestFilters,
+        {
+          limit,
+          search,
+          sort: sort.key,
+          direction: sort.direction,
+          cursor,
+          signal,
+        },
+      );
+      const normalized = buildReferrerRowsByTab(
+        {
+          domain: tab === "domain" ? page.items : [],
+          link: tab === "link" ? page.items : [],
+          channel: tab === "channel" ? page.items : [],
+        },
         messages.overview.direct,
         messages.overview.channelLabels,
-      ),
+      );
+      return {
+        items: normalized[tab],
+        pagination: page.pagination,
+      };
+    },
     [
       messages.overview.channelLabels,
       messages.overview.direct,
-      resolvedRowsByTab,
+      requestFilters,
+      requestWindow,
+      siteId,
     ],
   );
 
@@ -124,8 +128,8 @@ export function ReferrersClientPage({
       <ReferrerSummarySection
         locale={locale}
         messages={messages}
-        rowsByTab={normalizedRowsByTab}
-        loading={loading}
+        summary={summaryQuery.data?.data ?? null}
+        loading={summaryQuery.isFetching}
         hideSummaryCard
       />
 
@@ -150,8 +154,8 @@ export function ReferrersClientPage({
         messages={messages}
         pathname={pathname}
         filters={requestFilters}
-        rowsByTab={normalizedRowsByTab}
-        loading={loading}
+        requestKey={requestKey}
+        loader={loader}
         showSourceLinkTab={showSourceLinkTab}
       />
     </div>

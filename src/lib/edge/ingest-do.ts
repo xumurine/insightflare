@@ -1,6 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
 
 import {
+  type TrafficVisitSnapshot,
+  writeEventAnalyticsPoint,
+  writeTrafficPageviewFact,
+  writeTrafficSessionEndedFact,
+  writeTrafficVisitFinalizedFact,
+} from "./analytics-engine/index";
+import { advanceAnalyticsSession } from "./analytics-session-state";
+import {
   attachPerformanceToVisit as attachPerformanceToVisitInBufferStore,
   findRecentVisitorSession as findRecentVisitorSessionInBufferStore,
   getVisitContext as getVisitContextFromBufferStore,
@@ -15,6 +23,7 @@ import {
   ACTIVE_NOW_WINDOW_MS,
   D1_FLUSH_INTERVAL_MS,
   HIDDEN_LEAVE_GRACE_MS,
+  VISIT_TIMEOUT_MS,
   WS_PRESENCE_LEAVE_EVENT,
 } from "./ingest-constants";
 import { handleIngestDiagnostic } from "./ingest-diagnostic";
@@ -32,6 +41,7 @@ import {
   snapshotQueryParams,
 } from "./ingest-realtime";
 import { normalizeIngestRecord } from "./ingest-record-normalize";
+import { getEarliestDueWork } from "./ingest-scheduler";
 import { initializeIngestSqlSchema } from "./ingest-schema";
 import type { SqlBinding } from "./ingest-sql";
 import { toUnixSeconds } from "./ingest-time";
@@ -61,6 +71,52 @@ import type {
   NormalizedVisibility,
   TrackerPerformancePayload,
 } from "./types";
+import { resolveSessionWindowMinutes } from "./utils";
+
+function pageviewTrafficSnapshot(
+  record: NormalizedPageview,
+  visitId = record.visitId,
+  startedAt = record.startedAt,
+): TrafficVisitSnapshot {
+  return {
+    siteId: record.siteId,
+    visitId,
+    visitorId: record.visitorId,
+    sessionId: record.sessionId,
+    startedAt,
+    pathname: record.pathname,
+    queryString: record.queryString,
+    hashFragment: record.hashFragment,
+    title: record.title,
+    hostname: record.hostname,
+    referrerUrl: record.referrerUrl,
+    referrerHost: record.referrerHost,
+    utmSource: record.utmSource,
+    utmMedium: record.utmMedium,
+    utmCampaign: record.utmCampaign,
+    utmTerm: record.utmTerm,
+    utmContent: record.utmContent,
+    region: record.region,
+    city: record.city,
+    continent: record.continent,
+    country: record.country,
+    regionCode: record.regionCode,
+    postalCode: record.postalCode,
+    metroCode: record.metroCode,
+    timezone: record.timezone,
+    asOrganization: record.asOrganization,
+    browser: record.browser,
+    browserVersion: record.browserVersion,
+    os: record.os,
+    osVersion: record.osVersion,
+    deviceType: record.deviceType,
+    language: record.language,
+    latitude: record.latitude,
+    longitude: record.longitude,
+    screenWidth: record.screenWidth,
+    screenHeight: record.screenHeight,
+  };
+}
 
 export class IngestDurableObject extends DurableObject {
   private readonly doState: DurableObjectState;
@@ -139,9 +195,20 @@ export class IngestDurableObject extends DurableObject {
       return this.handleDiagnostic(logger);
     }
 
+    if (url.pathname === "/reconcile" && request.method === "POST") {
+      logger.info("do.alarm.reconcile_internal_started");
+      await this.reconcileAlarm(logger);
+      logger.info("do.alarm.reconcile_internal_completed");
+      return jsonResponse({ ok: true });
+    }
+
     if (url.pathname === "/flush" && request.method === "POST") {
+      const force =
+        this.doEnv.INSIGHTFLARE_E2E === "1" &&
+        url.searchParams.get("force") === "1";
       logger.info("do.flush.manual_started");
-      await this.runMaintenance(logger);
+      await this.runMaintenance(logger, force);
+      await this.reconcileAlarm(logger, true);
       logger.info("do.flush.manual_completed");
       return jsonResponse({ ok: true });
     }
@@ -149,26 +216,39 @@ export class IngestDurableObject extends DurableObject {
     return new Response("Not Found", { status: 404 });
   }
 
-  async alarm(): Promise<void> {
+  async alarm(alarmInfo?: {
+    retryCount?: number;
+    isRetry?: boolean;
+  }): Promise<void> {
     const logger = createInvocationLogger({ source: "do", trigger: "alarm" });
     logger.info("do.alarm.started");
     try {
       await runWithInvocationLogger(logger, async () => {
         await logger.measure("do.schema_ready", () => this.schemaReady);
+        logger.info("do.alarm.invocation", {
+          retryCount: alarmInfo?.retryCount ?? 0,
+          isRetry: Boolean(alarmInfo?.isRetry),
+        });
         await logger.measure("do.maintenance", () =>
           this.runMaintenance(logger),
         );
-        if ((await this.hasOpenVisits()) || this.hasDirtyRows()) {
-          const scheduledAt = Date.now() + D1_FLUSH_INTERVAL_MS;
-          await this.doState.storage.setAlarm(scheduledAt);
-          logger.info("do.alarm.rescheduled");
-          return;
-        }
-        await this.doState.storage.deleteAlarm();
-        logger.info("do.alarm.cleared");
+        await this.reconcileAlarm(logger, true, alarmInfo);
       });
     } catch (error) {
-      logger.error("do.alarm.failed");
+      try {
+        // The alarm platform retries a rejected invocation, but the current
+        // alarm may already have been consumed.  Reconcile the remaining
+        // backlog as a bounded, one-shot retry before preserving the original
+        // maintenance failure for the platform.
+        await runWithInvocationLogger(logger, () =>
+          this.reconcileAlarm(logger, true, alarmInfo, true),
+        );
+      } catch (reconcileError) {
+        // A storage failure while scheduling recovery must not hide the
+        // maintenance error that caused this invocation to fail.
+        logger.error("do.alarm.reconcile_failed", errorLogData(reconcileError));
+      }
+      logger.error("do.alarm.failed", errorLogData(error));
       throw error;
     } finally {
       logger.info("do.alarm.completed");
@@ -199,6 +279,14 @@ export class IngestDurableObject extends DurableObject {
     );
     const record = normalized.record;
     if (!record) {
+      if (
+        normalized.reason === "waiting_for_visit" &&
+        normalized.detail?.buffered === true
+      ) {
+        await logger.measure("do.alarm.reconcile_waiting", () =>
+          this.reconcileAlarm(logger),
+        );
+      }
       logger.warn(`do.ingest.ignored.${normalized.reason || "unknown"}`);
       return new Response(`ignored:${normalized.reason || "unknown"}`, {
         status: 202,
@@ -227,7 +315,9 @@ export class IngestDurableObject extends DurableObject {
       );
     }
 
-    await logger.measure("do.alarm.ensure", () => this.ensureAlarm(logger));
+    await logger.measure("do.alarm.reconcile", () =>
+      this.reconcileAlarm(logger),
+    );
     logger.info("do.ingest.completed");
     return new Response("ok", { status: 202 });
   }
@@ -497,16 +587,6 @@ export class IngestDurableObject extends DurableObject {
     };
   }
 
-  private hasDirtyRows(): boolean {
-    const visits = this.sqlOne<{ ok: number }>(
-      "SELECT 1 AS ok FROM buffered_visits WHERE dirty = 1 LIMIT 1",
-    );
-    if (visits) return true;
-    const events = this.sqlOne<{ ok: number }>(
-      "SELECT 1 AS ok FROM buffered_custom_events WHERE dirty = 1 LIMIT 1",
-    );
-    return Boolean(events);
-  }
   private async normalizeRecord(
     envelope: IngestEnvelopePayload,
   ): Promise<NormalizeResult> {
@@ -515,7 +595,6 @@ export class IngestDurableObject extends DurableObject {
       getVisitContext: this.getVisitContext.bind(this),
       findRecentVisitorSession: this.findRecentVisitorSession.bind(this),
       insertBufferedCustomEvent: this.insertBufferedCustomEvent.bind(this),
-      ensureAlarm: this.ensureAlarm.bind(this),
     });
   }
 
@@ -524,8 +603,13 @@ export class IngestDurableObject extends DurableObject {
     logger: InvocationLogger,
   ): Promise<void> {
     const now = toUnixSeconds(record.receivedAt);
+    const previousVisit =
+      record.previousVisitId && record.previousVisitStartedAt !== null
+        ? this.readTrafficVisitSnapshot(record.siteId, record.previousVisitId)
+        : null;
 
     if (record.previousVisitId && record.previousVisitStartedAt !== null) {
+      const flushDueAt = record.receivedAt + D1_FLUSH_INTERVAL_MS;
       const durationMs = Math.max(
         0,
         record.startedAt - record.previousVisitStartedAt,
@@ -541,6 +625,15 @@ export class IngestDurableObject extends DurableObject {
               duration_ms = ?,
               duration_source = 'server',
               dirty = 1,
+              buffer_revision = buffer_revision + 1,
+              flush_due_at = CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END,
+              next_due_at = CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END,
               updated_at = ?
           WHERE visit_id = ? AND status IN ('open', 'hidden_pending')
         `,
@@ -548,10 +641,32 @@ export class IngestDurableObject extends DurableObject {
         record.startedAt,
         record.startedAt,
         durationMs,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
         now,
         record.previousVisitId,
       );
       if (closedPrevious > 0) {
+        writeTrafficVisitFinalizedFact(
+          this.doEnv,
+          {
+            visit:
+              previousVisit ??
+              pageviewTrafficSnapshot(
+                record,
+                record.previousVisitId,
+                record.previousVisitStartedAt,
+              ),
+            receivedAt: record.receivedAt,
+            endedAt: record.startedAt,
+            durationMs,
+            durationSource: "server",
+            exitReason: "route_change",
+          },
+          logger,
+        );
         logger.info("do.ingest.previous_visit_closed");
       }
     }
@@ -562,6 +677,27 @@ export class IngestDurableObject extends DurableObject {
       return;
     }
     logger.info("do.ingest.pageview_buffered");
+    let sessionPageIndex = 1;
+    try {
+      const sessionState = advanceAnalyticsSession(this.bufferStoreContext(), {
+        siteId: record.siteId,
+        sessionId: record.sessionId,
+        visitorId: record.visitorId,
+        startedAt: record.startedAt,
+        pathname: record.pathname,
+        visitId: record.visitId,
+        sessionWindowMs: resolveSessionWindowMinutes(this.doEnv) * 60 * 1000,
+      });
+      sessionPageIndex = sessionState.pageCount;
+    } catch {
+      logger.warn("do.ingest.session_state_failed");
+    }
+    writeTrafficPageviewFact(
+      this.doEnv,
+      { record, sessionPageIndex, sessionViewCount: sessionPageIndex },
+      logger,
+    );
+    await this.advanceWaitingCustomEvents(record.siteId, record.visitId);
     await this.pushRealtimeRecord({
       id: record.visitId,
       eventType: "visit",
@@ -614,14 +750,56 @@ export class IngestDurableObject extends DurableObject {
       latitude: record.latitude,
       longitude: record.longitude,
     });
-    await this.pushBufferedCustomEventsForVisit(record);
+    await this.pushBufferedCustomEventsForVisit(record, logger);
+  }
+
+  private async advanceWaitingCustomEvents(
+    siteId: string,
+    visitId: string,
+  ): Promise<void> {
+    const visit = this.sqlOne<{ flushDueAt: number | null }>(
+      `
+        SELECT flush_due_at AS flushDueAt
+        FROM buffered_visits
+        WHERE site_id = ? AND visit_id = ?
+        LIMIT 1
+      `,
+      siteId,
+      visitId,
+    );
+    if (!visit || visit.flushDueAt === null) return;
+
+    this.sqlRun(
+      `
+        UPDATE buffered_custom_events
+        SET flush_due_at = CASE
+              WHEN flush_due_at IS NULL OR flush_due_at > ? THEN ?
+              ELSE flush_due_at
+            END,
+            next_due_at = CASE
+              WHEN next_due_at IS NULL OR next_due_at > ? THEN ?
+              ELSE next_due_at
+            END,
+            flush_attempts = 0,
+            last_flush_error = NULL
+        WHERE site_id = ?
+          AND visit_id = ?
+          AND dirty = 1
+          AND last_flush_error = 'waiting_for_visit'
+      `,
+      visit.flushDueAt,
+      visit.flushDueAt,
+      visit.flushDueAt,
+      visit.flushDueAt,
+      siteId,
+      visitId,
+    );
   }
 
   private async pushBufferedCustomEventsForVisit(
     record: NormalizedPageview,
+    logger?: InvocationLogger,
   ): Promise<void> {
-    if (this.sockets.size === 0) return;
-
     const pendingEvents = this.sqlAll<{
       eventId: string;
       eventAt: number;
@@ -649,6 +827,22 @@ export class IngestDurableObject extends DurableObject {
     );
 
     for (const pending of pendingEvents) {
+      writeEventAnalyticsPoint(
+        this.doEnv,
+        {
+          ...record,
+          kind: "custom_event",
+          eventId: pending.eventId,
+          sequence: pending.sequence,
+          receivedAt: pending.receivedAt,
+          eventAt: pending.eventAt,
+          eventName: pending.eventName,
+          eventDataJson: pending.eventDataJson,
+          userId: pending.userId || record.userId,
+        },
+        logger,
+      );
+      if (this.sockets.size === 0) continue;
       await this.pushRealtimeRecord({
         id: pending.eventId,
         eventType: pending.eventName,
@@ -757,6 +951,11 @@ export class IngestDurableObject extends DurableObject {
       screenSize: string;
       latitude: number | null;
       longitude: number | null;
+      perfTtfbMs: number | null;
+      perfFcpMs: number | null;
+      perfLcpMs: number | null;
+      perfCls: number | null;
+      perfInpMs: number | null;
       status: string;
       hiddenAt: number | null;
     }>(
@@ -783,6 +982,9 @@ export class IngestDurableObject extends DurableObject {
                latitude, longitude, ended_at AS endedAt, finalized_at AS finalizedAt,
                duration_ms AS durationMs, duration_source AS durationSource,
                exit_reason AS exitReason,
+               perf_ttfb_ms AS perfTtfbMs, perf_fcp_ms AS perfFcpMs,
+               perf_lcp_ms AS perfLcpMs, perf_cls AS perfCls,
+               perf_inp_ms AS perfInpMs,
                status, hidden_at AS hiddenAt
         FROM buffered_visits
         WHERE site_id = ? AND visit_id = ? AND status IN ('open', 'hidden_pending')
@@ -812,6 +1014,7 @@ export class IngestDurableObject extends DurableObject {
       const exitReason = useHiddenFallback
         ? "hidden_timeout"
         : record.exitReason || "pagehide";
+      const flushDueAt = record.receivedAt + D1_FLUSH_INTERVAL_MS;
       closedDurationMs = durationMs;
       closedDurationSource = durationSource;
       closedExitReason = exitReason;
@@ -828,6 +1031,15 @@ export class IngestDurableObject extends DurableObject {
               duration_source = ?,
               exit_reason = ?,
               dirty = 1,
+              buffer_revision = buffer_revision + 1,
+              flush_due_at = CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END,
+              next_due_at = CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END,
               updated_at = ?
           WHERE visit_id = ? AND status IN ('open', 'hidden_pending')
         `,
@@ -837,6 +1049,10 @@ export class IngestDurableObject extends DurableObject {
         durationMs,
         durationSource,
         exitReason,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
         toUnixSeconds(record.receivedAt),
         visit.visitId,
       );
@@ -859,6 +1075,61 @@ export class IngestDurableObject extends DurableObject {
       logger.info("do.ingest.leave_ignored");
       return;
     }
+
+    writeTrafficVisitFinalizedFact(
+      this.doEnv,
+      {
+        visit: {
+          siteId: visit.siteId,
+          visitId: visit.visitId,
+          visitorId: visit.visitorId,
+          sessionId: visit.sessionId,
+          startedAt: visit.startedAt,
+          pathname: visit.pathname,
+          queryString: visit.queryString,
+          hashFragment: visit.hash,
+          title: visit.title,
+          hostname: visit.hostname,
+          referrerUrl: visit.referrerUrl,
+          referrerHost: visit.referrerHost,
+          utmSource: visit.utmSource,
+          utmMedium: visit.utmMedium,
+          utmCampaign: visit.utmCampaign,
+          utmTerm: visit.utmTerm,
+          utmContent: visit.utmContent,
+          region: visit.region,
+          city: visit.city,
+          continent: visit.continent,
+          country: visit.country,
+          regionCode: visit.regionCode,
+          postalCode: visit.postalCode,
+          metroCode: visit.metroCode,
+          timezone: visit.timezone,
+          asOrganization: visit.organization,
+          browser: visit.browser,
+          browserVersion: visit.browserVersion,
+          os: visit.os,
+          osVersion: visit.osVersion,
+          deviceType: visit.deviceType,
+          language: visit.language,
+          latitude: visit.latitude,
+          longitude: visit.longitude,
+          screenWidth: visit.screenWidth,
+          screenHeight: visit.screenHeight,
+          perfTtfbMs: record.performance?.ttfb ?? visit.perfTtfbMs,
+          perfFcpMs: record.performance?.fcp ?? visit.perfFcpMs,
+          perfLcpMs: record.performance?.lcp ?? visit.perfLcpMs,
+          perfCls: record.performance?.cls ?? visit.perfCls,
+          perfInpMs: record.performance?.inp ?? visit.perfInpMs,
+        },
+        receivedAt: record.receivedAt,
+        endedAt: closedLeaveAt,
+        durationMs: closedDurationMs,
+        durationSource: closedDurationSource,
+        exitReason: closedExitReason,
+      },
+      logger,
+    );
 
     if (!this.hasOpenVisitsForVisitor(visit.siteId, visit.visitorId)) {
       await this.pushRealtimeRecord({
@@ -926,6 +1197,7 @@ export class IngestDurableObject extends DurableObject {
     logger: InvocationLogger,
   ): Promise<void> {
     const updatedAt = toUnixSeconds(record.receivedAt);
+    const flushDueAt = record.receivedAt + D1_FLUSH_INTERVAL_MS;
     if (record.visibilityState === "hidden") {
       let rowsWritten = this.sqlRun(
         `
@@ -934,6 +1206,18 @@ export class IngestDurableObject extends DurableObject {
               hidden_at = ?,
               last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END,
               dirty = 1,
+              buffer_revision = buffer_revision + 1,
+              flush_due_at = CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END,
+              next_due_at = MIN(
+                CASE
+                  WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                  ELSE flush_due_at
+                END,
+                ?
+              ),
               updated_at = ?
           WHERE site_id = ?
             AND visit_id = ?
@@ -942,6 +1226,11 @@ export class IngestDurableObject extends DurableObject {
         record.eventAt,
         record.eventAt,
         record.eventAt,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
+        record.eventAt + HIDDEN_LEAVE_GRACE_MS,
         updatedAt,
         record.siteId,
         record.visitId,
@@ -953,17 +1242,41 @@ export class IngestDurableObject extends DurableObject {
             SET hidden_at = COALESCE(hidden_at, ?),
                 last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END,
                 dirty = 1,
+                buffer_revision = buffer_revision + 1,
+                flush_due_at = CASE
+                  WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                  ELSE flush_due_at
+                END,
+                next_due_at = MIN(
+                  CASE
+                    WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                    ELSE flush_due_at
+                  END,
+                  COALESCE(hidden_at, ?) + ?
+                ),
                 updated_at = ?
             WHERE site_id = ?
               AND visit_id = ?
               AND status = 'hidden_pending'
+              AND (
+                last_activity_at < ?
+                OR (hidden_at IS NULL AND last_activity_at = ?)
+              )
           `,
           record.eventAt,
           record.eventAt,
           record.eventAt,
+          flushDueAt,
+          flushDueAt,
+          flushDueAt,
+          flushDueAt,
+          record.eventAt,
+          HIDDEN_LEAVE_GRACE_MS,
           updatedAt,
           record.siteId,
           record.visitId,
+          record.eventAt,
+          record.eventAt,
         );
       }
       logger.info(
@@ -984,6 +1297,18 @@ export class IngestDurableObject extends DurableObject {
             hidden_at = NULL,
             last_activity_at = CASE WHEN last_activity_at > ? THEN last_activity_at ELSE ? END,
             dirty = 1,
+            buffer_revision = buffer_revision + 1,
+            flush_due_at = CASE
+              WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+              ELSE flush_due_at
+            END,
+            next_due_at = MIN(
+              CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END,
+              ?
+            ),
             updated_at = ?
         WHERE site_id = ?
           AND visit_id = ?
@@ -992,6 +1317,11 @@ export class IngestDurableObject extends DurableObject {
       `,
       record.eventAt,
       record.eventAt,
+      flushDueAt,
+      flushDueAt,
+      flushDueAt,
+      flushDueAt,
+      record.eventAt + VISIT_TIMEOUT_MS,
       updatedAt,
       record.siteId,
       record.visitId,
@@ -1092,6 +1422,7 @@ export class IngestDurableObject extends DurableObject {
       return;
     }
     logger.info("do.ingest.custom_event_buffered");
+    writeEventAnalyticsPoint(this.doEnv, record, logger);
     await this.updateOpenVisitActivity(record.visitId, record.eventAt);
     await this.pushRealtimeRecord({
       id: record.eventId,
@@ -1153,46 +1484,104 @@ export class IngestDurableObject extends DurableObject {
     record: NormalizedIdentify,
     logger: InvocationLogger,
   ): Promise<void> {
-    const updatedAt = toUnixSeconds(Date.now());
-    let serverSessionId =
-      this.sqlOne<{ sessionId: string }>(
-        `
-          SELECT session_id AS sessionId
-          FROM buffered_visits
-          WHERE visit_id = ? AND site_id = ?
-          LIMIT 1
-        `,
-        record.visitId,
-        record.siteId,
-      )?.sessionId || "";
+    const now = Date.now();
+    const updatedAt = toUnixSeconds(now);
+    const flushDueAt = now + D1_FLUSH_INTERVAL_MS;
+    const localVisit = this.sqlOne<{ sessionId: string | null }>(
+      `
+        SELECT session_id AS sessionId
+        FROM buffered_visits
+        WHERE visit_id = ? AND site_id = ?
+        LIMIT 1
+      `,
+      record.visitId,
+      record.siteId,
+    );
+    let serverSessionId = localVisit?.sessionId || "";
 
     const rowsUpdated = this.sqlRun(
       `
         UPDATE buffered_visits
-        SET user_id = ?, user_name = ?, dirty = 1, updated_at = ?
-        WHERE visit_id = ? AND site_id = ?
+        SET user_id = ?, user_name = ?, dirty = 1,
+            buffer_revision = buffer_revision + 1,
+            flush_due_at = CASE
+              WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+              ELSE flush_due_at
+            END,
+            next_due_at = CASE
+              WHEN status = 'open' THEN MIN(
+                CASE
+                  WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                  ELSE flush_due_at
+                END,
+                last_activity_at + ?
+              )
+              WHEN status = 'hidden_pending' THEN MIN(
+                CASE
+                  WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                  ELSE flush_due_at
+                END,
+                COALESCE(hidden_at, last_activity_at) + ?
+              )
+              ELSE CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END
+            END,
+            updated_at = ?
+        WHERE visit_id = ?
+          AND site_id = ?
+          AND (user_id IS NOT ? OR user_name IS NOT ?)
       `,
       record.userId,
       record.userName || null,
+      flushDueAt,
+      flushDueAt,
+      flushDueAt,
+      flushDueAt,
+      VISIT_TIMEOUT_MS,
+      flushDueAt,
+      flushDueAt,
+      HIDDEN_LEAVE_GRACE_MS,
+      flushDueAt,
+      flushDueAt,
       updatedAt,
       record.visitId,
       record.siteId,
+      record.userId,
+      record.userName || null,
     );
 
     // Update buffered_custom_events for the same visit
     this.sqlRun(
       `
         UPDATE buffered_custom_events
-        SET user_id = ?, dirty = 1
-        WHERE visit_id = ? AND site_id = ?
+        SET user_id = ?, dirty = 1,
+            flush_due_at = CASE
+              WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+              ELSE flush_due_at
+            END,
+            next_due_at = CASE
+              WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+              ELSE flush_due_at
+            END,
+            buffer_revision = buffer_revision + 1
+        WHERE visit_id = ?
+          AND site_id = ?
+          AND user_id IS NOT ?
       `,
       record.userId,
+      flushDueAt,
+      flushDueAt,
+      flushDueAt,
+      flushDueAt,
       record.visitId,
       record.siteId,
+      record.userId,
     );
 
     if (rowsUpdated === 0) {
-      if (!serverSessionId) {
+      if (!serverSessionId && !localVisit) {
         const persistedVisit = await this.doEnv.DB.prepare(
           `
             SELECT session_id AS sessionId
@@ -1227,15 +1616,57 @@ export class IngestDurableObject extends DurableObject {
       this.sqlRun(
         `
           UPDATE buffered_visits
-          SET user_id = ?, user_name = ?, dirty = 1, updated_at = ?
-          WHERE session_id = ? AND site_id = ? AND visit_id != ? AND (user_id = '' OR user_id IS NULL)
+          SET user_id = ?, user_name = ?, dirty = 1,
+              buffer_revision = buffer_revision + 1,
+              flush_due_at = CASE
+                WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                ELSE flush_due_at
+              END,
+              next_due_at = CASE
+                WHEN status = 'open' THEN MIN(
+                  CASE
+                    WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                    ELSE flush_due_at
+                  END,
+                  last_activity_at + ?
+                )
+                WHEN status = 'hidden_pending' THEN MIN(
+                  CASE
+                    WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                    ELSE flush_due_at
+                  END,
+                  COALESCE(hidden_at, last_activity_at) + ?
+                )
+                ELSE CASE
+                  WHEN dirty = 0 OR flush_due_at IS NULL OR flush_due_at > ? THEN ?
+                  ELSE flush_due_at
+                END
+              END,
+              updated_at = ?
+          WHERE session_id = ?
+            AND site_id = ?
+            AND visit_id != ?
+            AND (user_id = '' OR user_id IS NULL)
+            AND (user_id IS NOT ? OR user_name IS NOT ?)
         `,
         record.userId,
         record.userName || null,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
+        flushDueAt,
+        VISIT_TIMEOUT_MS,
+        flushDueAt,
+        flushDueAt,
+        HIDDEN_LEAVE_GRACE_MS,
+        flushDueAt,
+        flushDueAt,
         updatedAt,
         serverSessionId,
         record.siteId,
         record.visitId,
+        record.userId,
+        record.userName || null,
       );
     }
     logger.info(
@@ -1285,6 +1716,63 @@ export class IngestDurableObject extends DurableObject {
   ): Promise<StoredOpenVisit | null> {
     return getVisitContextFromBufferStore(
       this.bufferStoreContext(),
+      siteId,
+      visitId,
+    );
+  }
+
+  private readTrafficVisitSnapshot(
+    siteId: string,
+    visitId: string,
+  ): TrafficVisitSnapshot | null {
+    return this.sqlOne<TrafficVisitSnapshot>(
+      `
+        SELECT
+          site_id AS siteId,
+          visit_id AS visitId,
+          visitor_id AS visitorId,
+          session_id AS sessionId,
+          started_at AS startedAt,
+          pathname,
+          query_string AS queryString,
+          hash_fragment AS hashFragment,
+          title,
+          hostname,
+          referrer_url AS referrerUrl,
+          referrer_host AS referrerHost,
+          utm_source AS utmSource,
+          utm_medium AS utmMedium,
+          utm_campaign AS utmCampaign,
+          utm_term AS utmTerm,
+          utm_content AS utmContent,
+          region,
+          city,
+          continent,
+          country,
+          region_code AS regionCode,
+          postal_code AS postalCode,
+          metro_code AS metroCode,
+          timezone,
+          as_organization AS asOrganization,
+          browser,
+          browser_version AS browserVersion,
+          os,
+          os_version AS osVersion,
+          device_type AS deviceType,
+          language,
+          latitude,
+          longitude,
+          screen_width AS screenWidth,
+          screen_height AS screenHeight,
+          perf_ttfb_ms AS perfTtfbMs,
+          perf_fcp_ms AS perfFcpMs,
+          perf_lcp_ms AS perfLcpMs,
+          perf_cls AS perfCls,
+          perf_inp_ms AS perfInpMs
+        FROM buffered_visits
+        WHERE site_id = ? AND visit_id = ?
+        LIMIT 1
+      `,
       siteId,
       visitId,
     );
@@ -1356,22 +1844,113 @@ export class IngestDurableObject extends DurableObject {
     await pushRealtimeRecordToSockets(this.sockets, record);
   }
 
-  private async ensureAlarm(logger?: InvocationLogger): Promise<void> {
+  private async reconcileAlarm(
+    logger: InvocationLogger,
+    afterMaintenance = false,
+    alarmInfo?: { retryCount?: number; isRetry?: boolean },
+    retryOnFailure = false,
+  ): Promise<void> {
     const now = Date.now();
-    const existing = await this.doState.storage.getAlarm();
-    if (!existing || existing <= now) {
-      const scheduledAt = now + D1_FLUSH_INTERVAL_MS;
-      await this.doState.storage.setAlarm(scheduledAt);
-      logger?.info("do.alarm.scheduled");
-    }
-  }
+    const nextDue = getEarliestDueWork({
+      sqlOne: <T>(query: string, ...bindings: SqlBinding[]) =>
+        this.sqlOne<T>(query, ...bindings),
+    });
+    const current = await this.doState.storage.getAlarm();
 
-  private async hasOpenVisits(): Promise<boolean> {
-    return (
-      this.sqlOne<{ ok: number }>(
-        "SELECT 1 AS ok FROM buffered_visits WHERE status IN ('open', 'hidden_pending') LIMIT 1",
-      ) !== null
-    );
+    if (nextDue.nextDueAt === null) {
+      if (current !== null) {
+        await this.doState.storage.deleteAlarm();
+        logger.info("do.alarm.reconciled", {
+          action: "deleted",
+          previousAlarmAt: current,
+          targetAlarmAt: null,
+          nextDueAt: null,
+          nextDueKind: null,
+          nextDueEntity: null,
+          afterMaintenance,
+          isOverdueRetry: false,
+          retryCount: alarmInfo?.retryCount ?? 0,
+          isRetry: Boolean(alarmInfo?.isRetry),
+        });
+      }
+      return;
+    }
+
+    const isOverdue = nextDue.nextDueAt <= now;
+    const retryAt = now + D1_FLUSH_INTERVAL_MS;
+    // A previously scheduled Alarm can remain in storage after its delivery
+    // was stranded. Reconcile requests are the recovery path for those DOs,
+    // so move a sufficiently old due Alarm back to "now". Keep a short grace
+    // period after repairing it to avoid turning every ingest request into
+    // another Alarm write while the platform is dispatching the Alarm.
+    const isOverdueAlarmRepair =
+      current !== null && current <= now - D1_FLUSH_INTERVAL_MS;
+    const target = retryOnFailure
+      ? isOverdue
+        ? retryAt
+        : Math.min(nextDue.nextDueAt, retryAt)
+      : isOverdue && afterMaintenance
+        ? retryAt
+        : isOverdue
+          ? now
+          : nextDue.nextDueAt;
+    const isOverdueRetry = isOverdue && afterMaintenance;
+
+    if (current === null) {
+      await this.doState.storage.setAlarm(target);
+      logger.info("do.alarm.reconciled", {
+        action: "set",
+        previousAlarmAt: null,
+        targetAlarmAt: target,
+        nextDueAt: nextDue.nextDueAt,
+        nextDueKind: nextDue.reason,
+        nextDueEntity: nextDue.entity,
+        afterMaintenance,
+        isOverdueRetry,
+        retryOnFailure,
+        retryCount: alarmInfo?.retryCount ?? 0,
+        isRetry: Boolean(alarmInfo?.isRetry),
+      });
+      return;
+    }
+
+    if (
+      current > target ||
+      (retryOnFailure && current <= now) ||
+      isOverdueAlarmRepair
+    ) {
+      await this.doState.storage.setAlarm(target);
+      logger.info("do.alarm.reconciled", {
+        action: "set",
+        previousAlarmAt: current,
+        targetAlarmAt: target,
+        nextDueAt: nextDue.nextDueAt,
+        nextDueKind: nextDue.reason,
+        nextDueEntity: nextDue.entity,
+        afterMaintenance,
+        isOverdueRetry,
+        retryOnFailure,
+        isOverdueAlarmRepair,
+        retryCount: alarmInfo?.retryCount ?? 0,
+        isRetry: Boolean(alarmInfo?.isRetry),
+      });
+      return;
+    }
+
+    logger.info("do.alarm.reconciled", {
+      action: "kept",
+      previousAlarmAt: current,
+      targetAlarmAt: target,
+      nextDueAt: nextDue.nextDueAt,
+      nextDueKind: nextDue.reason,
+      nextDueEntity: nextDue.entity,
+      afterMaintenance,
+      isOverdueRetry,
+      retryOnFailure,
+      isOverdueAlarmRepair,
+      retryCount: alarmInfo?.retryCount ?? 0,
+      isRetry: Boolean(alarmInfo?.isRetry),
+    });
   }
 
   private hasOpenVisitsForVisitor(siteId: string, visitorId: string): boolean {
@@ -1422,12 +2001,21 @@ export class IngestDurableObject extends DurableObject {
       insertBufferedVisitRow: this.insertBufferedVisitRow.bind(this),
       hasOpenVisitsForVisitor: this.hasOpenVisitsForVisitor.bind(this),
       pushRealtimeRecord: this.pushRealtimeRecord.bind(this),
+      writeTrafficVisitFinalizedFact: (
+        input: Parameters<typeof writeTrafficVisitFinalizedFact>[1],
+      ) => writeTrafficVisitFinalizedFact(this.doEnv, input, logger),
+      writeTrafficSessionEndedFact: (
+        input: Parameters<typeof writeTrafficSessionEndedFact>[1],
+      ) => writeTrafficSessionEndedFact(this.doEnv, input, logger),
       observability: logger,
     };
   }
 
-  private async flushPendingToD1(logger: InvocationLogger): Promise<void> {
-    return flushPendingToD1InFlushStore(this.flushStoreContext(logger));
+  private async flushPendingToD1(
+    logger: InvocationLogger,
+    force = false,
+  ): Promise<void> {
+    return flushPendingToD1InFlushStore(this.flushStoreContext(logger), force);
   }
 
   private async cleanupBufferedRows(logger: InvocationLogger): Promise<void> {
@@ -1438,10 +2026,13 @@ export class IngestDurableObject extends DurableObject {
     return flushTimeoutsInFlushStore(this.flushStoreContext(logger));
   }
 
-  private async runMaintenance(logger: InvocationLogger): Promise<void> {
+  private async runMaintenance(
+    logger: InvocationLogger,
+    forceFlush = false,
+  ): Promise<void> {
     await logger.measure("do.flush_timeouts", () => this.flushTimeouts(logger));
     await logger.measure("do.flush_pending", () =>
-      this.flushPendingToD1(logger),
+      this.flushPendingToD1(logger, forceFlush),
     );
     await logger.measure("do.cleanup", () => this.cleanupBufferedRows(logger));
   }

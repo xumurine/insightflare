@@ -368,9 +368,7 @@ export function generateDemoFilterValues(
   siteId: string,
   params: Record<string, string | number>,
   audience:
-    | "private-dashboard"
-    | "public-share"
-    | "api-v1" = "private-dashboard",
+    "private-dashboard" | "public-share" | "api-v1" = "private-dashboard",
 ): Record<string, unknown> {
   const field = normalizeDemoFilterValue(params.filterKey);
   const definition = field ? analyticsFilterDefinition(field) : undefined;
@@ -406,7 +404,7 @@ export function generateDemoFilterValues(
           value: event.eventName,
         })),
         search,
-        limit,
+        Math.max(500, filtered.visits.length),
       ),
     };
   }
@@ -421,7 +419,7 @@ export function generateDemoFilterValues(
           return session ? [{ value: session[key] }] : [];
         }),
         search,
-        limit,
+        Math.max(500, filtered.sessions.size),
       ),
     };
   }
@@ -433,7 +431,7 @@ export function generateDemoFilterValues(
       data: filterValuesFromCandidates(
         utmValues.map((value) => ({ value })),
         search,
-        limit,
+        Math.max(500, utmValues.length),
       ),
     };
   }
@@ -452,7 +450,7 @@ export function generateDemoFilterValues(
         };
       }),
       search,
-      limit,
+      Math.max(500, filtered.visits.length),
     ),
   };
 }

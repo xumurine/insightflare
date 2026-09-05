@@ -2,6 +2,7 @@ import type { ZodType } from "zod";
 
 import {
   type AnalysisDefinitionReader,
+  parseApiV1FilterDsl,
   resolveApiV1Filter,
 } from "@/lib/api-v1/analytics-overview";
 import {
@@ -45,11 +46,16 @@ import {
   type ComparisonTrendQuery,
   type ComparisonTrendResult,
   createQueryTime,
+  createScopedFilterPlan,
   filterConditionCount,
   type FilterDocument,
+  type FilterScopePreference,
   isReportingTimeZone,
   parseApiV1FilterDocument,
   type QueryContext,
+  type QueryResultMeta,
+  reconcileFilterScopePreferences,
+  savedFilterScopePreferenceFromDocument,
   teamQueryContext,
 } from "@/lib/edge/analytics/contract";
 import { ANALYTICS_DIMENSIONS } from "@/lib/edge/analytics/contract/catalog";
@@ -77,7 +83,7 @@ type SiteBreakdownInput = SiteComparisonBreakdownV2QueryDto;
 type TeamBreakdownInput = TeamComparisonBreakdownV2QueryDto;
 type SiteComparisonBaseInput = Pick<
   SiteReportInput,
-  "current" | "reference" | "timeZone"
+  "current" | "reference" | "timeZone" | "scope"
 >;
 
 type ResolvedSide = {
@@ -85,6 +91,7 @@ type ResolvedSide = {
   readonly filters: FilterDocument;
   readonly from: string;
   readonly to: string;
+  readonly scopePreference: FilterScopePreference;
 };
 
 type ReportDomainResult = AnalyticsResult<
@@ -219,6 +226,7 @@ function resolveTeamFilter(
   filter: TeamReportInput["current"]["filter"],
 ): FilterDocument {
   if (!filter) return emptyFilter();
+  if (filter.type === "dsl") return parseApiV1FilterDsl(filter.expression);
   return parseApiV1FilterDocument({ version: 1, root: filter.expression });
 }
 
@@ -243,6 +251,7 @@ function toSide(
     readonly timeZone: string;
   },
   filters: FilterDocument,
+  scopePreference: FilterScopePreference,
   capturedAtMs: number,
 ): ResolvedSide | null {
   const fromMs = Date.parse(range.from);
@@ -258,6 +267,7 @@ function toSide(
     filters,
     from: range.from,
     to: range.to,
+    scopePreference,
   };
 }
 
@@ -265,9 +275,9 @@ function resolveSides(
   input: {
     readonly current: SiteReportInput["current"] | TeamReportInput["current"];
     readonly reference:
-      | SiteReportInput["reference"]
-      | TeamReportInput["reference"];
+      SiteReportInput["reference"] | TeamReportInput["reference"];
     readonly timeZone: string;
+    readonly scope?: FilterScopePreference;
   },
   filters: {
     readonly current: FilterDocument;
@@ -287,8 +297,19 @@ function resolveSides(
           capturedAtMs,
         );
   if (!referenceRange) return null;
-  const current = toSide(currentRange, filters.current, capturedAtMs);
-  const reference = toSide(referenceRange, filters.reference, capturedAtMs);
+  const scopePreference = input.scope ?? "auto";
+  const current = toSide(
+    currentRange,
+    filters.current,
+    scopePreference,
+    capturedAtMs,
+  );
+  const reference = toSide(
+    referenceRange,
+    filters.reference,
+    scopePreference,
+    capturedAtMs,
+  );
   return current && reference ? { current, reference } : null;
 }
 
@@ -309,8 +330,7 @@ function trendInterval(input: SiteReportInput | TeamReportInput) {
 
 function trendMetrics(input: SiteReportInput | TeamReportInput) {
   return input.select.trend?.metrics as
-    | readonly ComparisonMetricKey[]
-    | undefined;
+    readonly ComparisonMetricKey[] | undefined;
 }
 
 function metricKeys(input: SiteReportInput | TeamReportInput) {
@@ -415,6 +435,26 @@ function cacheQuery(input: {
   readonly sort?: unknown;
   readonly limit?: number;
 }) {
+  const scopeSemantics = (side: ResolvedSide) => {
+    try {
+      const reconciledScope = reconcileFilterScopePreferences(
+        side.scopePreference,
+        savedFilterScopePreferenceFromDocument(side.filters) ?? "auto",
+      );
+      const plan = createScopedFilterPlan(
+        "comparison",
+        side.filters,
+        reconciledScope,
+      );
+      return plan
+        ? { resolvedScope: plan.scope, scopePlan: plan }
+        : { resolvedScope: "none", scopePlan: null };
+    } catch {
+      return { resolvedScope: "conflict", scopePlan: null };
+    }
+  };
+  const currentScope = scopeSemantics(input.current);
+  const referenceScope = scopeSemantics(input.reference);
   return comparisonCacheKey({
     operation: input.operation,
     subjectFingerprint:
@@ -434,12 +474,14 @@ function cacheQuery(input: {
         to: input.current.to,
         timeZone: input.current.time.reportingTimeZone,
         filters: input.current.filters,
+        ...currentScope,
       },
       reference: {
         from: input.reference.from,
         to: input.reference.to,
         timeZone: input.reference.time.reportingTimeZone,
         filters: input.reference.filters,
+        ...referenceScope,
       },
       selection: input.selection,
       dimension: input.dimension ?? null,
@@ -462,6 +504,7 @@ function reportWire(
   sides: { readonly current: ResolvedSide; readonly reference: ResolvedSide },
   trend: ComparisonTrendResult | null,
   requestId: string,
+  filterScope?: QueryResultMeta["filterScope"],
 ) {
   const trendData = trend;
   return {
@@ -505,6 +548,7 @@ function reportWire(
         source: result.meta.source,
         accuracy: result.meta.approximateVisitors ? "approximate" : "exact",
       },
+      ...(filterScope ? { filterScope } : {}),
     },
   };
 }
@@ -527,6 +571,7 @@ async function executeReport(
 ) {
   const query: ComparisonQuery = {
     context,
+    scopePreference: sides.current.scopePreference,
     current: { time: sides.current.time, filters: sides.current.filters },
     reference: { time: sides.reference.time, filters: sides.reference.filters },
     metrics,
@@ -597,8 +642,7 @@ async function executeBreakdown(
   limit: number,
   sort: ComparisonBreakdownQuery["sort"],
   operation:
-    | "site.analytics.comparisonBreakdown"
-    | "team.analytics.comparisonBreakdown",
+    "site.analytics.comparisonBreakdown" | "team.analytics.comparisonBreakdown",
   subject: {
     readonly siteId?: string;
     readonly teamId?: string;
@@ -609,6 +653,7 @@ async function executeBreakdown(
 ) {
   const query: ComparisonBreakdownQuery = {
     context,
+    scopePreference: sides.current.scopePreference,
     current: { time: sides.current.time, filters: sides.current.filters },
     reference: { time: sides.reference.time, filters: sides.reference.filters },
     metrics: ["views", "sessions", "visitors"],
@@ -857,7 +902,14 @@ async function reportHandler(
           ? "request_cancelled"
           : result.error.kind === "deadline-exceeded"
             ? "deadline_exceeded"
-            : "internal_error",
+            : result.error.kind === "invalid-input" &&
+                result.error.issues.some(
+                  (issue) => issue.code === "scope_conflict",
+                )
+              ? "conflict"
+              : result.error.kind === "invalid-input"
+                ? "validation_failed"
+                : "internal_error",
       request,
     );
   const domain = result.value;
@@ -865,7 +917,11 @@ async function reportHandler(
   const requestId = crypto.randomUUID();
   const trend =
     "trend" in domain.data && domain.data.trend ? domain.data.trend : null;
-  return response(200, reportWire(domain, sides, trend, requestId), requestId);
+  return response(
+    200,
+    reportWire(domain, sides, trend, requestId, result.meta?.filterScope),
+    requestId,
+  );
 }
 
 function executionContextFor(
@@ -888,8 +944,7 @@ async function breakdownHandler(
     readonly allowedSiteIds?: readonly string[];
   },
   operation:
-    | "site.analytics.comparisonBreakdown"
-    | "team.analytics.comparisonBreakdown",
+    "site.analytics.comparisonBreakdown" | "team.analytics.comparisonBreakdown",
 ): Promise<Response> {
   if (
     !ANALYTICS_DIMENSIONS.includes(
@@ -952,7 +1007,14 @@ async function breakdownHandler(
           ? "request_cancelled"
           : result.error.kind === "deadline-exceeded"
             ? "deadline_exceeded"
-            : "internal_error",
+            : result.error.kind === "invalid-input" &&
+                result.error.issues.some(
+                  (issue) => issue.code === "scope_conflict",
+                )
+              ? "conflict"
+              : result.error.kind === "invalid-input"
+                ? "validation_failed"
+                : "internal_error",
       request,
     );
   const domain = result.value;
@@ -982,6 +1044,9 @@ async function breakdownHandler(
           source: domain.meta.source,
           accuracy: "exact",
         },
+        ...(result.meta?.filterScope
+          ? { filterScope: result.meta.filterScope }
+          : {}),
       },
     },
     requestId,

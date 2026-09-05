@@ -6,8 +6,12 @@
 =======
   "manifestVersion": 1,
   "api": "InsightFlare API",
+<<<<<<< HEAD
   "version": "0.6.0",
 >>>>>>> a149c376b590f8a2ebbc24f49f345e594a954201
+=======
+  "version": "0.7.1",
+>>>>>>> 30fa1495a1af5000a679a6b94f1cd63d0bf6d0fa
   "baseUrl": "${baseUrl}",
   "description": "Agent operating guide for the InsightFlare public API.",
   "openapi": {

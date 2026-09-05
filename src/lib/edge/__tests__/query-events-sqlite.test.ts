@@ -6,6 +6,10 @@ import {
   analyticsFilterRegistry,
   EMPTY_FILTER_DOCUMENT,
   normalizeFilterDocument,
+  prepareScopedQuery,
+  type QueryInput,
+  type QueryTime,
+  siteQueryContext,
 } from "@/lib/edge/analytics/contract";
 import type { QueryWindow } from "@/lib/edge/analytics/providers/d1/internal/core";
 import { queryEventAnalyticsContextCardsFromD1 } from "@/lib/edge/analytics/providers/d1/internal/events-context";
@@ -14,7 +18,6 @@ import { queryEventTypeOverviewFromD1 } from "@/lib/edge/analytics/providers/d1/
 import {
   type EventRecordCursor,
   queryEventRecordPageFromD1,
-  queryEventRecordsFromD1,
 } from "@/lib/edge/analytics/providers/d1/internal/events-records";
 import { queryEventSummaryMetricsFromD1 } from "@/lib/edge/analytics/providers/d1/internal/events-summary";
 import {
@@ -28,6 +31,7 @@ import {
   queryVisitorListPageFromD1,
   queryVisitorsFromD1,
 } from "@/lib/edge/analytics/providers/d1/internal/journey-list-queries";
+import { compileScopedDatasetSql } from "@/lib/edge/analytics/providers/d1/internal/scoped-dataset";
 import type { Env } from "@/lib/edge/types";
 
 import { filterFixture } from "./filter-fixtures";
@@ -274,6 +278,44 @@ function createSqliteEventEnv(): { env: Env; d1: SqliteD1Database } {
 }
 
 describe("event detail D1 SQL", () => {
+  it("runs event-record pages through the canonical scoped dataset", async () => {
+    const { env, d1 } = createSqliteEventEnv();
+    const prepared = prepareScopedQuery("event-records", {
+      context: siteQueryContext(siteId, "private-dashboard"),
+      time: {
+        range: {
+          startMs: window.startMs,
+          endExclusiveMs: window.endExclusiveMs,
+        },
+        reportingTimeZone: "UTC",
+        capturedAtMs: window.nowMs,
+      },
+      filters: EMPTY_FILTER_DOCUMENT,
+      scopePreference: "auto",
+    } as QueryInput & { time: QueryTime });
+
+    try {
+      const page = await queryEventRecordPageFromD1(
+        env,
+        siteId,
+        window,
+        prepared.filters!,
+        {
+          limit: 50,
+          sort: { key: "occurredAt", direction: "desc" },
+        },
+      );
+
+      expect(page.rows.map((row) => row.eventId)).toEqual([
+        "event-other-name",
+        "event-1",
+      ]);
+      expect(d1.calls.at(-1)?.sql).toContain("FROM scope_final_events es");
+    } finally {
+      d1.close();
+    }
+  });
+
   it("uses the event-name index for the all-events trend source", async () => {
     const { env, d1 } = createSqliteEventEnv();
 
@@ -333,9 +375,8 @@ describe("event detail D1 SQL", () => {
 
     try {
       const [records, overview, trend, fields, cards] = await Promise.all([
-        queryEventRecordsFromD1(env, siteId, window, EMPTY_FILTER_DOCUMENT, {
+        queryEventRecordPageFromD1(env, siteId, window, EMPTY_FILTER_DOCUMENT, {
           limit: 25,
-          offset: 0,
           sort: { key: "occurredAt", direction: "desc" },
           eventName,
         }),
@@ -372,7 +413,7 @@ describe("event detail D1 SQL", () => {
         ),
       ]);
 
-      expect(records).toHaveLength(1);
+      expect(records.rows).toHaveLength(1);
       expect(overview.summary.events).toBe(1);
       expect(overview.summary.shareOfAllEvents).toBe(0.5);
       expect(trend.data.some((point) => point.events === 1)).toBe(true);
@@ -482,19 +523,6 @@ describe("event detail D1 SQL", () => {
           );
       }
 
-      const legacyOffsetRows = await queryEventRecordsFromD1(
-        env,
-        siteId,
-        window,
-        EMPTY_FILTER_DOCUMENT,
-        {
-          limit: 2,
-          offset: 1,
-          sort: { key: "occurredAt", direction: "desc" },
-        },
-      );
-      expect(legacyOffsetRows).toHaveLength(2);
-
       for (const sort of [
         { key: "occurredAt", direction: "asc" },
         { key: "occurredAt", direction: "desc" },
@@ -503,14 +531,13 @@ describe("event detail D1 SQL", () => {
         { key: "pathname", direction: "asc" },
         { key: "pathname", direction: "desc" },
       ] as const) {
-        const expected = await queryEventRecordsFromD1(
+        const expected = await queryEventRecordPageFromD1(
           env,
           siteId,
           window,
           EMPTY_FILTER_DOCUMENT,
           {
             limit: 20,
-            offset: 0,
             sort,
           },
         );
@@ -523,7 +550,7 @@ describe("event detail D1 SQL", () => {
             window,
             EMPTY_FILTER_DOCUMENT,
             {
-              pageSize: 2,
+              limit: 2,
               sort,
               cursor,
             },
@@ -533,7 +560,7 @@ describe("event detail D1 SQL", () => {
         } while (cursor);
 
         expect(received.map((row) => row.eventId)).toEqual(
-          expected.map((row) => row.eventId),
+          expected.rows.map((row) => row.eventId),
         );
       }
 
@@ -555,7 +582,7 @@ describe("event detail D1 SQL", () => {
     const { env, d1 } = createSqliteEventEnv();
 
     try {
-      const records = await queryEventRecordsFromD1(
+      const records = await queryEventRecordPageFromD1(
         env,
         siteId,
         window,
@@ -570,13 +597,12 @@ describe("event detail D1 SQL", () => {
         }),
         {
           limit: 25,
-          offset: 0,
           sort: { key: "occurredAt", direction: "desc" },
-          eventName,
+          eventName: ` ${eventName} `,
         },
       );
 
-      expect(records.map((record) => record.eventId)).toEqual(["event-1"]);
+      expect(records.rows.map((record) => record.eventId)).toEqual(["event-1"]);
       const query = d1.calls.at(-1);
       const plan = d1.database
         .prepare(`EXPLAIN QUERY PLAN ${query?.sql ?? "SELECT 1"}`)
@@ -651,6 +677,53 @@ describe("event detail D1 SQL", () => {
     }
   });
 
+  it("feeds funnel progression from the final scoped relations", async () => {
+    const { env, d1 } = createSqliteEventEnv();
+    const prepared = prepareScopedQuery("funnel-analysis", {
+      context: siteQueryContext(siteId, "private-dashboard"),
+      time: {
+        range: {
+          startMs: window.startMs,
+          endExclusiveMs: window.endExclusiveMs,
+        },
+        reportingTimeZone: "UTC",
+        capturedAtMs: window.nowMs,
+      },
+      filters: filterFixture({ path: "/posts/minecraft-meteor-guide" }),
+      scopePreference: "event",
+    } as QueryInput & { time: QueryTime });
+
+    try {
+      const analysis = await queryFunnelAnalysis(
+        env,
+        siteId,
+        window,
+        prepared.filters!,
+        [
+          { type: "pageview", value: "/posts/minecraft-meteor-guide" },
+          { type: "event", value: eventName },
+        ],
+      );
+
+      expect(analysis.steps.map((step) => step.sessions)).toEqual([1, 1]);
+      expect(analysis.summary).toMatchObject({
+        totalSessions: 1,
+        convertedSessions: 1,
+      });
+      expect(
+        d1.calls.some((call) => call.sql.includes("FROM scope_final_visits")),
+      ).toBe(true);
+      expect(
+        d1.calls.some((call) => call.sql.includes("FROM scope_final_events")),
+      ).toBe(true);
+      expect(
+        d1.calls.every((call) => !call.sql.includes("matched_sessions AS")),
+      ).toBe(true);
+    } finally {
+      d1.close();
+    }
+  });
+
   it("uses event filters to select funnel sessions before loading page steps", async () => {
     const { env, d1 } = createSqliteEventEnv();
     const filters = normalizeFilterDocument(
@@ -704,6 +777,235 @@ describe("event detail D1 SQL", () => {
       expect(query?.sql).not.toContain("session_visit_edges");
       expect(query?.sql).toContain("'path' AS cardType");
       expect(query?.sql).not.toContain("'browser' AS cardType");
+    } finally {
+      d1.close();
+    }
+  });
+
+  it("derives scoped event entry and exit from the final visit relation", async () => {
+    const { env, d1 } = createSqliteEventEnv();
+    const prepared = prepareScopedQuery("event-context", {
+      context: siteQueryContext(siteId, "private-dashboard"),
+      time: {
+        range: {
+          startMs: window.startMs,
+          endExclusiveMs: window.endExclusiveMs,
+        },
+        reportingTimeZone: "UTC",
+        capturedAtMs: window.nowMs,
+      },
+      filters: filterFixture({ path: "/posts/minecraft-meteor-guide" }),
+      scopePreference: "event",
+    } as QueryInput & { time: QueryTime });
+
+    try {
+      const cards = await queryEventAnalyticsContextCardsFromD1(
+        env,
+        siteId,
+        window,
+        prepared.filters!,
+        100,
+        eventName,
+        ["entry", "exit"],
+      );
+
+      expect(cards.page.entry).toMatchObject([
+        { value: "/posts/minecraft-meteor-guide" },
+      ]);
+      expect(cards.page.exit).toMatchObject([
+        { value: "/posts/minecraft-meteor-guide" },
+      ]);
+      expect(d1.calls.at(-1)?.sql).toContain("INNER JOIN scope_final_visits v");
+    } finally {
+      d1.close();
+    }
+  });
+
+  it("keeps all four final relations aligned for Event and Visitor scopes", () => {
+    const { env, d1 } = createSqliteEventEnv();
+    const visitorPrepared = prepareScopedQuery("overview", {
+      context: siteQueryContext(siteId, "private-dashboard"),
+      time: {
+        range: {
+          startMs: window.startMs,
+          endExclusiveMs: window.endExclusiveMs,
+        },
+        reportingTimeZone: "UTC",
+        capturedAtMs: window.nowMs,
+      },
+      filters: filterFixture({ path: "/posts/minecraft-meteor-guide" }),
+      scopePreference: "visitor",
+    } as QueryInput & { time: QueryTime });
+
+    try {
+      const visitorDataset = compileScopedDatasetSql({
+        filters: visitorPrepared.filters!,
+        plan: visitorPrepared.scopePlan!,
+        siteIds: [siteId],
+        window,
+      });
+      const visitorCounts = d1.database
+        .prepare(
+          `
+          WITH ${visitorDataset.ctes}
+          SELECT
+            (SELECT count(*) FROM ${visitorDataset.visitRelation}) AS visits,
+            (SELECT count(*) FROM ${visitorDataset.eventRelation}) AS events,
+            (SELECT count(*) FROM ${visitorDataset.sessionRelation}) AS sessions,
+            (SELECT count(*) FROM ${visitorDataset.visitorRelation}) AS visitors
+        `,
+        )
+        .get(...visitorDataset.bindings.map(({ value }) => value)) as Record<
+        string,
+        number
+      >;
+
+      expect(visitorCounts).toEqual({
+        visits: 3,
+        events: 2,
+        sessions: 1,
+        visitors: 1,
+      });
+
+      const eventPrepared = prepareScopedQuery("overview", {
+        context: siteQueryContext(siteId, "private-dashboard"),
+        time: {
+          range: {
+            startMs: window.startMs,
+            endExclusiveMs: window.endExclusiveMs,
+          },
+          reportingTimeZone: "UTC",
+          capturedAtMs: window.nowMs,
+        },
+        filters: filterFixture({ path: "/posts/minecraft-meteor-guide" }),
+        scopePreference: "event",
+      } as QueryInput & { time: QueryTime });
+      const eventDataset = compileScopedDatasetSql({
+        filters: eventPrepared.filters!,
+        plan: eventPrepared.scopePlan!,
+        siteIds: [siteId],
+        window,
+      });
+      const eventCounts = d1.database
+        .prepare(
+          `
+          WITH ${eventDataset.ctes}
+          SELECT
+            (SELECT count(*) FROM ${eventDataset.visitRelation}) AS visits,
+            (SELECT count(*) FROM ${eventDataset.eventRelation}) AS events,
+            (SELECT count(*) FROM ${eventDataset.sessionRelation}) AS sessions,
+            (SELECT count(*) FROM ${eventDataset.visitorRelation}) AS visitors
+        `,
+        )
+        .get(...eventDataset.bindings.map(({ value }) => value)) as Record<
+        string,
+        number
+      >;
+
+      expect(eventCounts).toEqual({
+        visits: 1,
+        events: 2,
+        sessions: 1,
+        visitors: 1,
+      });
+    } finally {
+      d1.close();
+    }
+  });
+
+  it("includes an entity represented only by an in-window custom event", () => {
+    const { env, d1 } = createSqliteEventEnv();
+    const eventOnlyVisitStart = window.startMs - 2 * 60 * 60 * 1000;
+    d1.database
+      .prepare(
+        `INSERT INTO visits (
+          visit_id, site_id, visitor_id, session_id, started_at, pathname
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "visit-event-only",
+        siteId,
+        "visitor-event-only",
+        "session-event-only",
+        eventOnlyVisitStart,
+        "/outside-window",
+      );
+    d1.database
+      .prepare(
+        "INSERT INTO custom_event_names (id, site_id, name) VALUES (?, ?, ?)",
+      )
+      .run(100, siteId, "event_only_type");
+    d1.database
+      .prepare(
+        "INSERT INTO custom_events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        2,
+        "event-only",
+        siteId,
+        "visit-event-only",
+        100,
+        eventTime,
+        eventTime,
+        1,
+        1,
+        1,
+        null,
+      );
+
+    try {
+      const prepared = prepareScopedQuery("overview", {
+        context: siteQueryContext(siteId, "private-dashboard"),
+        time: {
+          range: {
+            startMs: window.startMs,
+            endExclusiveMs: window.endExclusiveMs,
+          },
+          reportingTimeZone: "UTC",
+          capturedAtMs: window.nowMs,
+        },
+        filters: normalizeFilterDocument(
+          {
+            version: 1,
+            root: {
+              kind: "condition",
+              target: { kind: "field", field: "event.name" },
+              operator: "eq",
+              value: "event_only_type",
+            },
+          },
+          analyticsFilterRegistry,
+        ),
+        scopePreference: "visitor",
+      } as QueryInput & { time: QueryTime });
+      const dataset = compileScopedDatasetSql({
+        filters: prepared.filters!,
+        plan: prepared.scopePlan!,
+        siteIds: [siteId],
+        window,
+      });
+      const counts = d1.database
+        .prepare(
+          `
+          WITH ${dataset.ctes}
+          SELECT
+            (SELECT count(*) FROM ${dataset.visitRelation}) AS visits,
+            (SELECT count(*) FROM ${dataset.eventRelation}) AS events,
+            (SELECT count(*) FROM ${dataset.sessionRelation}) AS sessions,
+            (SELECT count(*) FROM ${dataset.visitorRelation}) AS visitors
+        `,
+        )
+        .get(...dataset.bindings.map(({ value }) => value)) as Record<
+        string,
+        number
+      >;
+
+      expect(counts).toEqual({
+        visits: 0,
+        events: 1,
+        sessions: 1,
+        visitors: 1,
+      });
     } finally {
       d1.close();
     }
@@ -802,7 +1104,7 @@ describe("event detail D1 SQL", () => {
         window,
         filter,
         {
-          pageSize: 10,
+          limit: 10,
           sort: { key: "startedAt", direction: "asc" },
         },
       );
@@ -812,7 +1114,7 @@ describe("event detail D1 SQL", () => {
         window,
         filter,
         {
-          pageSize: 10,
+          limit: 10,
           sort: { key: "firstSeenAt", direction: "asc" },
         },
       );
@@ -945,7 +1247,6 @@ describe("event detail D1 SQL", () => {
           EMPTY_FILTER_DOCUMENT,
           20,
           undefined,
-          0,
           sort,
         );
         const received = [];
@@ -956,7 +1257,7 @@ describe("event detail D1 SQL", () => {
             siteId,
             window,
             EMPTY_FILTER_DOCUMENT,
-            { pageSize: 2, sort, cursor },
+            { limit: 2, sort, cursor },
           );
           received.push(...page.rows);
           cursor = page.nextCursor;
@@ -981,7 +1282,6 @@ describe("event detail D1 SQL", () => {
           EMPTY_FILTER_DOCUMENT,
           20,
           undefined,
-          0,
           sort,
         );
         const received = [];
@@ -992,7 +1292,7 @@ describe("event detail D1 SQL", () => {
             siteId,
             window,
             EMPTY_FILTER_DOCUMENT,
-            { pageSize: 2, sort, cursor },
+            { limit: 2, sort, cursor },
           );
           received.push(...page.rows);
           cursor = page.nextCursor;
