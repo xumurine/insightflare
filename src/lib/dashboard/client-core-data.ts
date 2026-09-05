@@ -23,11 +23,14 @@ import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type {
   EventField,
   EventFieldValuesData,
+  EventFieldValueStat,
+  EventRecord,
   EventRecordDetailData,
   EventsRecordsData,
   EventsSummaryData,
   EventsTrendData,
   EventTypeDetailData,
+  EventTypeFieldsData,
   FunnelDeleteData,
   FunnelDetailData,
   FunnelListData,
@@ -35,20 +38,27 @@ import type {
   FunnelStep,
   JourneyEvent,
   JourneyEventDetailData,
+  JourneyEventsData,
   OverviewData,
   PagesData,
   PerformanceData,
   RetentionData,
   SessionDetailData,
+  SessionEventsData,
   SessionsData,
   TrendData,
   VisitorDetailData,
   VisitorsData,
+  VisitorSessionsData,
 } from "@/lib/edge-client";
-import type { FilterDocument } from "@/lib/filter-contract";
+import type { FilterDocument, FilterScope } from "@/lib/filter-contract";
 
 import { fetchPrivateJson, fetchPrivateJsonMutate } from "./client-request";
-import { withFilters } from "./client-utils";
+import {
+  normalizePaginatedCollection,
+  withFilters,
+  withPagination,
+} from "./client-utils";
 
 function emptySessionsUnlessAborted(error: unknown): SessionsData {
   if (error instanceof Error && error.name === "AbortError") throw error;
@@ -62,6 +72,12 @@ function emptyVisitorsUnlessAborted(error: unknown): VisitorsData {
 
 function fallbackUnlessAborted<T>(error: unknown, fallback: () => T): T {
   if (error instanceof Error && error.name === "AbortError") throw error;
+  if (
+    error instanceof Error &&
+    error.message === "pagination_contract_violation"
+  ) {
+    throw error;
+  }
   return fallback();
 }
 
@@ -120,20 +136,29 @@ export async function fetchPages(
   siteId: string,
   window: TimeWindow,
   filters?: FilterDocument,
+  options?: {
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+  },
 ): Promise<PagesData> {
   return fetchPrivateJson<PagesData>(
     "/api/private/pages",
     withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        limit: 100,
-        details: 1,
-      },
+      withPagination(
+        {
+          siteId,
+          from: window.from,
+          to: window.to,
+          timeZone: window.timeZone,
+          details: 1,
+        },
+        options,
+        100,
+      ),
       filters,
     ),
+    { signal: options?.signal },
   );
 }
 
@@ -144,7 +169,6 @@ export async function fetchVisitors(
   options?: {
     limit?: number;
     cursor?: string | null;
-    pageSize?: number;
     sortBy?: VisitorListSortKey;
     sortDir?: SortDirection;
     search?: string;
@@ -158,12 +182,7 @@ export async function fetchVisitors(
     timeZone: window.timeZone,
   };
   if (options?.cursor) params.cursor = options.cursor;
-  if (options?.pageSize !== undefined) params.pageSize = options.pageSize;
-  if (options?.limit !== undefined) {
-    params.limit = options.limit;
-  } else if (options?.pageSize === undefined) {
-    params.limit = 100;
-  }
+  params.limit = options?.limit ?? 100;
   if (options?.sortBy) params.sortBy = options.sortBy;
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
@@ -191,7 +210,7 @@ export async function fetchVisitorDetail(
 ): Promise<VisitorDetailData> {
   const normalizedVisitorId = visitorId.trim();
   if (!normalizedVisitorId) return emptyVisitorDetail();
-  return fetchPrivateJson<VisitorDetailData>(
+  const result = await fetchPrivateJson<VisitorDetailData>(
     "/api/private/visitor-detail",
     {
       siteId,
@@ -200,6 +219,69 @@ export async function fetchVisitorDetail(
       ...(timeZone ? { timeZone } : {}),
     },
     { signal: options?.signal, dedupe: false },
+  );
+  if (!result.data) return result;
+  return {
+    ...result,
+    data: {
+      ...result.data,
+      sessions: result.data.sessions ?? [],
+      events: result.data.events ?? [],
+    },
+  };
+}
+
+export async function fetchVisitorEvents(
+  siteId: string,
+  visitorId: string,
+  window: TimeWindow,
+  options?: {
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+  },
+): Promise<JourneyEventsData> {
+  return fetchPrivateJson<JourneyEventsData>(
+    "/api/private/visitor-events",
+    withPagination(
+      {
+        siteId,
+        visitorId: visitorId.trim(),
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+      },
+      options,
+      100,
+    ),
+    { signal: options?.signal },
+  );
+}
+
+export async function fetchVisitorSessions(
+  siteId: string,
+  visitorId: string,
+  window: TimeWindow,
+  options?: {
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+  },
+): Promise<VisitorSessionsData> {
+  return fetchPrivateJson<VisitorSessionsData>(
+    "/api/private/visitor-sessions",
+    withPagination(
+      {
+        siteId,
+        visitorId: visitorId.trim(),
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+      },
+      options,
+      100,
+    ),
+    { signal: options?.signal },
   );
 }
 
@@ -210,7 +292,6 @@ export async function fetchSessions(
   options?: {
     limit?: number;
     cursor?: string | null;
-    pageSize?: number;
     sortBy?: SessionListSortKey;
     sortDir?: SortDirection;
     search?: string;
@@ -224,12 +305,7 @@ export async function fetchSessions(
     timeZone: window.timeZone,
   };
   if (options?.cursor) params.cursor = options.cursor;
-  if (options?.pageSize !== undefined) params.pageSize = options.pageSize;
-  if (options?.limit !== undefined) {
-    params.limit = options.limit;
-  } else if (options?.pageSize === undefined) {
-    params.limit = 100;
-  }
+  params.limit = options?.limit ?? 100;
   if (options?.sortBy) params.sortBy = options.sortBy;
   if (options?.sortDir) params.sortDir = options.sortDir;
   const search = options?.search?.trim();
@@ -269,19 +345,47 @@ export async function fetchSessionDetail(
   );
 }
 
+export async function fetchSessionEvents(
+  siteId: string,
+  sessionId: string,
+  window: TimeWindow,
+  options?: {
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+  },
+): Promise<SessionEventsData> {
+  return fetchPrivateJson<SessionEventsData>(
+    "/api/private/session-events",
+    withPagination(
+      {
+        siteId,
+        sessionId: sessionId.trim(),
+        from: window.from,
+        to: window.to,
+        timeZone: window.timeZone,
+      },
+      options,
+      100,
+    ),
+    { signal: options?.signal },
+  );
+}
+
 export async function fetchFunnels(
   siteId: string,
-  options?: { signal?: AbortSignal },
+  options?: {
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+  },
 ): Promise<FunnelListData> {
+  const requestParams = withPagination({ siteId }, options, 100);
   return options?.signal
-    ? fetchPrivateJson<FunnelListData>(
-        "/api/private/funnels",
-        { siteId },
-        {
-          signal: options.signal,
-        },
-      )
-    : fetchPrivateJson<FunnelListData>("/api/private/funnels", { siteId });
+    ? fetchPrivateJson<FunnelListData>("/api/private/funnels", requestParams, {
+        signal: options.signal,
+      })
+    : fetchPrivateJson<FunnelListData>("/api/private/funnels", requestParams);
 }
 
 export async function fetchFunnelDetail(
@@ -396,9 +500,34 @@ export async function fetchEventsTrend(
         "/api/private/events-trend",
         requestParams,
       );
-  return request.catch((error) =>
-    fallbackUnlessAborted(error, () => emptyEventsTrend(window.interval)),
-  );
+  return request
+    .then((value) => {
+      const payload =
+        value && typeof value === "object"
+          ? (value as unknown as Record<string, unknown>)
+          : {};
+      const nested =
+        payload.data && typeof payload.data === "object"
+          ? (payload.data as Record<string, unknown>)
+          : payload;
+      const interval =
+        nested.interval === "minute" ||
+        nested.interval === "hour" ||
+        nested.interval === "day" ||
+        nested.interval === "week" ||
+        nested.interval === "month"
+          ? nested.interval
+          : window.interval;
+      return {
+        ok: payload.ok !== false,
+        interval,
+        series: Array.isArray(nested.series) ? nested.series : [],
+        data: Array.isArray(nested.data) ? nested.data : [],
+      } satisfies EventsTrendData;
+    })
+    .catch((error) =>
+      fallbackUnlessAborted(error, () => emptyEventsTrend(window.interval)),
+    );
 }
 
 export async function fetchEventsRecords(
@@ -407,7 +536,7 @@ export async function fetchEventsRecords(
   filters?: FilterDocument,
   options?: {
     cursor?: string | null;
-    pageSize?: number;
+    limit?: number;
     sortBy?: EventRecordSortKey;
     sortDir?: SortDirection;
     search?: string;
@@ -415,13 +544,13 @@ export async function fetchEventsRecords(
     signal?: AbortSignal;
   },
 ): Promise<EventsRecordsData> {
-  const pageSize = options?.pageSize ?? 80;
+  const limit = options?.limit ?? 80;
   const params: Record<string, string | number> = {
     siteId,
     from: window.from,
     to: window.to,
     timeZone: window.timeZone,
-    pageSize,
+    limit,
   };
   if (options?.cursor) params.cursor = options.cursor;
   if (options?.sortBy) params.sortBy = options.sortBy;
@@ -441,9 +570,21 @@ export async function fetchEventsRecords(
         "/api/private/events-records",
         requestParams,
       );
-  return request.catch((error) =>
-    fallbackUnlessAborted(error, () => emptyEventsRecords(pageSize)),
-  );
+  return request
+    .then((value) => {
+      const payload =
+        value && typeof value === "object"
+          ? (value as unknown as Record<string, unknown>)
+          : {};
+      const collection = "data" in payload ? payload.data : payload;
+      return {
+        ok: payload.ok !== false,
+        data: normalizePaginatedCollection<EventRecord>(collection),
+      } satisfies EventsRecordsData;
+    })
+    .catch((error) =>
+      fallbackUnlessAborted(error, () => emptyEventsRecords(limit)),
+    );
 }
 
 export async function fetchEventTypeDetail(
@@ -493,23 +634,56 @@ export async function fetchEventTypeFields(
   window: TimeWindow,
   eventName?: string,
   filters?: FilterDocument,
-  options?: { signal?: AbortSignal },
-): Promise<Pick<EventTypeDetailData, "fields">> {
+  options?: {
+    limit?: number;
+    cursor?: string | null;
+    signal?: AbortSignal;
+    resolvedScope?: FilterScope;
+  },
+): Promise<EventTypeFieldsData> {
   const normalizedEventName = eventName?.trim() ?? "";
-  return fetchPrivateJson<Pick<EventTypeDetailData, "fields">>(
+  const payload = await fetchPrivateJson<EventTypeFieldsData>(
     "/api/private/event-type-fields",
     withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        ...(normalizedEventName ? { eventName: normalizedEventName } : {}),
-      },
+      withPagination(
+        {
+          siteId,
+          from: window.from,
+          to: window.to,
+          timeZone: window.timeZone,
+          ...(normalizedEventName ? { eventName: normalizedEventName } : {}),
+        },
+        options,
+        100,
+      ),
       filters,
+      options?.resolvedScope,
     ),
     { signal: options?.signal },
-  ).catch((error) => fallbackUnlessAborted(error, () => ({ fields: [] })));
+  ).catch((error) =>
+    fallbackUnlessAborted(error, () => ({
+      ok: true,
+      eventName: normalizedEventName,
+      data: {
+        items: [],
+        pagination: {
+          limit: options?.limit ?? 100,
+          returned: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      },
+    })),
+  );
+  const rawPayload = payload as EventTypeFieldsData & {
+    fields?: unknown;
+  };
+  return {
+    ...rawPayload,
+    data: normalizePaginatedCollection<EventField>(
+      rawPayload.data ?? rawPayload.fields,
+    ),
+  };
 }
 
 export async function fetchEventTypeContextCards(
@@ -552,8 +726,10 @@ export async function fetchEventTypeFieldValues(
   filters?: FilterDocument,
   options?: {
     limit?: number;
+    cursor?: string | null;
     search?: string;
     signal?: AbortSignal;
+    resolvedScope?: FilterScope;
   },
 ): Promise<EventFieldValuesData> {
   const normalizedEventName = eventName?.trim() ?? "";
@@ -561,21 +737,25 @@ export async function fetchEventTypeFieldValues(
   if (!normalizedFieldPath) {
     return emptyEventFieldValues(normalizedFieldPath, fieldValueType);
   }
-  return fetchPrivateJson<EventFieldValuesData>(
+  const payload = await fetchPrivateJson<EventFieldValuesData>(
     "/api/private/event-type-field-values",
     withFilters(
-      {
-        siteId,
-        from: window.from,
-        to: window.to,
-        timeZone: window.timeZone,
-        ...(normalizedEventName ? { eventName: normalizedEventName } : {}),
-        fieldPath: normalizedFieldPath,
-        fieldValueType,
-        limit: options?.limit ?? 25,
-        ...(options?.search?.trim() ? { search: options.search.trim() } : {}),
-      },
+      withPagination(
+        {
+          siteId,
+          from: window.from,
+          to: window.to,
+          timeZone: window.timeZone,
+          ...(normalizedEventName ? { eventName: normalizedEventName } : {}),
+          fieldPath: normalizedFieldPath,
+          fieldValueType,
+          ...(options?.search?.trim() ? { search: options.search.trim() } : {}),
+        },
+        options,
+        25,
+      ),
       filters,
+      options?.resolvedScope,
     ),
     { signal: options?.signal },
   ).catch((error) =>
@@ -583,6 +763,10 @@ export async function fetchEventTypeFieldValues(
       emptyEventFieldValues(normalizedFieldPath, fieldValueType),
     ),
   );
+  return {
+    ...payload,
+    data: normalizePaginatedCollection<EventFieldValueStat>(payload.data),
+  };
 }
 
 export async function fetchEventRecordDetail(

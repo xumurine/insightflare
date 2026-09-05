@@ -1,3 +1,4 @@
+import { parseApiV1FilterDsl } from "@/lib/api-v1/analytics-overview";
 import {
   type TeamTimeseriesQueryDto,
   TeamTimeseriesQueryDtoSchema,
@@ -102,6 +103,13 @@ async function readBody(request: Request): Promise<unknown> {
 
 function filter(input: TeamTimeseriesQueryDto): FilterDocument | null {
   if (!input.filter) return { version: 1, root: null };
+  if (input.filter.type === "dsl") {
+    try {
+      return parseApiV1FilterDsl(input.filter.expression);
+    } catch {
+      return null;
+    }
+  }
   try {
     return parseApiV1FilterDocument({
       version: 1,
@@ -193,6 +201,7 @@ export async function handlePlannedTeamTimeseries(
       timeZone,
       interval: input.interval,
       filters,
+      scopePreference: input.scope ?? "auto",
     };
     const serviceResult = await createApiV1QueryApplicationAdapter().execute<
       TeamTimeseriesReaderInput,
@@ -267,6 +276,9 @@ export async function handlePlannedTeamTimeseries(
           },
           source: result.source,
           accuracy: result.approximateVisitors ? "approximate" : "exact",
+          ...(serviceResult.meta?.filterScope
+            ? { filterScope: serviceResult.meta.filterScope }
+            : {}),
         },
       },
       requestId,

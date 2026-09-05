@@ -1,18 +1,12 @@
+import type { PaginatedCollection } from "./pagination";
 import type {
   JourneyPerformanceSummary,
   VisitPerformanceMetrics,
 } from "./performance";
 
-export interface VisitorsMeta {
-  pageSize: number;
-  returned: number;
-  hasMore: boolean;
-  nextCursor: string | null;
-}
-
 export interface VisitorsData {
   ok: boolean;
-  data: Array<{
+  data: PaginatedCollection<{
     visitorId: string;
     sessionId?: string;
     firstSeenAt: number;
@@ -34,7 +28,6 @@ export interface VisitorsData {
     screenWidth?: number | null;
     screenHeight?: number | null;
   }>;
-  meta: VisitorsMeta;
 }
 
 export interface JourneySession {
@@ -122,7 +115,7 @@ export interface VisitorActivityDay {
 export interface VisitorDetailData {
   ok: boolean;
   data: {
-    visitor: VisitorsData["data"][number];
+    visitor: VisitorsData["data"]["items"][number];
     metrics: {
       totalEvents: number;
       sessions: number;
@@ -146,17 +139,21 @@ export interface VisitorDetailData {
   } | null;
 }
 
-export interface SessionsMeta {
-  pageSize: number;
-  returned: number;
-  hasMore: boolean;
-  nextCursor: string | null;
-}
+export type JourneyEventsData = {
+  ok: boolean;
+  data: PaginatedCollection<JourneyEvent>;
+};
+
+export type VisitorSessionsData = {
+  ok: boolean;
+  data: PaginatedCollection<JourneySession>;
+};
+
+export type SessionEventsData = JourneyEventsData;
 
 export interface SessionsData {
   ok: boolean;
-  data: JourneySession[];
-  meta: SessionsMeta;
+  data: PaginatedCollection<JourneySession>;
 }
 
 export interface SessionDetailData {

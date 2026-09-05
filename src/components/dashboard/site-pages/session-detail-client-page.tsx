@@ -1,4 +1,12 @@
-import { memo, type ReactNode, useMemo, useState } from "react";
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   RiArrowLeftLine,
   RiCalendarEventLine,
@@ -9,10 +17,11 @@ import {
   RiPulseLine,
   RiTimeLine,
 } from "@remixicon/react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import {
   AsyncDimensionBreakdownCard,
+  type AsyncDimensionBreakdownLoader,
   type AsyncDimensionBreakdownRow,
 } from "@/components/dashboard/async-dimension-breakdown-card";
 import { useDashboardQueryControls } from "@/components/dashboard/dashboard-query-provider";
@@ -48,6 +57,7 @@ import type {
   SessionDetailMapTheme,
   SessionLocationPoint,
 } from "@/components/dashboard/site-pages/session-detail-map-stage";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { useTheme } from "@/components/theme-provider";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
@@ -64,6 +74,7 @@ import {
   fetchEventRecordDetail,
   fetchJourneyEventDetail,
   fetchSessionDetail,
+  fetchSessionEvents,
   type OverviewTabRows,
 } from "@/lib/dashboard/client-data";
 import { EMPTY_DASHBOARD_FILTER_DOCUMENT } from "@/lib/dashboard/filter-state";
@@ -1005,7 +1016,6 @@ const SessionMapHero = memo(function SessionMapHero({
             enableHoverScale={false}
             tapScale={0.98}
             aria-label={labels.back}
-            title={labels.back}
             onClick={onBack}
           >
             <RiArrowLeftLine className="size-3.5" />
@@ -1016,7 +1026,6 @@ const SessionMapHero = memo(function SessionMapHero({
             href={backHref}
             className="inline-flex items-center gap-1 text-xs text-foreground/80 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/60"
             aria-label={labels.back}
-            title={labels.back}
           >
             <RiArrowLeftLine className="size-3.5" />
             {labels.back}
@@ -1311,7 +1320,6 @@ const SessionEventCard = memo(function SessionEventCard({
       tapScale={0.985}
       duration={0.14}
       aria-label={eventDisplayTitle(labels, event)}
-      title={eventDisplayTitle(labels, event)}
     >
       <Card size="sm" className="border border-foreground/10 py-0 ring-0">
         <CardContent className="p-0">
@@ -1380,6 +1388,9 @@ const VisitDetailsTab = memo(function VisitDetailsTab({
   messages,
   labels,
   events,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
   timeZone,
   onOpenEvent,
   loading = false,
@@ -1388,6 +1399,9 @@ const VisitDetailsTab = memo(function VisitDetailsTab({
   messages: AppMessages;
   labels: Labels;
   events: JourneyEvent[];
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
   timeZone: string;
   onOpenEvent: (event: JourneyEvent) => void;
   loading?: boolean;
@@ -1403,11 +1417,27 @@ const VisitDetailsTab = memo(function VisitDetailsTab({
       }),
     [events],
   );
-  const eventContentKey = loading
-    ? "loading"
-    : chronologicalEvents.length > 0
-      ? chronologicalEvents.map((event) => event.id).join(":")
-      : "empty";
+  const eventContentKey = loading ? "loading" : "content";
+  const loadMoreInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!loadingMore || !hasMore) loadMoreInFlightRef.current = false;
+  }, [hasMore, loadingMore]);
+
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore || loadMoreInFlightRef.current || !onLoadMore) {
+      return;
+    }
+    loadMoreInFlightRef.current = true;
+    onLoadMore();
+  }, [hasMore, loadingMore, onLoadMore]);
+
+  const loadMoreSentinelRef = useInfiniteTableSentinel({
+    enabled: Boolean(onLoadMore) && !loading && !loadingMore && hasMore,
+    onReachEnd: loadMore,
+    rootMargin: "0px",
+    triggerDistance: 0,
+  });
 
   return (
     <Card>
@@ -1433,7 +1463,7 @@ const VisitDetailsTab = memo(function VisitDetailsTab({
                   <SessionEventSkeletonCard key={`event-skeleton-${index}`} />
                 ))}
               </div>
-            ) : chronologicalEvents.length === 0 ? (
+            ) : chronologicalEvents.length === 0 && !hasMore ? (
               <EmptyState key="empty">{labels.emptyEvents}</EmptyState>
             ) : (
               <div key={eventContentKey} className="space-y-1.5">
@@ -1454,6 +1484,15 @@ const VisitDetailsTab = memo(function VisitDetailsTab({
                     }
                   />
                 ))}
+                {hasMore ? (
+                  <div
+                    ref={loadMoreSentinelRef}
+                    aria-hidden="true"
+                    className="min-h-[58px]"
+                  >
+                    <SessionEventSkeletonCard />
+                  </div>
+                ) : null}
               </div>
             )}
           </AutoTransition>
@@ -1646,7 +1685,19 @@ const SessionDetailBottomCards = memo(function SessionDetailBottomCards({
       ] as const,
     [labels.events],
   );
-  const loadEventRows = useMemo(() => async () => eventRows, [eventRows]);
+  const eventLoader = useMemo<AsyncDimensionBreakdownLoader<"event">>(
+    () =>
+      async ({ limit }) => ({
+        items: eventRows,
+        pagination: {
+          limit,
+          returned: eventRows.length,
+          hasMore: false,
+          nextCursor: null,
+        },
+      }),
+    [eventRows],
+  );
 
   return (
     <section className="grid items-stretch gap-6 xl:grid-cols-2">
@@ -1671,12 +1722,11 @@ const SessionDetailBottomCards = memo(function SessionDetailBottomCards({
           locale={locale}
           messages={messages}
           tabs={eventTabs}
-          loadRows={loadEventRows}
-          requestKey={`session-detail-events:${detail.session.sessionId}:${locale}`}
+          loader={eventLoader}
+          requestKey={`session-detail-events:${detail.session.sessionId}:${locale}:${JSON.stringify(eventRows)}`}
           className="h-full"
           showVisitors={false}
           emptyLabel={labels.emptyCustomEvents}
-          loadingByTab={{ event: loading }}
         />
       </div>
     </section>
@@ -1693,6 +1743,9 @@ function DetailContent({
   timeZone,
   timeWindow,
   onOpenVisitor,
+  hasMoreEvents = false,
+  loadingMoreEvents = false,
+  onLoadMoreEvents,
   loading = false,
 }: {
   locale: Locale;
@@ -1704,6 +1757,9 @@ function DetailContent({
   timeZone: string;
   timeWindow: TimeWindow;
   onOpenVisitor?: (visitorId: string) => void;
+  hasMoreEvents?: boolean;
+  loadingMoreEvents?: boolean;
+  onLoadMoreEvents?: () => void;
   loading?: boolean;
 }) {
   const modalClose = useDetailDrawerClose();
@@ -1794,6 +1850,9 @@ function DetailContent({
             messages={messages}
             labels={labels}
             events={detail.events}
+            hasMore={hasMoreEvents}
+            loadingMore={loadingMoreEvents}
+            onLoadMore={onLoadMoreEvents}
             timeZone={timeZone}
             onOpenEvent={setSelectedEvent}
             loading={loading}
@@ -1870,8 +1929,34 @@ export const SessionDetailClientPage = memo(function SessionDetailClientPage({
       fetchSessionDetail(siteId, sessionId, timeZone, window, { signal }),
     enabled: typeof window !== "undefined" && Boolean(sessionId),
   });
-  const detail = detailQuery.data?.data ?? null;
-  const loading = detailQuery.isPending && !detail;
+  const summary = detailQuery.data?.data ?? null;
+  const eventsQuery = useInfiniteQuery({
+    queryKey: [
+      "dashboard",
+      "session-detail-events",
+      siteId,
+      sessionId,
+      timeZone,
+      window.from,
+      window.to,
+    ],
+    queryFn: ({ pageParam, signal }) =>
+      fetchSessionEvents(siteId, sessionId, window, {
+        cursor: pageParam,
+        signal,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.data?.pagination?.hasMore
+        ? lastPage.data.pagination.nextCursor
+        : undefined,
+    enabled: Boolean(summary && sessionId),
+  });
+  const loadedEvents = eventsQuery.data
+    ? eventsQuery.data.pages.flatMap((page) => page.data.items)
+    : (summary?.events ?? []);
+  const detail = summary ? { ...summary, events: loadedEvents } : null;
+  const loading = detailQuery.isPending && !summary;
   const error = detailQuery.isError;
 
   if (!sessionId) {
@@ -1921,6 +2006,13 @@ export const SessionDetailClientPage = memo(function SessionDetailClientPage({
       timeZone={timeZone}
       timeWindow={window}
       onOpenVisitor={onOpenVisitor}
+      hasMoreEvents={Boolean(eventsQuery.hasNextPage)}
+      loadingMoreEvents={eventsQuery.isFetchingNextPage}
+      onLoadMoreEvents={() => {
+        if (eventsQuery.hasNextPage && !eventsQuery.isFetchingNextPage) {
+          void eventsQuery.fetchNextPage();
+        }
+      }}
       loading={loading}
     />
   );

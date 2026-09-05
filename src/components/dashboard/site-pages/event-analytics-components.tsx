@@ -56,6 +56,7 @@ import {
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { EventDetailDrawer } from "@/components/dashboard/site-pages/event-detail-drawer";
 import { EVENT_FILTER_DIALOG_Z_INDEX } from "@/components/dashboard/site-pages/floating-layer";
+import { useInfiniteTableSentinel } from "@/components/dashboard/use-infinite-table-sentinel";
 import { AutoResizer } from "@/components/ui/auto-resizer";
 import { AutoTransition } from "@/components/ui/auto-transition";
 import { Badge } from "@/components/ui/badge";
@@ -75,11 +76,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { TableCell, TableHead, TableRow } from "@/components/ui/table";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   fetchEventRecordDetail,
   fetchEventsRecords,
   fetchEventTypeFields,
   fetchEventTypeFieldValues,
 } from "@/lib/dashboard/client-data";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import { appendEventPayloadFilter } from "@/lib/dashboard/filter-state";
 import { numberFormat, percentFormat } from "@/lib/dashboard/format";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
@@ -93,6 +100,7 @@ import type {
 import type { FilterDocument, FilterValue } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { navigateWithTransition } from "@/lib/page-transition";
 import { useRouter } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -713,6 +721,7 @@ function SortIndicator({
 
 function SortHeader({
   label,
+  ariaLabel,
   active,
   direction,
   onClick,
@@ -720,6 +729,7 @@ function SortHeader({
   className,
 }: {
   label: string;
+  ariaLabel?: string;
   active: boolean;
   direction: SortDirection;
   onClick: () => void;
@@ -742,6 +752,7 @@ function SortHeader({
       >
         <button
           type="button"
+          aria-label={ariaLabel ?? label}
           className={cn(
             "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
             active ? "text-foreground" : "text-muted-foreground",
@@ -807,11 +818,12 @@ function EventRowSkeletonContent({
 
 function appendUniqueEvents(
   current: EventRecord[],
-  incoming: EventRecord[],
+  incoming: readonly EventRecord[] | null | undefined,
 ): EventRecord[] {
-  if (current.length === 0) return incoming;
+  const incomingRows = Array.isArray(incoming) ? [...incoming] : [];
+  if (current.length === 0) return incomingRows;
   const seen = new Set(current.map((row) => row.eventId));
-  const nextRows = incoming.filter((row) => !seen.has(row.eventId));
+  const nextRows = incomingRows.filter((row) => !seen.has(row.eventId));
   return nextRows.length > 0 ? [...current, ...nextRows] : current;
 }
 
@@ -1099,6 +1111,9 @@ const EventRecordsTable = memo(function EventRecordsTable({
       eventName: (
         <SortHeader
           label={labels.eventName}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.eventName,
+          })}
           active={sort.key === "eventName"}
           direction={sort.direction}
           onClick={() => onSort("eventName")}
@@ -1108,6 +1123,9 @@ const EventRecordsTable = memo(function EventRecordsTable({
       occurredAt: (
         <SortHeader
           label={labels.occurredAt}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.occurredAt,
+          })}
           active={sort.key === "occurredAt"}
           direction={sort.direction}
           onClick={() => onSort("occurredAt")}
@@ -1118,6 +1136,9 @@ const EventRecordsTable = memo(function EventRecordsTable({
       page: (
         <SortHeader
           label={labels.page}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.page,
+          })}
           active={sort.key === "pathname"}
           direction={sort.direction}
           onClick={() => onSort("pathname")}
@@ -1135,7 +1156,7 @@ const EventRecordsTable = memo(function EventRecordsTable({
         <TableHead className="pr-4 text-right">{labels.nodeCount}</TableHead>
       ),
     }),
-    [labels, onSort, sort],
+    [labels, messages.common.sortBy, onSort, sort],
   );
   const header = useMemo(
     () => (
@@ -1257,7 +1278,7 @@ export const EventRecordsSection = memo(function EventRecordsSection({
     storageKey: "insightflare:analytics-table-columns:events",
     columns: eventColumnDefinitions,
   });
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -1293,7 +1314,7 @@ export const EventRecordsSection = memo(function EventRecordsSection({
     queryFn: ({ pageParam, signal }) =>
       fetchEventsRecords(siteId, timeWindow, filters, {
         cursor: pageParam,
-        pageSize: EVENT_PAGE_SIZE,
+        limit: EVENT_PAGE_SIZE,
         sortBy: sort.key,
         sortDir: sort.direction,
         search: debouncedQuery,
@@ -1301,14 +1322,18 @@ export const EventRecordsSection = memo(function EventRecordsSection({
         signal,
       }),
     initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) =>
-      lastPage.meta.hasMore ? lastPage.meta.nextCursor : undefined,
+    getNextPageParam: (lastPage) => {
+      const pagination = lastPage.data?.pagination;
+      return pagination?.hasMore && pagination.nextCursor
+        ? pagination.nextCursor
+        : undefined;
+    },
     enabled: typeof window !== "undefined",
   });
   const rows = useMemo(
     () =>
       data?.pages.reduce<EventRecord[]>(
-        (current, page) => appendUniqueEvents(current, page.data),
+        (current, page) => appendUniqueEvents(current, page.data.items),
         [],
       ) ?? [],
     [data?.pages],
@@ -1473,13 +1498,10 @@ export const EventFieldsCard = memo(function EventFieldsCard({
     );
   }, [filters, payloadFilters, payloadFiltersKey]);
   const effectiveFiltersKey = useMemo(
-    () => JSON.stringify(effectiveFilters ?? {}),
+    () => filterQueryKey(effectiveFilters),
     [effectiveFilters],
   );
-  const baseFiltersKey = useMemo(
-    () => JSON.stringify(filters ?? {}),
-    [filters],
-  );
+  const baseFiltersKey = useMemo(() => filterQueryKey(filters), [filters]);
   useEffect(() => {
     const section = fieldsSectionRef.current;
     if (!section) return;
@@ -1499,7 +1521,7 @@ export const EventFieldsCard = memo(function EventFieldsCard({
     observer.observe(section);
     return () => observer.disconnect();
   }, []);
-  const fieldsQuery = useQuery({
+  const fieldsQuery = useInfiniteQuery({
     queryKey: [
       "dashboard",
       "event-type-fields",
@@ -1511,13 +1533,20 @@ export const EventFieldsCard = memo(function EventFieldsCard({
       timeWindow.timeZone,
       baseFiltersKey,
     ],
-    queryFn: ({ signal }) =>
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) =>
       fetchEventTypeFields(siteId, timeWindow, eventName, filters, {
+        limit: 100,
+        cursor: pageParam,
         signal,
       }),
     enabled: typeof window !== "undefined" && fieldsVisible && !loading,
+    getNextPageParam: (lastPage) =>
+      lastPage.data?.pagination?.hasMore
+        ? lastPage.data.pagination.nextCursor
+        : undefined,
   });
-  const filteredFieldsQuery = useQuery({
+  const filteredFieldsQuery = useInfiniteQuery({
     queryKey: [
       "dashboard",
       "event-filtered-fields",
@@ -1529,8 +1558,11 @@ export const EventFieldsCard = memo(function EventFieldsCard({
       timeWindow.timeZone,
       effectiveFiltersKey,
     ],
-    queryFn: ({ signal }) =>
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) =>
       fetchEventTypeFields(siteId, timeWindow, eventName, effectiveFilters, {
+        limit: 100,
+        cursor: pageParam,
         signal,
       }),
     enabled:
@@ -1538,9 +1570,15 @@ export const EventFieldsCard = memo(function EventFieldsCard({
       fieldsVisible &&
       activePayloadFilterCount > 0 &&
       !loading,
+    getNextPageParam: (lastPage) =>
+      lastPage.data?.pagination?.hasMore
+        ? lastPage.data.pagination.nextCursor
+        : undefined,
   });
-  const baseFields = fieldsQuery.data?.fields ?? fields;
-  const filteredFields = filteredFieldsQuery.data?.fields ?? [];
+  const baseFields =
+    fieldsQuery.data?.pages.flatMap((page) => page.data.items) ?? fields;
+  const filteredFields =
+    filteredFieldsQuery.data?.pages.flatMap((page) => page.data.items) ?? [];
   const filteredFieldsLoading = filteredFieldsQuery.isPending;
   const filteredFieldsError = filteredFieldsQuery.isError;
   const activeFields =
@@ -1625,7 +1663,7 @@ export const EventFieldsCard = memo(function EventFieldsCard({
     setExpandedFieldKeys(new Set(defaultExpandedFieldKeys));
   }, [defaultExpandedFieldKeys, fieldRequestKey]);
 
-  const fieldValuesQuery = useQuery({
+  const fieldValuesQuery = useInfiniteQuery({
     queryKey: [
       "dashboard",
       "event-field-values",
@@ -1639,7 +1677,8 @@ export const EventFieldsCard = memo(function EventFieldsCard({
       timeWindow.timeZone,
       effectiveFiltersKey,
     ],
-    queryFn: ({ signal }) =>
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) =>
       fetchEventTypeFieldValues(
         siteId,
         timeWindow,
@@ -1647,16 +1686,60 @@ export const EventFieldsCard = memo(function EventFieldsCard({
         selectedField?.path ?? "",
         selectedField?.valueType ?? "string",
         effectiveFilters,
-        { limit: 25, signal },
+        { limit: 25, cursor: pageParam, signal },
       ),
     enabled:
       typeof window !== "undefined" &&
       !fieldListLoading &&
       Boolean(selectedField),
+    getNextPageParam: (lastPage) =>
+      lastPage.data?.pagination?.hasMore
+        ? lastPage.data.pagination.nextCursor
+        : undefined,
   });
-  const fieldValues = fieldValuesQuery.data?.data ?? [];
+  const fieldValues =
+    fieldValuesQuery.data?.pages.flatMap((page) => page.data.items) ?? [];
   const fieldValuesLoading = fieldValuesQuery.isPending;
+  const fieldValuesLoadingMore = fieldValuesQuery.isFetchingNextPage;
   const fieldValuesError = fieldValuesQuery.isError;
+  const fieldValuesAppendError = fieldValuesQuery.isFetchNextPageError;
+  const fieldValuesHasMore = fieldValuesQuery.hasNextPage ?? false;
+  const fieldValuesLoadMoreInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (!fieldValuesLoadingMore || !fieldValuesHasMore) {
+      fieldValuesLoadMoreInFlightRef.current = false;
+    }
+  }, [fieldValuesHasMore, fieldValuesLoadingMore]);
+
+  const loadMoreFieldValues = useCallback(() => {
+    if (
+      !fieldValuesHasMore ||
+      fieldValuesLoadingMore ||
+      fieldValuesLoadMoreInFlightRef.current
+    ) {
+      return;
+    }
+    fieldValuesLoadMoreInFlightRef.current = true;
+    void fieldValuesQuery.fetchNextPage();
+  }, [
+    fieldValuesHasMore,
+    fieldValuesLoadingMore,
+    fieldValuesQuery.fetchNextPage,
+  ]);
+
+  const fieldValuesSentinelRef = useInfiniteTableSentinel({
+    enabled:
+      Boolean(selectedField) &&
+      !fieldValuesLoading &&
+      !fieldValuesLoadingMore &&
+      !fieldValuesError &&
+      !fieldValuesAppendError &&
+      fieldValuesHasMore,
+    onReachEnd: loadMoreFieldValues,
+    rootMargin: "0px",
+    triggerDistance: 0,
+  });
 
   const fieldValueTotal = useMemo(
     () =>
@@ -1795,26 +1878,34 @@ export const EventFieldsCard = memo(function EventFieldsCard({
         style={indentStyle}
       >
         {hasChildren ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0 rounded-none text-primary shadow-none transition-colors hover:bg-primary/10 hover:text-primary"
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleFieldExpansion(nodeKey);
-            }}
-            disabled={fieldListLoading}
-            aria-label={isExpanded ? labels.collapseField : labels.expandField}
-            title={isExpanded ? labels.collapseField : labels.expandField}
-          >
-            <RiArrowDownSLine
-              className={cn(
-                "size-3.5 transition-transform duration-200 ease-out",
-                isExpanded ? "rotate-0" : "-rotate-90",
-              )}
-            />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6 shrink-0 rounded-none text-primary shadow-none transition-colors hover:bg-primary/10 hover:text-primary"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggleFieldExpansion(nodeKey);
+                }}
+                disabled={fieldListLoading}
+                aria-label={
+                  isExpanded ? labels.collapseField : labels.expandField
+                }
+              >
+                <RiArrowDownSLine
+                  className={cn(
+                    "size-3.5 transition-transform duration-200 ease-out",
+                    isExpanded ? "rotate-0" : "-rotate-90",
+                  )}
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {isExpanded ? labels.collapseField : labels.expandField}
+            </TooltipContent>
+          </Tooltip>
         ) : (
           <span className="size-6 shrink-0" />
         )}
@@ -1831,21 +1922,25 @@ export const EventFieldsCard = memo(function EventFieldsCard({
         </div>
 
         {selectableField ? (
-          <button
-            type="button"
-            className={cn(
-              "inline-flex size-6 shrink-0 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              selectField();
-            }}
-            disabled={fieldListLoading}
-            aria-label={`${labels.fieldValuesTitle}: ${fieldLabel}`}
-            title={labels.fieldValuesTitle}
-          >
-            <RiSearchLine className="size-3.5" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex size-6 shrink-0 items-center justify-center rounded-none text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  selectField();
+                }}
+                disabled={fieldListLoading}
+                aria-label={`${labels.fieldValuesTitle}: ${fieldLabel}`}
+              >
+                <RiSearchLine className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{labels.fieldValuesTitle}</TooltipContent>
+          </Tooltip>
         ) : null}
       </div>
     );
@@ -1927,10 +2022,7 @@ export const EventFieldsCard = memo(function EventFieldsCard({
             }}
           >
             <TableCell className="whitespace-normal p-0 align-top">
-              <div
-                className="px-4 py-2 font-mono leading-5 break-words whitespace-normal"
-                title={valueLabel}
-              >
+              <div className="px-4 py-2 font-mono leading-5 break-words whitespace-normal">
                 {valueLabel}
               </div>
             </TableCell>
@@ -1944,6 +2036,40 @@ export const EventFieldsCard = memo(function EventFieldsCard({
       })}
     </AnimatePresence>
   );
+
+  const fieldValueLoadMoreRows = fieldValuesAppendError ? (
+    <TableRow>
+      <TableCell colSpan={2} className="h-16 text-center text-muted-foreground">
+        {labels.loadError}
+      </TableCell>
+    </TableRow>
+  ) : fieldValuesHasMore ? (
+    <>
+      {Array.from({ length: 3 }, (_, rowIndex) => (
+        <TableRow
+          key={`field-values-skeleton-${rowIndex}`}
+          aria-hidden="true"
+          className="pointer-events-none hover:bg-transparent"
+        >
+          <TableCell className="whitespace-normal p-0 align-top">
+            <div className="px-4 py-2">
+              <Skeleton
+                className={cn("h-4", rowIndex === 1 ? "w-[72%]" : "w-[58%]")}
+              />
+            </div>
+          </TableCell>
+          <TableCell className="p-0">
+            <div
+              ref={rowIndex === 2 ? fieldValuesSentinelRef : undefined}
+              className="flex justify-end px-4 py-2"
+            >
+              <Skeleton className="h-4 w-14" />
+            </div>
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
+  ) : null;
 
   return (
     <>
@@ -2049,7 +2175,7 @@ export const EventFieldsCard = memo(function EventFieldsCard({
                 hasContent={
                   Boolean(selectedField) &&
                   !fieldValuesError &&
-                  fieldValues.length > 0
+                  (fieldValues.length > 0 || fieldValuesHasMore)
                 }
                 loadingLabel={labels.loading}
                 emptyLabel={
@@ -2058,7 +2184,8 @@ export const EventFieldsCard = memo(function EventFieldsCard({
                 colSpan={2}
                 header={fieldValueTableHeader}
                 rows={fieldValueRows}
-                contentKey={`${selectedFieldResolvedKey}-${fieldValues.length}-${fieldValueTotal}`}
+                footer={fieldValueLoadMoreRows}
+                contentKey={selectedFieldResolvedKey || "field-values"}
               />
             </CardContent>
           </Card>

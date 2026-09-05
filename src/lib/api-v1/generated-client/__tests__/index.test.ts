@@ -116,11 +116,11 @@ describe("API v1 generated client", () => {
       response({
         data: {
           items: [],
-          page: {
-            kind: "keyset",
+          pagination: {
             limit: 100,
             nextCursor: null,
             hasMore: false,
+            returned: 0,
           },
         },
         meta: { requestId: "req-1" },
@@ -132,7 +132,9 @@ describe("API v1 generated client", () => {
       bearer: () => "secret-token",
     });
 
-    await client.listSavedFilters("site/a", { cursor: "cursor with/slash" });
+    await client.listSavedFilters("site/a", {
+      page: { limit: 100, cursor: "cursor with/slash" },
+    });
 
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, init] = fetcher.mock.calls[0];
@@ -151,7 +153,12 @@ describe("API v1 generated client", () => {
       response({
         data: {
           items: [],
-          page: { kind: "keyset", limit: 20, nextCursor: null, hasMore: false },
+          pagination: {
+            limit: 20,
+            nextCursor: null,
+            hasMore: false,
+            returned: 0,
+          },
         },
         meta: { requestId: "req-page" },
       }),
@@ -161,7 +168,7 @@ describe("API v1 generated client", () => {
       fetch: fetcher,
     });
 
-    await client.listSavedFilters("site-1", { limit: 20 });
+    await client.listSavedFilters("site-1", { page: { limit: 20 } });
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "https://api.test/api/v1/sites/site-1/saved-filters?limit=20",
     );
@@ -360,7 +367,7 @@ describe("API v1 generated client", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       response({
         data: {
-          sites: [
+          items: [
             {
               siteId: "site-1",
               name: "Example",
@@ -373,6 +380,12 @@ describe("API v1 generated client", () => {
               lastEventAt: null,
             },
           ],
+          pagination: {
+            limit: 20,
+            returned: 1,
+            hasMore: false,
+            nextCursor: null,
+          },
         },
         meta: {
           requestId: "req-team-sites",
@@ -395,7 +408,7 @@ describe("API v1 generated client", () => {
       client.teamAnalyticsSites({ timeRange: overviewInput.timeRange }),
     ).resolves.toMatchObject({
       ok: true,
-      data: { sites: [{ siteId: "site-1" }] },
+      data: { items: [{ siteId: "site-1" }] },
     });
     expect(fetcher.mock.calls[0]?.[0]).toBe(
       "https://api.test/api/v1/team/analytics/sites",
@@ -489,7 +502,15 @@ describe("API v1 generated client", () => {
   it("posts distinct typed page and referrer composite queries", async () => {
     const pagesFetch = vi.fn<typeof fetch>().mockResolvedValue(
       response({
-        data: { items: [] },
+        data: {
+          items: [],
+          pagination: {
+            limit: 20,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
+        },
         meta: {
           requestId: "req-pages",
           generatedAt: "2026-08-02T00:00:00.000Z",
@@ -518,7 +539,15 @@ describe("API v1 generated client", () => {
 
     const referrerFetch = vi.fn<typeof fetch>().mockResolvedValue(
       response({
-        data: { items: [] },
+        data: {
+          items: [],
+          pagination: {
+            limit: 20,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
+        },
         meta: {
           requestId: "req-referrers",
           generatedAt: "2026-08-02T00:00:00.000Z",
@@ -593,7 +622,12 @@ describe("API v1 generated client", () => {
         data: {
           field: "page.path",
           items: [{ value: "/pricing", label: "/pricing", occurrences: 10 }],
-          page: { limit: 50, hasMore: false, nextCursor: null },
+          pagination: {
+            limit: 50,
+            returned: 1,
+            hasMore: false,
+            nextCursor: null,
+          },
         },
         meta: {
           requestId: "req-filter-values",
@@ -620,7 +654,12 @@ describe("API v1 generated client", () => {
       ok: true,
       data: {
         field: "page.path",
-        page: { limit: 50, hasMore: false, nextCursor: null },
+        pagination: {
+          limit: 50,
+          returned: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
       },
     });
     expect(fetcher.mock.calls[0]?.[0]).toBe(
@@ -892,7 +931,12 @@ describe("API v1 generated client", () => {
       response({
         data: {
           items: [],
-          page: { limit: 80, hasMore: false, nextCursor: null },
+          pagination: {
+            limit: 80,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
         },
         meta,
       }),
@@ -975,7 +1019,15 @@ describe("API v1 generated client", () => {
 
     const eventTypesFetch = vi.fn<typeof fetch>().mockResolvedValue(
       response({
-        data: { items: [], page: { limit: 20 } },
+        data: {
+          items: [],
+          pagination: {
+            limit: 20,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
+        },
         meta,
       }),
     );
@@ -994,7 +1046,16 @@ describe("API v1 generated client", () => {
 
     const eventFieldsFetch = vi.fn<typeof fetch>().mockResolvedValue(
       response({
-        data: { eventName: "signup", fields: [], page: { limit: 100 } },
+        data: {
+          eventName: "signup",
+          items: [],
+          pagination: {
+            limit: 100,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
+        },
         meta,
       }),
     );
@@ -1019,7 +1080,12 @@ describe("API v1 generated client", () => {
           fieldPath: "plan",
           fieldValueType: "string",
           items: [],
-          page: { limit: 25 },
+          pagination: {
+            limit: 25,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
         },
         meta,
       }),
@@ -1174,8 +1240,6 @@ describe("API v1 generated client", () => {
             conversionEvents: 0,
             avgTimeBetweenSessionsMs: 0,
           },
-          sessions: [session],
-          events: [],
           visitedPages: [],
           eventDistribution: [],
           activity: [],
@@ -1206,7 +1270,6 @@ describe("API v1 generated client", () => {
         data: {
           session,
           locationPoints: [],
-          events: [],
           visitedPages: [],
           eventDistribution: [],
           performance,
@@ -1235,7 +1298,12 @@ describe("API v1 generated client", () => {
       response({
         data: {
           items: [],
-          page: { limit: 80, hasMore: false, nextCursor: null },
+          pagination: {
+            limit: 80,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
         },
         meta,
       }),
@@ -1257,7 +1325,12 @@ describe("API v1 generated client", () => {
       response({
         data: {
           items: [],
-          page: { limit: 80, hasMore: false, nextCursor: null },
+          pagination: {
+            limit: 80,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
         },
         meta,
       }),
@@ -1512,9 +1585,9 @@ describe("API v1 generated client", () => {
         response({
           data: {
             items: [],
-            page: {
-              kind: "keyset",
+            pagination: {
               limit: 100,
+              returned: 0,
               nextCursor: null,
               hasMore: false,
             },
@@ -1546,9 +1619,9 @@ describe("API v1 generated client", () => {
           {
             data: {
               items: [],
-              page: {
-                kind: "keyset",
+              pagination: {
                 limit: 100,
+                returned: 0,
                 nextCursor: null,
                 hasMore: false,
               },

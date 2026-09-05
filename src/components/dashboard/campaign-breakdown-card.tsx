@@ -8,6 +8,7 @@ import {
 import {
   TabbedDataTableCard,
   type TabbedDataTableColumn,
+  type TabbedDataTableLoader,
   type TabbedDataTableRowAdapter,
   type TabbedDataTableSortState,
   type TabbedDataTableTab,
@@ -24,10 +25,11 @@ type CampaignBreakdownGroupKey = "acquisition" | "signals";
 interface CampaignBreakdownCardProps {
   locale: Locale;
   messages: AppMessages;
-  loadRows: (
-    tab: CampaignTab,
-    signal: AbortSignal,
-  ) => Promise<CampaignBreakdownRow[]>;
+  loader: TabbedDataTableLoader<
+    CampaignTab,
+    CampaignBreakdownRow,
+    CampaignSortKey
+  >;
   requestKey: string;
 }
 
@@ -48,7 +50,7 @@ const CAMPAIGN_BREAKDOWN_GROUPS: Array<{
 export const CampaignBreakdownCard = memo(function CampaignBreakdownCard({
   locale,
   messages,
-  loadRows,
+  loader,
   requestKey,
 }: CampaignBreakdownCardProps) {
   const tabMeta = useMemo<Record<CampaignTab, TabbedDataTableTab<CampaignTab>>>(
@@ -202,12 +204,15 @@ export const CampaignBreakdownCard = memo(function CampaignBreakdownCard({
                 CampaignSortKey
               >
                 tabs={groupTabsByKey[group.key]}
-                loadRows={loadRows}
+                loader={loader}
                 requestKey={`${requestKey}:${group.key}`}
                 columns={columns}
                 rowAdapter={rowAdapter}
                 compareRows={compareRows}
                 labelColumnLabel={labelColumnLabel}
+                sortActionLabel={(label) =>
+                  formatI18nTemplate(messages.common.sortBy, { label })
+                }
                 loadingLabel={messages.common.loading}
                 emptyLabel={messages.campaigns.noTaggedTraffic}
                 className="h-full min-h-[420px]"

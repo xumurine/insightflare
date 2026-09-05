@@ -62,21 +62,33 @@ import {
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { VerticalScrollMask } from "@/components/ui/vertical-scroll-mask";
 import { requestAdminService } from "@/lib/admin-service-client";
 import { canManageTeam } from "@/lib/dashboard/permissions";
-import type { TimeWindow } from "@/lib/dashboard/query-state";
+import {
+  parseFilterDocumentFromSearchParams,
+  type TimeWindow,
+} from "@/lib/dashboard/query-state";
 import { buildTeamSections } from "@/lib/dashboard/team-sections";
 import {
   type SessionTeamGroups,
   type SiteData,
   type TeamData,
 } from "@/lib/edge-client";
+import {
+  type FilterScope,
+  parseFilterScopePreference,
+} from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import Image from "@/lib/image";
 import Link from "@/lib/router";
-import { usePathname } from "@/lib/router";
+import { usePathname, useSearchParams } from "@/lib/router";
 
 interface TeamSectionNavItem {
   key: string;
@@ -473,6 +485,9 @@ export function DashboardShell({
     Record<string, SidebarSite[]>
   >({});
   const livePathname = usePathname() || pathname;
+  const routeSearchParams = useSearchParams();
+  const initialFilters = parseFilterDocumentFromSearchParams(routeSearchParams);
+  const initialScopePreference = parseFilterScopePreference(routeSearchParams);
   const liveActiveTeamSlug =
     activeTeamSlug || parseActiveTeamSlugFromPath(livePathname, teams);
   const activeTeam = liveActiveTeamSlug
@@ -539,6 +554,16 @@ export function DashboardShell({
     Boolean(liveActiveTeamSlug) &&
     routeState.mode === "site" &&
     resolvedActiveSiteSlug.length > 0;
+  const dashboardFilterResolvedScope: FilterScope | undefined =
+    currentAnalyticsSection === "sessions"
+      ? "session"
+      : currentAnalyticsSection === "visitors"
+        ? "visitor"
+        : currentAnalyticsSection === "realtime"
+          ? undefined
+          : hasActiveSite
+            ? "event"
+            : undefined;
   const activeSiteBase =
     hasActiveSite && liveActiveTeamSlug
       ? buildSitePath(locale, liveActiveTeamSlug, resolvedActiveSiteSlug)
@@ -639,24 +664,24 @@ export function DashboardShell({
             },
             {
               key: "request-abnormal",
-              href: `${requestObservationBase}?requestTab=abnormal`,
-              label: messages.requestObservation.tabs.abnormal,
+              href: `${requestObservationBase}?requestTab=blocked`,
+              label: messages.requestObservation.tabs.blocked,
               queryKey: "requestTab",
-              queryValue: "abnormal",
+              queryValue: "blocked",
             },
             {
               key: "request-normal",
-              href: `${requestObservationBase}?requestTab=normal`,
-              label: messages.requestObservation.tabs.normal,
+              href: `${requestObservationBase}?requestTab=included`,
+              label: messages.requestObservation.tabs.included,
               queryKey: "requestTab",
-              queryValue: "normal",
+              queryValue: "included",
             },
           ]
         : [],
     [
       isRequestObservationRoute,
-      messages.requestObservation.tabs.abnormal,
-      messages.requestObservation.tabs.normal,
+      messages.requestObservation.tabs.blocked,
+      messages.requestObservation.tabs.included,
       messages.requestObservation.tabs.overview,
       requestObservationBase,
     ],
@@ -828,6 +853,8 @@ export function DashboardShell({
         scopeKey={activeSiteId}
         maxRangeDays={isRequestObservationRoute ? 90 : undefined}
         initialWindow={initialQueryWindow}
+        initialFilters={initialFilters}
+        initialScopePreference={initialScopePreference}
       >
         <Sidebar variant="inset" collapsible="icon">
           <SidebarHeader>
@@ -914,17 +941,23 @@ export function DashboardShell({
                               <SidebarMenuItem key={team.id}>
                                 <SidebarMenuButton asChild>
                                   <Link href={`/${locale}/app/${team.slug}`}>
-                                    <span
-                                      aria-label={roleLabel}
-                                      title={roleLabel}
-                                      className={
-                                        team.membershipRole === "owner"
-                                          ? "text-primary"
-                                          : undefined
-                                      }
-                                    >
-                                      <RoleIcon aria-hidden="true" />
-                                    </span>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span
+                                          aria-label={roleLabel}
+                                          className={
+                                            team.membershipRole === "owner"
+                                              ? "text-primary"
+                                              : undefined
+                                          }
+                                        >
+                                          <RoleIcon aria-hidden="true" />
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="right">
+                                        {roleLabel}
+                                      </TooltipContent>
+                                    </Tooltip>
                                     <span>{team.name}</span>
                                   </Link>
                                 </SidebarMenuButton>
@@ -1155,6 +1188,7 @@ export function DashboardShell({
                     locale={locale}
                     messages={messages}
                     siteId={activeSiteId}
+                    resolvedScope={dashboardFilterResolvedScope}
                     showControls={
                       Boolean(liveActiveTeamSlug) || isRequestObservationRoute
                     }

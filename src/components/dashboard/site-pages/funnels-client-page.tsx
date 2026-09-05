@@ -15,7 +15,11 @@ import {
   RiFilter2Line,
   RiSave3Line,
 } from "@remixicon/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { PageHeading } from "@/components/dashboard/page-heading";
@@ -66,6 +70,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   pushUrlWithoutNavigation,
   replaceUrlWithoutNavigation,
   useLiveSearchParams,
@@ -78,6 +87,7 @@ import {
   fetchFunnels,
   fetchOverviewPageCardTab,
 } from "@/lib/dashboard/client-data";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import { serializeDashboardSearchParams } from "@/lib/dashboard/filter-state";
 import {
   intlLocale,
@@ -89,7 +99,6 @@ import type {
   FunnelAnalysisStep,
   FunnelDefinition,
   FunnelDetailData,
-  FunnelListData,
   FunnelStep,
 } from "@/lib/edge-client";
 import type { FilterDocument } from "@/lib/filter-contract";
@@ -304,15 +313,22 @@ function FunnelList({
                 <RiArrowRightLine />
                 {labels.conversion}
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={labels.delete}
-                onClick={() => onDelete(funnel)}
-              >
-                <RiDeleteBinLine />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon-sm"
+                    aria-label={`${labels.deleteTitle}: ${funnel.name}`}
+                    onClick={() => onDelete(funnel)}
+                  >
+                    <RiDeleteBinLine />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {`${labels.deleteTitle}: ${funnel.name}`}
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         ))}
@@ -465,16 +481,26 @@ function CreateFunnelDialog({
                             : labels.eventPlaceholder
                         }
                       />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={labels.removeStep}
-                        disabled={steps.length <= 2}
-                        onClick={() => removeStep(index)}
-                      >
-                        <RiDeleteBinLine />
-                      </Button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span
+                            className="inline-flex"
+                            tabIndex={steps.length <= 2 ? 0 : undefined}
+                          >
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={labels.removeStep}
+                              disabled={steps.length <= 2}
+                              onClick={() => removeStep(index)}
+                            >
+                              <RiDeleteBinLine />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>{labels.removeStep}</TooltipContent>
+                      </Tooltip>
                     </div>
                   );
                 })}
@@ -955,7 +981,7 @@ function FunnelDetailDrawer({
     filters: FilterDocument;
     window: TimeWindow;
   };
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
   const {
     data: payload,
     isError: error,
@@ -1020,7 +1046,7 @@ export function FunnelsClientPage({
     null,
   );
   const [deleting, setDeleting] = useState(false);
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
   const funnelsQueryKey = useMemo(
     () => ["dashboard", "funnels", siteId] as const,
     [siteId],
@@ -1029,12 +1055,18 @@ export function FunnelsClientPage({
     data: funnelsData,
     isError: error,
     isPending: loading,
-  } = useQuery({
+  } = useInfiniteQuery({
     queryKey: funnelsQueryKey,
-    queryFn: ({ signal }) => fetchFunnels(siteId, { signal }),
+    initialPageParam: null as string | null,
+    queryFn: ({ signal, pageParam }) =>
+      fetchFunnels(siteId, { limit: 50, cursor: pageParam, signal }),
     enabled: typeof window !== "undefined",
+    getNextPageParam: (lastPage) =>
+      lastPage.data?.pagination?.hasMore
+        ? lastPage.data.pagination.nextCursor
+        : undefined,
   });
-  const funnels = funnelsData?.data?.funnels ?? [];
+  const funnels = funnelsData?.pages.flatMap((page) => page.data.items) ?? [];
 
   useEffect(() => {
     if (!detailFunnelId) openedDetailFromListRef.current = false;
@@ -1059,8 +1091,8 @@ export function FunnelsClientPage({
         fetchEventTypesTab(siteId, timeWindow, filters, { limit: 100, signal }),
       ]);
       return {
-        pageviews: pageviews.map((row) => row.label).filter(Boolean),
-        events: events.map((row) => row.label).filter(Boolean),
+        pageviews: pageviews.items.map((row) => row.label).filter(Boolean),
+        events: events.items.map((row) => row.label).filter(Boolean),
       };
     },
     enabled: typeof window !== "undefined" && createOpen,
@@ -1097,15 +1129,7 @@ export function FunnelsClientPage({
       setCreating(true);
       try {
         const payload = await createFunnel(siteId, name, steps);
-        queryClient.setQueryData<FunnelListData>(
-          funnelsQueryKey,
-          (current) => ({
-            ok: true,
-            data: {
-              funnels: [payload.data.funnel, ...(current?.data?.funnels ?? [])],
-            },
-          }),
-        );
+        await queryClient.invalidateQueries({ queryKey: funnelsQueryKey });
         setCreateOpen(false);
         toast.success(labels.created);
         openFunnelDetail(payload.data.funnel.id);
@@ -1135,18 +1159,7 @@ export function FunnelsClientPage({
     setDeleting(true);
     try {
       await deleteFunnel(siteId, target.id);
-      queryClient.setQueryData<FunnelListData>(funnelsQueryKey, (current) =>
-        current
-          ? {
-              ...current,
-              data: {
-                funnels: current.data.funnels.filter(
-                  (funnel) => funnel.id !== target.id,
-                ),
-              },
-            }
-          : current,
-      );
+      await queryClient.invalidateQueries({ queryKey: funnelsQueryKey });
       if (detailFunnelId === target.id) closeFunnelDetail();
       setDeleteTarget(null);
       toast.success(labels.deleted);

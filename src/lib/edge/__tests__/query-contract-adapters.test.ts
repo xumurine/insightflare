@@ -14,6 +14,7 @@ import {
 import { handleFilterValuesContract } from "@/lib/edge/analytics/composition/protocol/filter-values-contract-adapter";
 import { handleFunnelAnalysisContract } from "@/lib/edge/analytics/composition/protocol/funnels-contract-adapter";
 import {
+  handleJourneyCollectionContract,
   handleJourneyEventDetailContract,
   handleSessionDetailContract,
   handleSessionsContract,
@@ -25,6 +26,7 @@ import {
   handlePagesContract,
   handlePagesDashboardContract,
   handleReferrersContract,
+  handleReferrerSummaryContract,
 } from "@/lib/edge/analytics/composition/protocol/pages-contract-adapter";
 import {
   handleBrowserVersionBreakdownContract,
@@ -46,7 +48,10 @@ function emptyEnv(): Env {
     all: async () => ({ results: [] }),
     first: async () => null,
   };
-  return { DB: { prepare: () => statement } } as unknown as Env;
+  return {
+    DB: { prepare: () => statement },
+    DAILY_SALT_SECRET: "contract-test-secret",
+  } as unknown as Env;
 }
 
 const env = emptyEnv();
@@ -83,7 +88,7 @@ describe("typed query adapter validation branches", () => {
 
   it("executes valid event, journey, and funnel reader branches", async () => {
     const valid = new URL(
-      "https://edge.test/query?from=1767225600000&to=1767312000000&eventName=signup&fieldPath=plan&fieldValueType=string&cards=page.path&eventId=event-1&visitorId=visitor-1&sessionId=session-1&pageSize=5",
+      "https://edge.test/query?from=1767225600000&to=1767312000000&eventName=signup&fieldPath=plan&fieldValueType=string&cards=page.path&eventId=event-1&visitorId=visitor-1&sessionId=session-1&limit=5",
     );
     const responses = await Promise.all([
       handleEventTypesContract(env, siteId, valid),
@@ -103,11 +108,17 @@ describe("typed query adapter validation branches", () => {
       handleSessionsContract(env, siteId, valid),
       handleVisitorDetailContract(env, siteId, valid),
       handleSessionDetailContract(env, siteId, valid),
+      handleJourneyCollectionContract(
+        env,
+        siteId,
+        new URL(`${valid}&visitorId=visitor-1`),
+        "visitor-events",
+      ),
       handleJourneyEventDetailContract(env, siteId, valid),
       handleFunnelAnalysisContract(env, siteId, valid),
     ]);
 
-    expect(responses).toHaveLength(15);
+    expect(responses).toHaveLength(16);
     expect(responses.every((response) => response instanceof Response)).toBe(
       true,
     );
@@ -188,11 +199,7 @@ describe("typed query adapter validation branches", () => {
         8,
         false,
       ),
-      handlePagesDashboardContract(
-        env,
-        siteId,
-        new URL(`${base}&page=10000&pageSize=24`),
-      ),
+      handlePagesDashboardContract(env, siteId, new URL(`${base}&limit=24`)),
       handleBrowserVersionBreakdownContract(
         env,
         siteId,
@@ -217,6 +224,41 @@ describe("typed query adapter validation branches", () => {
       true,
     );
     expect(responses.some((response) => response.status === 400)).toBe(true);
+  });
+
+  it("covers paginated pages/referrers, summaries, and cursor validation", async () => {
+    const base = "https://edge.test/query?from=1767225600000&to=1767312000000";
+    const [pages, publicReferrers, summary, deepDashboard, invalidDashboard] =
+      await Promise.all([
+        handlePagesContract(
+          env,
+          siteId,
+          new URL(`${base}&details=false&cursor=opaque`),
+          true,
+        ),
+        handleReferrersContract(
+          env,
+          siteId,
+          new URL(
+            `${base}&fullUrl=true&search=google&sort=visitors&direction=asc`,
+          ),
+          8,
+          false,
+        ),
+        handleReferrerSummaryContract(env, siteId, new URL(`${base}&topN=20`)),
+        handlePagesDashboardContract(env, siteId, new URL(`${base}&limit=24`)),
+        handlePagesDashboardContract(
+          env,
+          siteId,
+          new URL(`${base}&limit=24&cursor=invalid`),
+        ),
+      ]);
+
+    expect(pages.status).toBe(400);
+    expect(publicReferrers.status).toBe(200);
+    expect(summary.status).toBe(200);
+    expect(deepDashboard.status).toBe(200);
+    expect(invalidDashboard.status).toBe(400);
   });
 
   it("does not expose private canonical fields from public filter-values", async () => {

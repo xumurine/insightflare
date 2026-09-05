@@ -24,6 +24,8 @@ export interface QueryWindow {
   endExclusiveMs: number;
   nowMs: number;
   timeZone: string;
+  /** Optional API v1 request binding; private/public use parsed semantics. */
+  paginationBinding?: string;
 }
 
 export interface SiteRow {
@@ -45,10 +47,7 @@ export interface TeamSiteRow {
 
 export type SortDirection = "asc" | "desc";
 export type VisitorListSortKey =
-  | "firstSeenAt"
-  | "lastSeenAt"
-  | "sessions"
-  | "views";
+  "firstSeenAt" | "lastSeenAt" | "sessions" | "views";
 export type SessionListSortKey = "startedAt" | "durationMs" | "views";
 export type EventRecordSortKey = "occurredAt" | "eventName" | "pathname";
 
@@ -307,6 +306,16 @@ export interface ReferrerRow {
   visitors: number;
 }
 
+export interface ReferrerSummaryRow {
+  totalViews: number;
+  directViews: number;
+  externalViews: number;
+  uniqueDomains: number;
+  uniqueLinks: number;
+  truncated: boolean;
+  topSources: Array<Pick<ReferrerRow, "referrer" | "views">>;
+}
+
 export interface ReferrerRadarRow {
   referrer: string;
   sessions: number;
@@ -531,18 +540,9 @@ export type ClientDimensionKey =
   | "screenSize";
 
 export type UtmDimensionKey =
-  | "source"
-  | "medium"
-  | "campaign"
-  | "term"
-  | "content";
+  "source" | "medium" | "campaign" | "term" | "content";
 export type OverviewGeoTabKey =
-  | "country"
-  | "region"
-  | "city"
-  | "continent"
-  | "timezone"
-  | "organization";
+  "country" | "region" | "city" | "continent" | "timezone" | "organization";
 
 export interface ClientDimensionTabs {
   browser: DimensionRow[];

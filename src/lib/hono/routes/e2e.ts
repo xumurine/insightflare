@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 
 import { timingSafeEqualString } from "@/lib/edge/api-key-store";
+import { runDatabaseMaintenance } from "@/lib/edge/database-maintenance";
 import {
   advanceE2eClock,
   appNow,
@@ -84,7 +85,11 @@ e2eRoutes.post("/clock/advance", async (c) => {
 e2eRoutes.post("/scheduled/run", async (c) => {
   const input = await body(c.req.raw);
   const key = String(input?.key || "");
-  if (key !== "notification_tick" && key !== "visit_hourly_rollup") {
+  if (
+    key !== "notification_tick" &&
+    key !== "visit_hourly_rollup" &&
+    key !== "database_maintenance"
+  ) {
     return c.json({ ok: false, error: "scheduled task key is required" }, 400);
   }
   const scheduledAt = appNow();
@@ -95,19 +100,28 @@ e2eRoutes.post("/scheduled/run", async (c) => {
       definition?.name ||
       (key === "visit_hourly_rollup"
         ? "Hourly visit aggregation"
-        : "Notification dispatch"),
+        : key === "notification_tick"
+          ? "Notification dispatch"
+          : "Database maintenance"),
     triggerType: "cron" as const,
   };
   if (key === "visit_hourly_rollup") {
     await runScheduledTask(c.env, taskDefinition, scheduledAt, ({ logger }) =>
       runHourlyAggregation(c.env, scheduledAt, { logger }),
     );
-  } else {
+  } else if (key === "notification_tick") {
     await runScheduledTask(
       c.env,
       taskDefinition,
       scheduledAt,
       runNotificationTick,
+    );
+  } else {
+    await runScheduledTask(
+      c.env,
+      taskDefinition,
+      scheduledAt,
+      runDatabaseMaintenance,
     );
   }
   return c.json({ ok: true, data: { key, scheduledAt } });
@@ -123,7 +137,7 @@ e2eRoutes.post("/ingest/flush", async (c) => {
   }
   const response = await c.env.INGEST_DO.get(
     c.env.INGEST_DO.idFromName(siteId),
-  ).fetch("https://ingest.internal/flush", { method: "POST" });
+  ).fetch("https://ingest.internal/flush?force=1", { method: "POST" });
   if (!response.ok) return c.json({ ok: false, error: "flush_failed" }, 502);
   return c.json({ ok: true, data: { flushed: true, siteId } });
 });

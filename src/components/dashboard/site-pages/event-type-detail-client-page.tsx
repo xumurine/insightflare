@@ -22,6 +22,7 @@ import {
   fetchEventTypeContextCards,
   fetchEventTypeDetail,
 } from "@/lib/dashboard/client-data";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { EventTypeDetailData } from "@/lib/edge-client";
 import type { FilterDocument } from "@/lib/filter-contract";
@@ -134,8 +135,8 @@ export const EventTypeDetailClientPage = memo(
       () => parseOverviewCardFilters(new URLSearchParams(liveSearchParamsKey)),
       [liveSearchParamsKey],
     );
-    const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-    const requestFilters = useMemo(() => ({ ...filters }), [filtersKey]);
+    const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
+    const requestFilters = filters;
     const requestWindow = useMemo(
       () => ({
         preset: window.preset,

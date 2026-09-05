@@ -10,6 +10,7 @@ import {
 import { RiArrowDownSLine, RiArrowUpSLine } from "@remixicon/react";
 
 import { AnalyticsDataTable } from "@/components/dashboard/analytics-data-table";
+import type { AnalyticsTableColumnDefinition } from "@/components/dashboard/analytics-table-column-settings";
 import {
   AnalyticsDetailsTooltipTarget,
   AnalyticsTimeTooltipTarget,
@@ -33,6 +34,7 @@ import { numberFormat } from "@/lib/dashboard/format";
 import type { JourneySession } from "@/lib/edge-client";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { formatI18nTemplate } from "@/lib/i18n/template";
 import { cn } from "@/lib/utils";
 
 export type SessionSortDirection = "asc" | "desc";
@@ -64,6 +66,31 @@ export const SESSION_TABLE_COLUMN_IDS = [
 export type SessionTableColumnId = (typeof SESSION_TABLE_COLUMN_IDS)[number];
 
 export type SessionsTableLabels = AppMessages["sessions"];
+
+export const SESSION_TABLE_COLUMNS_STORAGE_KEY =
+  "insightflare:analytics-table-columns:sessions";
+
+export function createSessionTableColumnDefinitions(
+  labels: SessionsTableLabels,
+): readonly AnalyticsTableColumnDefinition<SessionTableColumnId>[] {
+  return [
+    { id: "visitor", label: labels.visitor, required: true },
+    { id: "sessionId", label: labels.sessionId, required: true },
+    { id: "started", label: labels.started },
+    { id: "duration", label: labels.duration },
+    { id: "pageViews", label: labels.pageViews },
+    { id: "customEvents", label: labels.customEvents },
+    { id: "referrer", label: labels.referrer },
+    { id: "location", label: labels.location },
+    { id: "os", label: labels.os },
+    { id: "browser", label: labels.browser },
+    { id: "device", label: labels.device },
+    { id: "entryPage", label: labels.entryPage },
+    { id: "exitPage", label: labels.exitPage },
+    { id: "screenSize", label: labels.screenSize },
+    { id: "exitTime", label: labels.exitTime },
+  ];
+}
 
 interface SessionsTableCardProps {
   locale: Locale;
@@ -204,6 +231,7 @@ function SortIndicator({
 
 function SortHeader({
   label,
+  ariaLabel,
   active,
   direction,
   onClick,
@@ -211,6 +239,7 @@ function SortHeader({
   className,
 }: {
   label: string;
+  ariaLabel?: string;
   active: boolean;
   direction: SessionSortDirection;
   onClick: () => void;
@@ -233,6 +262,7 @@ function SortHeader({
       >
         <button
           type="button"
+          aria-label={ariaLabel ?? label}
           className={cn(
             "inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
             active ? "text-foreground" : "text-muted-foreground",
@@ -606,6 +636,9 @@ export const SessionsTableCard = memo(function SessionsTableCard({
       started: (
         <SortHeader
           label={labels.started}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.started,
+          })}
           active={sort.key === "startedAt"}
           direction={sort.direction}
           onClick={() => onSort("startedAt")}
@@ -616,6 +649,9 @@ export const SessionsTableCard = memo(function SessionsTableCard({
       duration: (
         <SortHeader
           label={labels.duration}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.duration,
+          })}
           active={sort.key === "durationMs"}
           direction={sort.direction}
           onClick={() => onSort("durationMs")}
@@ -626,6 +662,9 @@ export const SessionsTableCard = memo(function SessionsTableCard({
       pageViews: (
         <SortHeader
           label={labels.pageViews}
+          ariaLabel={formatI18nTemplate(messages.common.sortBy, {
+            label: labels.pageViews,
+          })}
           active={sort.key === "views"}
           direction={sort.direction}
           onClick={() => onSort("views")}
@@ -650,7 +689,7 @@ export const SessionsTableCard = memo(function SessionsTableCard({
         <TableHead className="text-center">{labels.exitTime}</TableHead>
       ),
     }),
-    [labels, onSort, sort],
+    [labels, messages.common.sortBy, onSort, sort],
   );
   const header = useMemo(
     () => (

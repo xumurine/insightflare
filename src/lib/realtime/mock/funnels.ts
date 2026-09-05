@@ -7,6 +7,7 @@ import type {
   FunnelStep,
 } from "@/lib/edge-client";
 import { demoBadRequest, demoNotFound } from "@/lib/realtime/mock/envelope";
+import { demoPage } from "@/lib/realtime/mock/pagination";
 import type { ErrorEnvelope } from "@/lib/response-envelope";
 
 const CREATED_AT = 1_767_225_600;
@@ -137,7 +138,19 @@ export function generateDemoFunnels(
 ): FunnelListData | FunnelDetailData | ErrorEnvelope {
   const id = String(params.id ?? "").trim();
   const funnels = siteFunnels(siteId);
-  if (!id) return { ok: true, data: { funnels } };
+  if (!id) {
+    const page = demoPage(
+      funnels,
+      params,
+      { operation: "funnels", siteId, sort: "createdAt:desc,id:desc" },
+      50,
+      100,
+    );
+    return {
+      ok: true,
+      data: page,
+    };
+  }
 
   const funnel = funnels.find((item) => item.id === id);
   if (!funnel) return demoNotFound();

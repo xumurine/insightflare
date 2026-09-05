@@ -40,6 +40,7 @@ import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboa
 import {
   TabbedDataTableCard,
   type TabbedDataTableColumn,
+  type TabbedDataTableLoader,
   type TabbedDataTableRowAdapter,
   type TabbedDataTableSortState,
 } from "@/components/dashboard/tabbed-data-table-card";
@@ -50,6 +51,7 @@ import { Clickable } from "@/components/ui/clickable";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { fetchPerformance } from "@/lib/dashboard/client-data";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import { intlLocale, numberFormat } from "@/lib/dashboard/format";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import {
@@ -1844,11 +1846,6 @@ const CountryStatusColumn = memo(function CountryStatusColumn({
       ] as const,
     [messages, sort, status],
   );
-  const rowsByTab = useMemo(
-    () =>
-      ({ [status]: displayRows }) as Record<typeof status, CountryHealthRow[]>,
-    [displayRows, status],
-  );
   const sortByTab = useMemo(
     () => ({ [status]: sort }) as Record<typeof status, typeof sort>,
     [sort, status],
@@ -1857,6 +1854,24 @@ const CountryStatusColumn = memo(function CountryStatusColumn({
     (_tab: typeof status, next: TabbedDataTableSortState<PathSortKey>) =>
       onSort(next.key),
     [onSort],
+  );
+  const loader = useCallback<
+    TabbedDataTableLoader<typeof status, CountryHealthRow, PathSortKey>
+  >(
+    async ({ limit }) => ({
+      items: displayRows,
+      pagination: {
+        limit,
+        returned: displayRows.length,
+        hasMore: false,
+        nextCursor: null,
+      },
+    }),
+    [displayRows],
+  );
+  const tableRequestKey = useMemo(
+    () => `${activePanel}:${locale}:${JSON.stringify(displayRows)}`,
+    [activePanel, displayRows, locale],
   );
   const rowAdapter = useMemo<
     TabbedDataTableRowAdapter<CountryHealthRow, typeof status, PathSortKey>
@@ -1911,13 +1926,16 @@ const CountryStatusColumn = memo(function CountryStatusColumn({
       <div className="pb-4">
         <TabbedDataTableCard<typeof status, CountryHealthRow, PathSortKey>
           tabs={tabs}
-          rowsByTab={rowsByTab}
+          loader={loader}
           columns={columns}
           value={status}
           sortByTab={sortByTab}
           onSortChange={handleSortChange}
           rowAdapter={rowAdapter}
-          requestKey={activePanel}
+          requestKey={tableRequestKey}
+          sortActionLabel={(label) =>
+            formatI18nTemplate(messages.common.sortBy, { label })
+          }
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           headerHidden
@@ -2042,14 +2060,6 @@ const PathStatusColumn = memo(function PathStatusColumn({
       ] as const,
     [messages, sort, status],
   );
-  const rowsByTab = useMemo(
-    () =>
-      ({ [status]: displayRows }) as Record<
-        typeof status,
-        PathPerformanceRow[]
-      >,
-    [displayRows, status],
-  );
   const sortByTab = useMemo(
     () => ({ [status]: sort }) as Record<typeof status, typeof sort>,
     [sort, status],
@@ -2058,6 +2068,24 @@ const PathStatusColumn = memo(function PathStatusColumn({
     (_tab: typeof status, next: TabbedDataTableSortState<PathSortKey>) =>
       onSort(next.key),
     [onSort],
+  );
+  const loader = useCallback<
+    TabbedDataTableLoader<typeof status, PathPerformanceRow, PathSortKey>
+  >(
+    async ({ limit }) => ({
+      items: displayRows,
+      pagination: {
+        limit,
+        returned: displayRows.length,
+        hasMore: false,
+        nextCursor: null,
+      },
+    }),
+    [displayRows],
+  );
+  const tableRequestKey = useMemo(
+    () => `${activePanel}:${locale}:${JSON.stringify(displayRows)}`,
+    [activePanel, displayRows, locale],
   );
   const rowAdapter = useMemo<
     TabbedDataTableRowAdapter<PathPerformanceRow, typeof status, PathSortKey>
@@ -2108,13 +2136,16 @@ const PathStatusColumn = memo(function PathStatusColumn({
       <div className="pb-4">
         <TabbedDataTableCard<typeof status, PathPerformanceRow, PathSortKey>
           tabs={tabs}
-          rowsByTab={rowsByTab}
+          loader={loader}
           columns={columns}
           value={status}
           sortByTab={sortByTab}
           onSortChange={handleSortChange}
           rowAdapter={rowAdapter}
-          requestKey={activePanel}
+          requestKey={tableRequestKey}
+          sortActionLabel={(label) =>
+            formatI18nTemplate(messages.common.sortBy, { label })
+          }
           loadingLabel={messages.common.loading}
           emptyLabel={messages.common.noData}
           headerHidden
@@ -2239,7 +2270,7 @@ export function PerformanceClientPage({
     window: TimeWindow;
   };
   const [activePanel, setActivePanel] = useState<PerformancePanelKey>("score");
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
   const { data, isPending, isPlaceholderData } = useQuery({
     queryKey: [
       "dashboard",

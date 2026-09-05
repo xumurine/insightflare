@@ -9,7 +9,9 @@ import {
 } from "@/components/dashboard/campaign-utils";
 import { PageHeading } from "@/components/dashboard/page-heading";
 import { useDashboardQuery } from "@/components/dashboard/site-pages/use-dashboard-query";
+import type { TabbedDataTableLoader } from "@/components/dashboard/tabbed-data-table-card";
 import { fetchUtmDimension } from "@/lib/dashboard/client-data";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
 import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
@@ -58,8 +60,8 @@ export function CampaignsClientPage({
     filters: FilterDocument;
     window: TimeWindow;
   };
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
-  const requestFilters = useMemo(() => ({ ...filters }), [filtersKey]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
+  const requestFilters = filters;
   const requestWindow = useMemo(
     () => ({
       preset: window.preset,
@@ -71,8 +73,14 @@ export function CampaignsClientPage({
     [window.from, window.interval, window.preset, window.timeZone, window.to],
   );
 
-  const loadRows = useCallback(
-    async (tab: CampaignTab, signal: AbortSignal) => {
+  const loader = useCallback<
+    TabbedDataTableLoader<
+      CampaignTab,
+      ReturnType<typeof buildCampaignRows>[number],
+      "views" | "sessions"
+    >
+  >(
+    async ({ tab, signal, limit }) => {
       try {
         const payload = await fetchUtmDimension(
           siteId,
@@ -81,17 +89,35 @@ export function CampaignsClientPage({
           requestFilters,
           { signal },
         );
-        return buildCampaignRows(
+        const items = buildCampaignRows(
           extractDimensionRows(payload),
           tab,
           messages.campaigns.notSet,
         );
+        return {
+          items,
+          pagination: {
+            limit,
+            returned: items.length,
+            hasMore: false,
+            nextCursor: null,
+          },
+        };
       } catch (error) {
-        return buildCampaignRows(
+        const items = buildCampaignRows(
           emptyRowsUnlessAborted(error),
           tab,
           messages.campaigns.notSet,
         );
+        return {
+          items,
+          pagination: {
+            limit,
+            returned: items.length,
+            hasMore: false,
+            nextCursor: null,
+          },
+        };
       }
     },
     [messages.campaigns.notSet, requestFilters, requestWindow, siteId],
@@ -116,7 +142,7 @@ export function CampaignsClientPage({
       <CampaignBreakdownCard
         locale={locale}
         messages={messages}
-        loadRows={loadRows}
+        loader={loader}
         requestKey={requestKey}
       />
     </div>

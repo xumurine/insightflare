@@ -4,6 +4,7 @@ import {
   type FunnelDefinition,
   type FunnelStepConfig,
   parsePrivateFilterUrl,
+  type ScopedDatasetSql,
 } from "@/lib/edge/analytics/contract";
 import type { Env } from "@/lib/edge/types";
 
@@ -23,6 +24,14 @@ import {
   type ResponseContext,
   visitSourceBindings,
 } from "./core";
+import {
+  decodePageCursor,
+  encodePageCursor,
+  hasExactKeys,
+  pageResult,
+  paginationBinding,
+} from "./pagination";
+import { scopedDatasetFor } from "./scoped-dataset";
 
 const FUNNEL_ANALYSIS_KIND = "funnel";
 const MAX_FUNNEL_STEPS = 12;
@@ -67,8 +76,7 @@ export function normalizeFunnelSteps(input: unknown): FunnelStepConfig[] {
 function parseFunnelSteps(configJson: string): FunnelStepConfig[] {
   try {
     const parsed = JSON.parse(configJson) as
-      | FunnelStepConfig[]
-      | { steps?: FunnelStepConfig[] };
+      FunnelStepConfig[] | { steps?: FunnelStepConfig[] };
     return normalizeFunnelSteps(Array.isArray(parsed) ? parsed : parsed.steps);
   } catch {
     return [];
@@ -90,16 +98,81 @@ function mapFunnelDefinition(row: Record<string, unknown>): FunnelDefinition {
   };
 }
 
-export async function queryFunnelDefinitions(
+interface FunnelDefinitionCursor {
+  readonly createdAt: number;
+  readonly id: string;
+}
+
+function funnelDefinitionCursor(value: unknown): FunnelDefinitionCursor | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  return hasExactKeys(candidate, ["createdAt", "id"]) &&
+    typeof candidate.id === "string" &&
+    Number.isSafeInteger(candidate.createdAt)
+    ? { id: candidate.id, createdAt: candidate.createdAt as number }
+    : null;
+}
+
+async function funnelCursorBinding(siteId: string): Promise<string> {
+  return paginationBinding(["funnels-v1", siteId, "createdAt:desc,id:desc"]);
+}
+
+export async function queryFunnelDefinitionsPage(
   env: Env,
   siteId: string,
-): Promise<FunnelDefinition[]> {
+  limit: number,
+  cursor?: FunnelDefinitionCursor | null,
+) {
+  const cursorClause = cursor
+    ? "AND (created_at < ? OR (created_at = ? AND id < ?))"
+    : "";
   const rows = await queryD1All<Record<string, unknown>>(
     env,
-    "SELECT id, site_id, kind, name, config_json, created_at, updated_at FROM analysis_definitions WHERE site_id = ? AND kind = ? AND archived_at IS NULL ORDER BY created_at DESC",
-    [siteId, FUNNEL_ANALYSIS_KIND],
+    `SELECT id, site_id, kind, name, config_json, created_at, updated_at
+     FROM analysis_definitions
+     WHERE site_id = ? AND kind = ? AND archived_at IS NULL
+     ${cursorClause}
+     ORDER BY created_at DESC, id DESC
+     LIMIT ?`,
+    [
+      siteId,
+      FUNNEL_ANALYSIS_KIND,
+      ...(cursor ? [cursor.createdAt, cursor.createdAt, cursor.id] : []),
+      limit + 1,
+    ],
   );
-  return rows.map(mapFunnelDefinition);
+  const mapped = rows.map(mapFunnelDefinition);
+  const page = pageResult(mapped, limit);
+  const nextCursor =
+    page.hasMore && page.last
+      ? await encodePageCursor(env, await funnelCursorBinding(siteId), {
+          createdAt: page.last.createdAt,
+          id: page.last.id,
+        })
+      : null;
+  return {
+    items: page.rows,
+    pagination: {
+      limit,
+      returned: page.rows.length,
+      hasMore: page.hasMore,
+      nextCursor,
+    },
+  };
+}
+
+export async function decodeFunnelDefinitionCursor(
+  env: Env,
+  siteId: string,
+  cursor?: string | null,
+): Promise<FunnelDefinitionCursor | null> {
+  return decodePageCursor<FunnelDefinitionCursor>(
+    env,
+    await funnelCursorBinding(siteId),
+    cursor,
+    "funnels",
+    funnelDefinitionCursor,
+  );
 }
 
 export async function queryFunnelDefinition(
@@ -148,9 +221,41 @@ async function queryFunnelPageviewEvents(
   window: QueryWindow,
   filters: FilterDocument,
   steps: FunnelStepConfig[],
+  scopedDataset: ScopedDatasetSql | null,
 ): Promise<FunnelEvent[]> {
   const values = uniqueStepValues(steps, "pageview");
   if (values.length === 0) return [];
+
+  if (scopedDataset) {
+    const sql = `
+WITH
+${scopedDataset.ctes}
+SELECT
+  vs.session_id AS sessionId,
+  vs.visitor_id AS visitorId,
+  vs.pathname AS value,
+  vs.started_at AS timestampMs,
+  vs.visit_id AS sourceId
+FROM ${scopedDataset.visitRelation} vs
+WHERE TRIM(COALESCE(vs.session_id, '')) != ''
+  AND vs.pathname IN (${values.map(() => "?").join(", ")})
+ORDER BY timestampMs ASC, sourceId ASC
+`;
+    const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+      ...scopedDataset.bindings.map((binding) => binding.value),
+      ...values,
+    ]);
+
+    return rows.map((row) => ({
+      sessionId: String(row.sessionId ?? ""),
+      visitorId: String(row.visitorId ?? ""),
+      type: "pageview" as const,
+      value: String(row.value ?? ""),
+      timestampMs: Number(row.timestampMs ?? 0),
+      sourceOrder: 0,
+      sourceId: String(row.sourceId ?? ""),
+    }));
+  }
 
   const eventFilter = usesEventFilter(filters.root);
   const filter = eventFilter
@@ -219,9 +324,42 @@ async function queryFunnelCustomEvents(
   window: QueryWindow,
   filters: FilterDocument,
   steps: FunnelStepConfig[],
+  scopedDataset: ScopedDatasetSql | null,
 ): Promise<FunnelEvent[]> {
   const values = uniqueStepValues(steps, "event");
   if (values.length === 0) return [];
+
+  if (scopedDataset) {
+    const sql = `
+WITH
+${scopedDataset.ctes}
+SELECT
+  es.session_id AS sessionId,
+  es.visitor_id AS visitorId,
+  es.event_name AS value,
+  es.occurred_at AS timestampMs,
+  COALESCE(es.sequence, 0) AS sequence,
+  es.event_id AS sourceId
+FROM ${scopedDataset.eventRelation} es
+WHERE TRIM(COALESCE(es.session_id, '')) != ''
+  AND es.event_name IN (${values.map(() => "?").join(", ")})
+ORDER BY timestampMs ASC, sequence ASC, sourceId ASC
+`;
+    const rows = await queryD1All<Record<string, unknown>>(env, sql, [
+      ...scopedDataset.bindings.map((binding) => binding.value),
+      ...values,
+    ]);
+
+    return rows.map((row) => ({
+      sessionId: String(row.sessionId ?? ""),
+      visitorId: String(row.visitorId ?? ""),
+      type: "event" as const,
+      value: String(row.value ?? ""),
+      timestampMs: Number(row.timestampMs ?? 0),
+      sourceOrder: 1,
+      sourceId: String(row.sourceId ?? ""),
+    }));
+  }
 
   const eventFilter = usesEventFilter(filters.root);
   const filter = eventFilter
@@ -404,9 +542,17 @@ export async function queryFunnelAnalysis(
   filters: FilterDocument,
   steps: FunnelStepConfig[],
 ): Promise<FunnelAnalysis> {
+  const scopedDataset = scopedDatasetFor(siteId, window, filters);
   const [pageviews, events] = await Promise.all([
-    queryFunnelPageviewEvents(env, siteId, window, filters, steps),
-    queryFunnelCustomEvents(env, siteId, window, filters, steps),
+    queryFunnelPageviewEvents(
+      env,
+      siteId,
+      window,
+      filters,
+      steps,
+      scopedDataset,
+    ),
+    queryFunnelCustomEvents(env, siteId, window, filters, steps, scopedDataset),
   ]);
   return analyzeFunnelEvents(steps, [...pageviews, ...events]);
 }
@@ -414,11 +560,20 @@ export async function queryFunnelAnalysis(
 async function handleFunnelList(
   env: Env,
   siteId: string,
+  url: URL,
   ctx?: ResponseContext,
 ): Promise<Response> {
+  const limitParam = Number.parseInt(url.searchParams.get("limit") ?? "50", 10);
+  const limit = Number.isFinite(limitParam)
+    ? Math.min(200, Math.max(1, limitParam))
+    : 50;
+  const cursorText = url.searchParams.get("cursor");
+  const cursor = await decodeFunnelDefinitionCursor(env, siteId, cursorText);
+  if (cursorText && !cursor) return badRequest("Invalid cursor");
+  const page = await queryFunnelDefinitionsPage(env, siteId, limit, cursor);
   return jsonResponseWith(ctx!, {
     ok: true,
-    data: { funnels: await queryFunnelDefinitions(env, siteId) },
+    data: page,
   });
 }
 
@@ -429,7 +584,7 @@ async function handleFunnelDetail(
   ctx?: ResponseContext,
 ): Promise<Response> {
   const funnelId = url.searchParams.get("id")?.trim();
-  if (!funnelId) return handleFunnelList(env, siteId, ctx);
+  if (!funnelId) return handleFunnelList(env, siteId, url, ctx);
 
   const window = parseWindow(url);
   if (!window) return badRequest("Invalid time window");

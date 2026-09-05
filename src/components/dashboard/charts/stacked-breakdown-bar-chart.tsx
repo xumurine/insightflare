@@ -130,8 +130,7 @@ export const StackedBreakdownBarChart = memo(function StackedBreakdownBarChart({
           cursor={false}
           content={({ active, payload }) => {
             const row = payload?.[0]?.payload as
-              | StackedBreakdownChartRow
-              | undefined;
+              StackedBreakdownChartRow | undefined;
             if (!active || !payload?.length || !row) return null;
 
             const visibleSeries = series.filter(
@@ -163,10 +162,7 @@ export const StackedBreakdownBarChart = memo(function StackedBreakdownBarChart({
                               style={{ backgroundColor: item.color }}
                             />
                           )}
-                          <span
-                            className="truncate text-muted-foreground"
-                            title={item.label}
-                          >
+                          <span className="truncate text-muted-foreground">
                             {item.label}
                           </span>
                         </span>

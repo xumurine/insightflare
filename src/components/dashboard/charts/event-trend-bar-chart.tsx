@@ -222,10 +222,7 @@ function EventTrendTooltip({
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-1.5">
               <ChartTooltipIndicator color={activeSeries.color} />
-              <span
-                className="truncate text-muted-foreground"
-                title={activeSeries.displayLabel}
-              >
+              <span className="truncate text-muted-foreground">
                 {activeSeries.displayLabel}
               </span>
             </div>
@@ -339,10 +336,7 @@ export const EventTrendLegend = memo(function EventTrendLegend({
                       className="size-2.5 shrink-0 rounded-none"
                       style={{ backgroundColor: item.color }}
                     />
-                    <span
-                      className="truncate text-xs font-medium text-foreground"
-                      title={item.displayLabel}
-                    >
+                    <span className="truncate text-xs font-medium text-foreground">
                       {item.displayLabel}
                     </span>
                     {clickable ? (
@@ -470,8 +464,7 @@ export const EventTrendBarChart = memo(function EventTrendBarChart({
                   state.activePayload.length > 0
                 ) {
                   const activePoint = state.activePayload[0]?.payload as
-                    | EventTrendChartDataPoint
-                    | undefined;
+                    EventTrendChartDataPoint | undefined;
                   handleHoverPoint(activePoint ?? null);
                 } else {
                   handleHoverPoint(null);

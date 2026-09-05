@@ -6,7 +6,10 @@ import {
   createTypedQueryProviderRegistry,
   typedQueryProvider,
 } from "@/lib/edge/analytics/application/provider-registry";
-import { TypedQueryApplicationService } from "@/lib/edge/analytics/application/service";
+import {
+  type AnalyticsQueryEvent,
+  TypedQueryApplicationService,
+} from "@/lib/edge/analytics/application/service";
 import {
   createQueryTime,
   EMPTY_FILTER_DOCUMENT,
@@ -148,6 +151,7 @@ describe("TypedQueryApplicationService", () => {
         time,
         source: "rollup",
         approximateVisitors: true,
+        filterScope: { requested: "auto", resolved: "event" },
       },
     });
     expect(run).toHaveBeenCalledOnce();
@@ -175,7 +179,15 @@ describe("TypedQueryApplicationService", () => {
     const result = {
       ok: true as const,
       data: { views: 9 },
-      meta: { time, source: "raw" as const, approximateVisitors: false },
+      meta: {
+        time,
+        source: "raw" as const,
+        approximateVisitors: false,
+        filterScope: {
+          requested: "auto" as const,
+          resolved: "event" as const,
+        },
+      },
     };
     const providerRegistry = new AnalyticsProviderRegistry().register(
       "overview",
@@ -247,7 +259,28 @@ describe("TypedQueryApplicationService", () => {
       }),
     ).resolves.toEqual({
       ok: false,
-      error: { kind: "internal", operation: "pages" },
+      error: {
+        kind: "invalid-input",
+        issues: [{ path: "scope", code: "scoped_query_requires_time" }],
+      },
+    });
+  });
+
+  it("rejects an unscoped provider result without canonical time", async () => {
+    await expect(
+      new TypedQueryApplicationService().execute({
+        kind: "typed-query",
+        operation: "realtime",
+        query: {
+          context: siteQueryContext("site-1", "private-dashboard"),
+        },
+        providerRegistry: new AnalyticsProviderRegistry().register("realtime", {
+          execute: async () => ({ value: { items: [] } }),
+        }),
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: { kind: "internal", operation: "realtime" },
     });
   });
 
@@ -340,6 +373,22 @@ describe("TypedQueryApplicationService", () => {
       "pages:start",
       "pages:success",
     ]);
+  });
+
+  it("attaches the canonical scope plan to invocation diagnostics", async () => {
+    const events: AnalyticsQueryEvent[] = [];
+    await new TypedQueryApplicationService().execute(
+      overviewInvocation(reader()),
+      { operation: "overview", onEvent: (event) => events.push(event) },
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      phase: "success",
+      requestedScope: "auto",
+      resolvedScope: "event",
+      requiredSources: [],
+      requiresRawSource: false,
+    });
   });
 
   it("executes overview and timeseries through ordinary registry entries", async () => {
