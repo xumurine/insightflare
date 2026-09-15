@@ -37,6 +37,7 @@ import {
 } from "@/lib/edge/analytics/composition/ssr-query-runtime";
 import {
   createQueryTime,
+  parseFilterUrlForAudience,
   teamQueryContext,
 } from "@/lib/edge/analytics/contract";
 import { resolveEdgeRuntime } from "@/lib/edge/runtime";
@@ -46,8 +47,8 @@ import type {
   NotificationMessageData,
   NotificationRuleData,
 } from "@/lib/edge-client-types";
-import { fetchGithubReleases } from "@/lib/github-releases";
 import type { Locale } from "@/lib/i18n/config";
+import { DEFAULT_RETENTION_CONFIG } from "@/lib/retention";
 import type { ScheduledTasksData } from "@/lib/scheduled-tasks";
 import { normalizeSiteScriptSettings } from "@/lib/site-settings";
 
@@ -93,9 +94,8 @@ export const loadDashboardRoot = createServerFn({ method: "GET" }).handler(() =>
 /** Provides the SSR-safe initial query window to the dashboard shell. */
 export const loadDashboardInitialWindow = createServerFn({
   method: "GET",
-}).handler(
-  (): TimeWindow =>
-    resolveDashboardInitialWindow(getRequest().headers.get("cookie")),
+}).handler((): TimeWindow =>
+  resolveDashboardInitialWindow(getRequest().headers.get("cookie")),
 );
 
 export const loadDashboardTeam = createServerFn({ method: "GET" })
@@ -118,6 +118,7 @@ export const loadTeamDashboardSnapshot = createServerFn({ method: "GET" })
     const preloadedSites = await getDashboardTeamSites(data.teamId);
 
     const window = resolveDashboardInitialWindow(request.headers.get("cookie"));
+    const filters = parseFilterUrlForAudience("private-dashboard", request.url);
     const teamDashboardRuntime = createTeamDashboardQueryRuntime({
       env: resolved.env,
       teamId: resolved.teamId,
@@ -148,6 +149,7 @@ export const loadTeamDashboardSnapshot = createServerFn({ method: "GET" })
           window.timeZone,
           window.to,
         ),
+        filters,
       },
     );
     if (!result.ok) throw new Error(result.error.kind);
@@ -312,16 +314,20 @@ export const loadAdminUsersInitialData = createServerFn({
 export const loadSystemSettingsInitialData = createServerFn({
   method: "GET",
 }).handler(async (): Promise<SystemSettingsInitialData | null> => {
-  const [botAnalytics, loginTurnstile, notificationEmail] = await Promise.all([
-    readDashboardAdmin("bot-analytics-config"),
-    readDashboardAdmin("login-turnstile"),
-    readDashboardAdmin("notification-email"),
-  ]);
-  if (!botAnalytics || !loginTurnstile || !notificationEmail) return null;
+  const [analyticsEngine, loginTurnstile, notificationEmail, scheduledTasks] =
+    await Promise.all([
+      readDashboardAdmin("analytics-engine-config"),
+      readDashboardAdmin("login-turnstile"),
+      readDashboardAdmin("notification-email"),
+      readDashboardAdmin("scheduled-tasks", { limit: 1 }),
+    ]);
+  if (!analyticsEngine || !loginTurnstile || !notificationEmail) return null;
   return {
-    botAnalytics,
+    analyticsEngine,
     loginTurnstile,
     notificationEmail,
+    scheduledTaskRetention:
+      scheduledTasks?.retention ?? DEFAULT_RETENTION_CONFIG,
     fetchedAt: Date.now(),
   };
 });
@@ -330,8 +336,7 @@ export const loadScheduledTasksInitialData = createServerFn({
   method: "GET",
 }).handler(async (): Promise<ScheduledTasksInitialData | null> => {
   const data = await readDashboardAdmin("scheduled-tasks", {
-    page: 1,
-    pageSize: 50,
+    limit: 50,
   });
   return data
     ? {
@@ -377,21 +382,5 @@ export const loadRequestOrigin = createServerFn({ method: "GET" }).handler(
         ? "http"
         : "https");
     return `${proto}://${host}`;
-  },
-);
-
-export const loadVersionReleases = createServerFn({ method: "GET" }).handler(
-  async () => {
-    try {
-      return {
-        releases: await fetchGithubReleases("RavelloH", "InsightFlare"),
-        error: null,
-      };
-    } catch (error) {
-      return {
-        releases: [],
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
   },
 );
