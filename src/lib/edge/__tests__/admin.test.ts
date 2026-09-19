@@ -418,6 +418,9 @@ function diagnosticPayload(
     },
     alarm: {
       scheduledAt: 1_200,
+      nextDueAt: 1_200,
+      nextDueKind: "flush",
+      nextDueEntity: "visit",
     },
     ...overrides,
   };
@@ -755,8 +758,8 @@ describe("private admin edge handler", () => {
     for (const route of [
       "account-links",
       "team-invites",
-      "bot-analytics-config",
-      "bot-analytics",
+      "analytics-engine-config",
+      "request-observation",
       "do-diagnostic",
       "e2e/flush",
     ]) {
@@ -3903,7 +3906,12 @@ describe("private admin edge handler", () => {
           maxFlushAttempts: 8,
           oldestOccurredAt: null,
         },
-        alarm: { scheduledAt: null },
+        alarm: {
+          scheduledAt: null,
+          nextDueAt: null,
+          nextDueKind: null,
+          nextDueEntity: null,
+        },
       });
       const ingestDo = createIngestDo({
         "site-1": {
