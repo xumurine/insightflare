@@ -1,4 +1,5 @@
-import { SITE_PK_FROM_SITE_ID_SQL } from "@/lib/edge/site-identity-sql";
+import { scopedFilterMetadata } from "@/lib/edge/analytics/contract";
+import { SITE_PK_FROM_SITE_ID_SQL } from "@/lib/edge/sites/identity-sql";
 import type { Env } from "@/lib/edge/types";
 
 import type {
@@ -16,7 +17,6 @@ import {
   regionValueExpr,
   visitSourceBindings,
 } from "./core";
-
 export const EVENT_CONTEXT_CARD_KEYS = [
   "path",
   "query",
@@ -38,9 +38,7 @@ export const EVENT_CONTEXT_CARD_KEYS = [
   "timezone",
   "organization",
 ] as const;
-
 export type EventContextCardKey = (typeof EVENT_CONTEXT_CARD_KEYS)[number];
-
 export async function queryEventDimensionRowsFromFilteredEvents(
   env: Env,
   baseCte: string,
@@ -68,7 +66,6 @@ LIMIT ?
 `;
   return queryD1All<DimensionRow>(env, sql, [...bindings, limit]);
 }
-
 export async function queryEventGeoRowsFromFilteredEvents(
   env: Env,
   baseCte: string,
@@ -92,7 +89,6 @@ LIMIT ?
 `;
   return queryD1All<GeoTabRow>(env, sql, [...bindings, limit]);
 }
-
 export async function queryEventSessionBoundaryRowsFromFilteredEvents(
   env: Env,
   baseCte: string,
@@ -100,13 +96,16 @@ export async function queryEventSessionBoundaryRowsFromFilteredEvents(
   kind: "entry" | "exit",
   limit: number,
 ): Promise<DimensionRow[]> {
+  const visitRelation = baseCte.includes("scope_final_visits AS")
+    ? "scope_final_visits"
+    : "visit_source";
   const direction = kind === "entry" ? "ASC" : "DESC";
   const sql = `${baseCte},
 event_with_session_edge AS (
   SELECT
     COALESCE((
       SELECT edge.pathname
-      FROM visit_source edge
+      FROM ${visitRelation} edge
       WHERE edge.session_id = filtered_events.session_id
         AND TRIM(COALESCE(edge.pathname, '')) != ''
       ORDER BY edge.started_at ${direction}, edge.visit_id ${direction}
@@ -130,7 +129,6 @@ LIMIT ?
 `;
   return queryD1All<DimensionRow>(env, sql, [...bindings, limit]);
 }
-
 export async function queryEventAnalyticsContextCardsFromD1(
   env: Env,
   siteId: string,
@@ -147,6 +145,7 @@ export async function queryEventAnalyticsContextCardsFromD1(
     eventName,
     { materialize: true },
   );
+  const scoped = scopedFilterMetadata(filters) !== undefined;
   const dimensions: Array<{
     key: string;
     expr: string;
@@ -273,11 +272,15 @@ session_visit_edges AS (
       ORDER BY v.started_at DESC, v.visit_id DESC
     ) AS latest_rank
   FROM event_sessions es
-  INNER JOIN visits v
-   ON v.site_pk = ${SITE_PK_FROM_SITE_ID_SQL}
+  INNER JOIN ${scoped ? "scope_final_visits" : "visits"} v
+   ${
+     scoped
+       ? "ON v.session_id = es.session_id"
+       : `ON v.site_pk = ${SITE_PK_FROM_SITE_ID_SQL}
    AND v.session_id = es.session_id
    AND v.started_at >= ?
-   AND v.started_at < ?
+   AND v.started_at < ?`
+   }
   WHERE TRIM(COALESCE(v.pathname, '')) != ''
 ),
 session_edges AS (
@@ -326,7 +329,9 @@ ORDER BY cardType ASC, card_rank ASC
 `,
     [
       ...source.bindings,
-      ...(needsSessionEdges ? visitSourceBindings(siteId, window) : []),
+      ...(needsSessionEdges && !scoped
+        ? visitSourceBindings(siteId, window)
+        : []),
       limit,
     ],
   );

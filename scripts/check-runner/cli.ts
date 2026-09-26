@@ -68,6 +68,24 @@ function createTasks(fix: boolean): CheckTask[] {
 
   return [
     {
+      name: "Layer contract",
+      steps: [
+        {
+          name: "Layer contract",
+          args: ["run", "check:layer"],
+        },
+      ],
+    },
+    {
+      name: "Architecture",
+      steps: [
+        {
+          name: "Architecture",
+          args: ["run", "check:architecture"],
+        },
+      ],
+    },
+    {
       name: "Tracker SDK",
       steps: [
         {
@@ -134,8 +152,8 @@ function createTasks(fix: boolean): CheckTask[] {
     {
       name: "Build",
       dependsOn: fix
-        ? ["Spec", "Lint", "Tracker SDK"]
-        : ["Spec", "Tracker SDK"],
+        ? ["Spec", "Lint", "Tracker SDK", "Coverage"]
+        : ["Spec", "Tracker SDK", "Coverage"],
       steps: [
         {
           name: "Build",

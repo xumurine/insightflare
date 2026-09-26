@@ -1,51 +1,55 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { BrowserCrossBreakdownGrid } from "@/components/dashboard/browser-cross-breakdown-grid";
-import { BrowserEngineShareTrendCard } from "@/components/dashboard/browser-engine-share-trend-card";
-import { BrowserPerformanceRadarCard } from "@/components/dashboard/browser-performance-radar-card";
-import { BrowserShareOverview } from "@/components/dashboard/browser-share-overview";
-import { BrowserShareTrendCard } from "@/components/dashboard/browser-share-trend-card";
-import { BrowserVersionBreakdownGrid } from "@/components/dashboard/browser-version-breakdown-grid";
-import { CanIUseCompatCard } from "@/components/dashboard/caniuse-compat-card";
+import { BrowserCrossBreakdownGrid } from "@/components/dashboard/browsers/browser-cross-breakdown-grid";
+import { BrowserEngineShareTrendCard } from "@/components/dashboard/browsers/browser-engine-share-trend-card";
+import { BrowserPerformanceRadarCard } from "@/components/dashboard/browsers/browser-performance-radar-card";
+import { BrowserShareOverview } from "@/components/dashboard/browsers/browser-share-overview";
+import { BrowserShareTrendCard } from "@/components/dashboard/browsers/browser-share-trend-card";
+import { BrowserVersionBreakdownGrid } from "@/components/dashboard/browsers/browser-version-breakdown-grid";
+import { CanIUseCompatCard } from "@/components/dashboard/browsers/caniuse-compat-card";
 import { EVENT_TREND_MAX_SERIES } from "@/components/dashboard/charts/event-trend-bar-chart";
+import { DeviceCrossBreakdownGrid } from "@/components/dashboard/devices/device-cross-breakdown-grid";
+import { DeviceDimensionTrendCard } from "@/components/dashboard/devices/device-dimension-trend-card";
+import { DeviceScreenBreakdownCard } from "@/components/dashboard/devices/device-screen-breakdown-card";
+import { DeviceShareOverview } from "@/components/dashboard/devices/device-share-overview";
+import { OverviewGeoPointsMapCard } from "@/components/dashboard/geo/overview-geo-points-map-card";
+import { RealtimeLogStreamCard } from "@/components/dashboard/realtime/realtime-log-stream-card";
+import { RealtimeTrafficTrendCard } from "@/components/dashboard/realtime/realtime-traffic-trend-card";
 import {
   DashboardQueryProvider,
   useDashboardQuery,
-} from "@/components/dashboard/dashboard-query-provider";
-import { DeviceCrossBreakdownGrid } from "@/components/dashboard/device-cross-breakdown-grid";
-import { DeviceDimensionTrendCard } from "@/components/dashboard/device-dimension-trend-card";
-import { DeviceScreenBreakdownCard } from "@/components/dashboard/device-screen-breakdown-card";
-import { DeviceShareOverview } from "@/components/dashboard/device-share-overview";
-import { OverviewGeoPointsMapCard } from "@/components/dashboard/overview-geo-points-map-card";
-import { RealtimeLogStreamCard } from "@/components/dashboard/realtime-log-stream-card";
-import { RealtimeTrafficTrendCard } from "@/components/dashboard/realtime-traffic-trend-card";
+} from "@/components/dashboard/shell/dashboard-query-provider";
 import {
   EventMetricGrid,
-  EventRecordsSection,
   EventTrendStackedBarCard,
-} from "@/components/dashboard/site-pages/event-analytics-components";
+} from "@/components/dashboard/site-pages/events/metrics-components";
+import { EventRecordsSection } from "@/components/dashboard/site-pages/events/records-section";
 import {
   OverviewMetricsSection,
-  OverviewPagesSection,
-  type OverviewPagesSectionCardData,
   OverviewTrendSection,
-  parseOverviewCardFilters,
-} from "@/components/dashboard/site-pages/overview-client-page";
+} from "@/components/dashboard/site-pages/overview/metrics";
+import { parseOverviewCardFilters } from "@/components/dashboard/site-pages/overview/overview-filter-model";
+import { OverviewPagesSection } from "@/components/dashboard/site-pages/overview/pages-section";
+import { type OverviewPagesSectionCardData } from "@/components/dashboard/site-pages/overview/types";
 import {
   parseRealtimeCardFilters,
   RealtimeSummaryCardsSection,
-} from "@/components/dashboard/site-pages/realtime-summary-cards-section";
+} from "@/components/dashboard/site-pages/realtime/realtime-summary-cards-section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRealtimeChannelSelector } from "@/hooks/use-realtime-channel";
-import { useLiveSearchParams } from "@/lib/client-history";
 import {
   fetchEventsSummary,
   fetchEventsTrend,
-} from "@/lib/dashboard/client-data";
+} from "@/lib/dashboard/client/data";
+import { useLiveSearchParams } from "@/lib/dashboard/client/history";
+import { filterQueryKey } from "@/lib/dashboard/filter-query-key";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
+import type {
+  EventsSummaryData,
+  EventsTrendData,
+} from "@/lib/dashboard-api/client/edge";
 import dynamic from "@/lib/dynamic";
-import type { EventsSummaryData, EventsTrendData } from "@/lib/edge-client";
 import {
   buildLandingEmbedDemoSitePath,
   LANDING_EMBED_DEMO_SITE,
@@ -56,71 +60,61 @@ import type { FilterDocument } from "@/lib/filter-contract";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { cn } from "@/lib/utils";
-
 interface LandingEmbedClientProps {
   locale: Locale;
   messages: AppMessages;
   view: LandingEmbedView;
 }
-
 interface BaseDashboardPageProps {
   locale: Locale;
   messages: AppMessages;
   siteId: string;
 }
-
 interface PathDashboardPageProps extends BaseDashboardPageProps {
   pathname: string;
 }
-
 const RetentionEmbed = dynamic<PathDashboardPageProps>(
   () =>
-    import("@/components/dashboard/site-pages/retention-client-page").then(
+    import("@/components/dashboard/site-pages/retention/retention-client-page").then(
       (module) => module.RetentionClientPage,
     ),
   { loading: LandingEmbedLoading },
 );
-
 const PagesEmbed = dynamic<PathDashboardPageProps>(
   () =>
-    import("@/components/dashboard/site-pages/pages-client-page").then(
+    import("@/components/dashboard/site-pages/pages/pages-client-page").then(
       (module) => module.PagesClientPage,
     ),
   { loading: LandingEmbedLoading },
 );
-
 const PerformanceEmbed = dynamic<BaseDashboardPageProps>(
   () =>
-    import("@/components/dashboard/site-pages/performance-client-page").then(
+    import("@/components/dashboard/site-pages/performance/performance-client-page").then(
       (module) => module.PerformanceClientPage,
     ),
   { loading: LandingEmbedLoading },
 );
-
 const SessionsEmbed = dynamic<PathDashboardPageProps>(
   () =>
-    import("@/components/dashboard/site-pages/sessions-client-page").then(
+    import("@/components/dashboard/site-pages/sessions/sessions-client-page").then(
       (module) => module.SessionsClientPage,
     ),
   { loading: LandingEmbedLoading },
 );
-
 const VisitorsEmbed = dynamic<PathDashboardPageProps>(
   () =>
-    import("@/components/dashboard/site-pages/visitors-client-page").then(
+    import("@/components/dashboard/site-pages/visitors/visitors-client-page").then(
       (module) => module.VisitorsClientPage,
     ),
   { loading: LandingEmbedLoading },
 );
-
 const FunnelsEmbed = dynamic<PathDashboardPageProps>(
   () =>
-    import("@/components/dashboard/site-pages/funnels-client-page").then(
+    import("@/components/dashboard/site-pages/funnels/funnels-client-page").then(
       (module) => module.FunnelsClientPage,
     ),
   { loading: LandingEmbedLoading },
 );
-
 function LandingEmbedLoading() {
   return (
     <div className="space-y-4" aria-hidden="true">
@@ -135,7 +129,6 @@ function LandingEmbedLoading() {
     </div>
   );
 }
-
 function useOverviewEmbedFilters(): FilterDocument {
   const searchParams = useLiveSearchParams();
   const searchParamsKey = searchParams.toString();
@@ -144,7 +137,6 @@ function useOverviewEmbedFilters(): FilterDocument {
     [searchParamsKey],
   );
 }
-
 function useRealtimeEmbedFilters(): FilterDocument {
   const searchParams = useLiveSearchParams();
   const searchParamsKey = searchParams.toString();
@@ -153,7 +145,6 @@ function useRealtimeEmbedFilters(): FilterDocument {
     [searchParamsKey],
   );
 }
-
 function emptyOverviewPageSectionCards(): OverviewPagesSectionCardData {
   return {
     page: {
@@ -185,7 +176,6 @@ function emptyOverviewPageSectionCards(): OverviewPagesSectionCardData {
     },
   };
 }
-
 function buildEventCardDataOverride(
   rows: EventsSummaryData["cards"]["event"]["name"],
 ): OverviewPagesSectionCardData {
@@ -198,7 +188,6 @@ function buildEventCardDataOverride(
     },
   };
 }
-
 function buildContextCardDataOverride(
   page: EventsSummaryData["cards"]["page"],
 ): OverviewPagesSectionCardData {
@@ -213,7 +202,6 @@ function buildContextCardDataOverride(
     },
   };
 }
-
 function emptyEventsSummary(): EventsSummaryData {
   return {
     ok: true,
@@ -236,7 +224,6 @@ function emptyEventsSummary(): EventsSummaryData {
     },
   };
 }
-
 function emptyEventsTrend(interval: TimeWindow["interval"]): EventsTrendData {
   return {
     ok: true,
@@ -245,7 +232,6 @@ function emptyEventsTrend(interval: TimeWindow["interval"]): EventsTrendData {
     data: [],
   };
 }
-
 function OverviewEmbedBlock({
   locale,
   messages,
@@ -358,7 +344,6 @@ function OverviewEmbedBlock({
     />
   );
 }
-
 function RealtimeEmbedBlock({
   locale,
   messages,
@@ -427,7 +412,6 @@ function RealtimeEmbedBlock({
     />
   );
 }
-
 function EventsEmbedBlock({
   locale,
   messages,
@@ -446,7 +430,7 @@ function EventsEmbedBlock({
   const labels = messages.events;
   const { window: timeWindow } = useDashboardQuery();
   const filters = useOverviewEmbedFilters();
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const filtersKey = useMemo(() => filterQueryKey(filters), [filters]);
   const eventsQuery = useQuery({
     queryKey: [
       "embed",
@@ -572,7 +556,6 @@ function EventsEmbedBlock({
     />
   );
 }
-
 function BrowsersEmbedBlock({
   locale,
   messages,
@@ -665,7 +648,6 @@ function BrowsersEmbedBlock({
     />
   );
 }
-
 function DevicesEmbedBlock({
   locale,
   messages,
@@ -741,7 +723,6 @@ function DevicesEmbedBlock({
     />
   );
 }
-
 function LargeEmbedBlock({
   locale,
   messages,
@@ -772,7 +753,6 @@ function LargeEmbedBlock({
   if (view === "visitors") return <VisitorsEmbed {...pathProps} />;
   return <FunnelsEmbed {...pathProps} />;
 }
-
 function LandingEmbedBlock({
   locale,
   messages,
@@ -889,7 +869,6 @@ function LandingEmbedBlock({
     />
   );
 }
-
 export function LandingEmbedClient({
   locale,
   messages,

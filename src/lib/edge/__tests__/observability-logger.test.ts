@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { instrumentEnv } from "@/lib/edge/observability-bindings";
-import { measureExternalFetch } from "@/lib/edge/observability-bindings";
+import { instrumentEnv } from "@/lib/edge/observability/bindings";
+import { measureExternalFetch } from "@/lib/edge/observability/bindings";
 import {
   createInvocationLogger,
   currentD1Operation,
@@ -11,9 +11,7 @@ import {
   measureCurrentExternalFetch,
   runWithD1Operation,
   runWithInvocationLogger,
-} from "@/lib/edge/observability-logger";
-import type { Env } from "@/lib/edge/types";
-
+} from "@/lib/edge/observability/logger";
 describe("edge observability logger", () => {
   beforeEach(() => {
     vi.spyOn(console, "log").mockImplementation(() => {});
@@ -503,7 +501,7 @@ describe("edge observability logger", () => {
     statement.bind.mockImplementation(() => statement);
     const result = {
       results: [],
-      meta: { rows_read: 1, changes: 2, total_attempts: 1 },
+      meta: { rows_read: 1, rows_written: 2, total_attempts: 1 },
     };
     const database: D1Database = {
       prepare: () => statement as D1PreparedStatement,

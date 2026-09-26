@@ -19,7 +19,7 @@ import {
   fetchSessions,
   fetchVisitorDetail,
   fetchVisitors,
-} from "@/lib/dashboard/client-core-data";
+} from "@/lib/dashboard/client/data/core";
 import {
   emptyEventFieldValues,
   emptyEventRecordDetail,
@@ -33,26 +33,71 @@ import {
   emptySessions,
   emptyVisitorDetail,
   emptyVisitors,
-} from "@/lib/dashboard/client-empty-data";
+} from "@/lib/dashboard/client/data/empty";
 import { dashboardFilterDocumentFromPresentation } from "@/lib/dashboard/filter-state";
-
-vi.mock("@/lib/dashboard/client-request", () => ({
+vi.mock("@/lib/dashboard/client/request", () => ({
   fetchPrivateJson: vi.fn(),
   fetchPrivateJsonMutate: vi.fn(),
 }));
-
-vi.mock("@/lib/dashboard/client-utils", () => ({
-  withFilters: vi.fn((params: Record<string, unknown>) => params),
+vi.mock("@/lib/dashboard/client/utils", () => ({
+  normalizePaginatedCollection: vi.fn((value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("pagination_contract_violation");
+    }
+    const record = value as Record<string, unknown>;
+    if (
+      Object.keys(record).length !== 2 ||
+      !Array.isArray(record.items) ||
+      !record.pagination ||
+      typeof record.pagination !== "object" ||
+      Array.isArray(record.pagination)
+    ) {
+      throw new Error("pagination_contract_violation");
+    }
+    const pagination = record.pagination as Record<string, unknown>;
+    if (
+      Object.keys(pagination).length !== 4 ||
+      typeof pagination.limit !== "number" ||
+      pagination.limit < 1 ||
+      pagination.returned !== record.items.length ||
+      typeof pagination.hasMore !== "boolean" ||
+      (pagination.nextCursor !== null &&
+        typeof pagination.nextCursor !== "string") ||
+      pagination.hasMore !== (pagination.nextCursor !== null)
+    ) {
+      throw new Error("pagination_contract_violation");
+    }
+    return { items: record.items, pagination };
+  }),
+  withFilters: vi.fn(
+    (
+      params: Record<string, unknown>,
+      _filters: unknown,
+      resolvedScope?: string,
+    ) => (resolvedScope ? { ...params, scope: resolvedScope } : params),
+  ),
+  withPagination: vi.fn(
+    (
+      params: Record<string, unknown>,
+      options?: { limit?: number; cursor?: string | null },
+      defaultLimit?: number,
+    ) => ({
+      ...params,
+      ...(options?.limit !== undefined
+        ? { limit: options.limit }
+        : defaultLimit !== undefined
+          ? { limit: defaultLimit }
+          : {}),
+      ...(options?.cursor ? { cursor: options.cursor } : {}),
+    }),
+  ),
 }));
-
 import {
   fetchPrivateJson,
   fetchPrivateJsonMutate,
-} from "@/lib/dashboard/client-request";
-
+} from "@/lib/dashboard/client/request";
 const fetchPrivateJsonMock = vi.mocked(fetchPrivateJson);
 const fetchPrivateJsonMutateMock = vi.mocked(fetchPrivateJsonMutate);
-
 const window = {
   preset: "custom" as const,
   from: 1000,
@@ -60,13 +105,22 @@ const window = {
   timeZone: "UTC",
   interval: "day" as const,
 };
-
 beforeEach(() => {
   fetchPrivateJsonMock.mockReset();
   fetchPrivateJsonMutateMock.mockReset();
-  fetchPrivateJsonMock.mockResolvedValue({ ok: true } as any);
+  fetchPrivateJsonMock.mockResolvedValue({
+    ok: true,
+    data: {
+      items: [],
+      pagination: {
+        limit: 1,
+        returned: 0,
+        hasMore: false,
+        nextCursor: null,
+      },
+    },
+  } as any);
 });
-
 describe("fetchVisitors", () => {
   it("assembles pagination options correctly", async () => {
     fetchPrivateJsonMock.mockResolvedValueOnce({
@@ -76,7 +130,7 @@ describe("fetchVisitors", () => {
 
     await fetchVisitors("site-1", window, undefined, {
       cursor: "visitor-cursor",
-      pageSize: 25,
+      limit: 25,
       sortBy: "lastSeenAt",
       sortDir: "desc",
       search: "test",
@@ -86,7 +140,7 @@ describe("fetchVisitors", () => {
       "/api/private/visitors",
       expect.objectContaining({
         cursor: "visitor-cursor",
-        pageSize: 25,
+        limit: 25,
         sortBy: "lastSeenAt",
         sortDir: "desc",
         search: "test",
@@ -94,7 +148,7 @@ describe("fetchVisitors", () => {
     );
   });
 
-  it("uses default limit=100 when no pageSize or limit specified", async () => {
+  it("uses default limit=100 when no limit is specified", async () => {
     fetchPrivateJsonMock.mockResolvedValueOnce({ ok: true } as any);
 
     await fetchVisitors("site-1", window);
@@ -116,16 +170,16 @@ describe("fetchVisitors", () => {
     );
   });
 
-  it("omits limit when pageSize is provided without explicit limit", async () => {
+  it("uses the explicit limit", async () => {
     fetchPrivateJsonMock.mockResolvedValueOnce({ ok: true } as any);
 
-    await fetchVisitors("site-1", window, undefined, { pageSize: 25 });
+    await fetchVisitors("site-1", window, undefined, { limit: 25 });
 
     const params = fetchPrivateJsonMock.mock.calls[0][1] as Record<
       string,
       unknown
     >;
-    expect(params.limit).toBeUndefined();
+    expect(params.limit).toBe(25);
   });
 
   it("falls back to emptyVisitors on error", async () => {
@@ -157,8 +211,24 @@ describe("fetchVisitors", () => {
     >;
     expect(params.search).toBeUndefined();
   });
-});
 
+  it("serializes goal analysis context for visitor lists", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce({ ok: true } as any);
+
+    await fetchVisitors("site-1", window, undefined, {
+      analysisContext: { type: "goal", goalId: "goal-1" },
+    });
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/visitors",
+      expect.objectContaining({ analysisType: "goal", analysisId: "goal-1" }),
+    );
+    expect(
+      (fetchPrivateJsonMock.mock.calls[0][1] as Record<string, unknown>)
+        .analysisStepId,
+    ).toBeUndefined();
+  });
+});
 describe("fetchSessions", () => {
   it("assembles pagination options correctly", async () => {
     fetchPrivateJsonMock.mockResolvedValueOnce({
@@ -168,7 +238,7 @@ describe("fetchSessions", () => {
 
     await fetchSessions("site-1", window, undefined, {
       cursor: "session-cursor",
-      pageSize: 10,
+      limit: 10,
       sortBy: "startedAt",
       sortDir: "asc",
       search: "abc",
@@ -178,7 +248,7 @@ describe("fetchSessions", () => {
       "/api/private/sessions",
       expect.objectContaining({
         cursor: "session-cursor",
-        pageSize: 10,
+        limit: 10,
         sortBy: "startedAt",
         sortDir: "asc",
         search: "abc",
@@ -192,8 +262,30 @@ describe("fetchSessions", () => {
     const result = await fetchSessions("site-1", window);
     expect(result).toEqual(emptySessions());
   });
-});
 
+  it("serializes funnel step analysis context for session lists", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce({ ok: true } as any);
+
+    await fetchSessions("site-1", window, undefined, {
+      analysisContext: {
+        type: "funnel",
+        funnelId: "funnel-1",
+        stepId: "step-2",
+        outcome: "dropoff",
+      },
+    });
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/sessions",
+      expect.objectContaining({
+        analysisType: "funnel",
+        analysisId: "funnel-1",
+        analysisStepId: "step-2",
+        analysisOutcome: "dropoff",
+      }),
+    );
+  });
+});
 describe("fetchVisitorDetail", () => {
   it("returns emptyVisitorDetail for empty visitorId", async () => {
     const result = await fetchVisitorDetail("site-1", "  ");
@@ -221,7 +313,6 @@ describe("fetchVisitorDetail", () => {
     );
   });
 });
-
 describe("fetchSessionDetail", () => {
   it("returns emptySessionDetail for empty sessionId", async () => {
     const result = await fetchSessionDetail("site-1", "");
@@ -229,7 +320,6 @@ describe("fetchSessionDetail", () => {
     expect(fetchPrivateJsonMock).not.toHaveBeenCalled();
   });
 });
-
 describe("fetchFunnelDetail", () => {
   it("fetches funnel lists by site", async () => {
     fetchPrivateJsonMock.mockResolvedValueOnce({ funnels: [] } as any);
@@ -238,6 +328,7 @@ describe("fetchFunnelDetail", () => {
 
     expect(fetchPrivateJsonMock).toHaveBeenCalledWith("/api/private/funnels", {
       siteId: "site-1",
+      limit: 100,
     });
   });
 
@@ -252,9 +343,15 @@ describe("fetchFunnelDetail", () => {
     fetchPrivateJsonMutateMock.mockResolvedValueOnce({ ok: true } as any);
     fetchPrivateJsonMutateMock.mockResolvedValueOnce({ ok: true } as any);
 
-    await createFunnel("site-1", "Signup", [
-      { id: "step-1", type: "page", value: "/signup" },
-    ] as any);
+    await createFunnel("site-1", {
+      name: "Signup",
+      progressionScope: "session",
+      conversionWindowMs: null,
+      steps: [
+        { id: "step-1", filterDsl: 'page.path eq "/signup"' },
+        { id: "step-2", filterDsl: 'event.name eq "complete"' },
+      ],
+    });
     await deleteFunnel("site-1", "funnel-1");
 
     expect(fetchPrivateJsonMutateMock).toHaveBeenNthCalledWith(
@@ -264,7 +361,12 @@ describe("fetchFunnelDetail", () => {
       { siteId: "site-1" },
       {
         name: "Signup",
-        steps: [{ id: "step-1", type: "page", value: "/signup" }],
+        progressionScope: "session",
+        conversionWindowMs: null,
+        steps: [
+          { id: "step-1", filterDsl: 'page.path eq "/signup"' },
+          { id: "step-2", filterDsl: 'event.name eq "complete"' },
+        ],
       },
     );
     expect(fetchPrivateJsonMutateMock).toHaveBeenNthCalledWith(
@@ -275,7 +377,6 @@ describe("fetchFunnelDetail", () => {
     );
   });
 });
-
 describe("fetchEventTypeDetail", () => {
   it("returns emptyEventTypeDetail for empty eventName", async () => {
     const result = await fetchEventTypeDetail("site-1", window, "  ");
@@ -298,12 +399,10 @@ describe("fetchEventTypeDetail", () => {
       expect.objectContaining({
         includeContext: "false",
         includeBreakdowns: "false",
-        includeFields: "false",
       }),
     );
   });
 });
-
 describe("fetchEventTypeFields", () => {
   it("loads fields across event types without an event name", async () => {
     await fetchEventTypeFields("site-1", window, "  ");
@@ -330,17 +429,38 @@ describe("fetchEventTypeFields", () => {
     );
   });
 
+  it("passes the resolved scope for payload field suggestions", async () => {
+    await fetchEventTypeFields("site-1", window, "click", undefined, {
+      resolvedScope: "session",
+    });
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-fields",
+      expect.objectContaining({ scope: "session" }),
+      { signal: undefined },
+    );
+  });
+
   it("falls back to empty fields when the request fails", async () => {
     fetchPrivateJsonMock.mockRejectedValueOnce(new Error("fail"));
 
     await expect(
       fetchEventTypeFields("site-1", window, "click"),
     ).resolves.toEqual({
-      fields: [],
+      ok: true,
+      eventName: "click",
+      data: {
+        items: [],
+        pagination: {
+          limit: 100,
+          returned: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      },
     });
   });
 });
-
 describe("fetchEventTypeContextCards", () => {
   it("skips requests until both event and card keys are available", async () => {
     const cards = await fetchEventTypeContextCards(
@@ -384,7 +504,6 @@ describe("fetchEventTypeContextCards", () => {
     ).resolves.toEqual(emptyEventTypeDetail("click").cards);
   });
 });
-
 describe("fetchEventTypeFieldValues", () => {
   it("forwards a trimmed search term", async () => {
     fetchPrivateJsonMock.mockResolvedValueOnce(
@@ -404,6 +523,30 @@ describe("fetchEventTypeFieldValues", () => {
     expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
       "/api/private/event-type-field-values",
       expect.objectContaining({ search: "pro" }),
+      { signal: undefined },
+    );
+  });
+
+  it("passes the resolved scope with event payload value filters", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce(
+      emptyEventFieldValues("payload.plan", "string"),
+    );
+
+    await fetchEventTypeFieldValues(
+      "site-1",
+      window,
+      "click",
+      "payload.plan",
+      "string",
+      dashboardFilterDocumentFromPresentation({ path: "/pricing" }),
+      { resolvedScope: "visitor" },
+    );
+
+    expect(fetchPrivateJsonMock).toHaveBeenCalledWith(
+      "/api/private/event-type-field-values",
+      expect.objectContaining({
+        scope: "visitor",
+      }),
       { signal: undefined },
     );
   });
@@ -443,7 +586,6 @@ describe("fetchEventTypeFieldValues", () => {
     expect(result).toEqual(emptyEventFieldValues("path", "number"));
   });
 });
-
 describe("fetchEventRecordDetail", () => {
   it("returns emptyEventRecordDetail for empty eventId", async () => {
     const result = await fetchEventRecordDetail("site-1", "  ");
@@ -495,7 +637,6 @@ describe("fetchEventRecordDetail", () => {
     ).rejects.toMatchObject({ name: "AbortError" });
   });
 });
-
 describe("fetchJourneyEventDetail", () => {
   it("returns an empty detail without requesting an empty event id", async () => {
     const result = await fetchJourneyEventDetail("site-1", "  ", "pageview");
@@ -529,10 +670,46 @@ describe("fetchJourneyEventDetail", () => {
     );
   });
 });
-
 describe("fetchEventsTrend", () => {
+  it("unwraps the edge response envelope before chart consumers read the trend", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        interval: "day",
+        series: [
+          {
+            key: "custom-event",
+            eventName: "custom_event",
+            label: "custom_event",
+            events: 3,
+            sessions: 2,
+            visitors: 2,
+          },
+        ],
+        data: [
+          {
+            bucket: 0,
+            timestampMs: 1000,
+            totalEvents: 3,
+            eventsBySeries: { "custom-event": 3 },
+          },
+        ],
+      },
+    } as any);
+
+    await expect(fetchEventsTrend("site-1", window)).resolves.toMatchObject({
+      ok: true,
+      interval: "day",
+      series: [{ key: "custom-event" }],
+      data: [{ totalEvents: 3 }],
+    });
+  });
+
   it("includes eventName when provided", async () => {
-    fetchPrivateJsonMock.mockResolvedValueOnce({ ok: true } as any);
+    fetchPrivateJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { interval: "day", series: [], data: [] },
+    } as any);
 
     await fetchEventsTrend("site-1", window, undefined, { eventName: "click" });
 
@@ -543,7 +720,10 @@ describe("fetchEventsTrend", () => {
   });
 
   it("omits eventName when not provided", async () => {
-    fetchPrivateJsonMock.mockResolvedValueOnce({ ok: true } as any);
+    fetchPrivateJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: { interval: "day", series: [], data: [] },
+    } as any);
 
     await fetchEventsTrend("site-1", window);
 
@@ -554,6 +734,19 @@ describe("fetchEventsTrend", () => {
     expect(params.eventName).toBeUndefined();
   });
 
+  it("rejects the legacy top-level trend shape", async () => {
+    fetchPrivateJsonMock.mockResolvedValueOnce({
+      ok: true,
+      interval: "day",
+      series: [],
+      data: [],
+    } as any);
+
+    await expect(fetchEventsTrend("site-1", window)).rejects.toThrow(
+      "events_trend_contract_violation",
+    );
+  });
+
   it("falls back on error", async () => {
     fetchPrivateJsonMock.mockRejectedValueOnce(new Error("fail"));
 
@@ -561,16 +754,26 @@ describe("fetchEventsTrend", () => {
     expect(result).toEqual(emptyEventsTrend(window.interval));
   });
 });
-
 describe("fetchEventsRecords", () => {
   it("assembles search and eventName parameters", async () => {
-    fetchPrivateJsonMock.mockResolvedValueOnce({ ok: true } as any);
+    fetchPrivateJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        items: [],
+        pagination: {
+          limit: 20,
+          returned: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      },
+    } as any);
 
     await fetchEventsRecords("site-1", window, undefined, {
       search: "test",
       eventName: "click",
       cursor: "event-cursor",
-      pageSize: 20,
+      limit: 20,
       sortBy: "occurredAt",
       sortDir: "desc",
     });
@@ -581,11 +784,23 @@ describe("fetchEventsRecords", () => {
         search: "test",
         eventName: "click",
         cursor: "event-cursor",
-        pageSize: 20,
+        limit: 20,
         sortBy: "occurredAt",
         sortDir: "desc",
       }),
     );
+  });
+
+  it("rejects a legacy collection before pagination consumers read it", async () => {
+    const event = { eventId: "event-1" };
+    fetchPrivateJsonMock.mockResolvedValueOnce({
+      ok: true,
+      data: [event],
+    } as any);
+
+    await expect(
+      fetchEventsRecords("site-1", window, undefined, { limit: 20 }),
+    ).rejects.toThrow("pagination_contract_violation");
   });
 
   it("falls back on error", async () => {
@@ -595,7 +810,6 @@ describe("fetchEventsRecords", () => {
     expect(result).toEqual(emptyEventsRecords(80));
   });
 });
-
 describe("fetchEventsSummary", () => {
   it("falls back on error", async () => {
     fetchPrivateJsonMock.mockRejectedValueOnce(new Error("fail"));
@@ -604,7 +818,6 @@ describe("fetchEventsSummary", () => {
     expect(result).toEqual(emptyEventsSummary());
   });
 });
-
 describe("fetchPerformance", () => {
   it("falls back on error", async () => {
     fetchPrivateJsonMock.mockRejectedValueOnce(new Error("fail"));

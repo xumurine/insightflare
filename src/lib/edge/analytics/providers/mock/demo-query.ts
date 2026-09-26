@@ -1,22 +1,31 @@
 import "@tanstack/react-start/server-only";
 
-import type { QueryOperation } from "@/lib/edge/analytics/contract";
-import {
-  getRequestId,
-  jsonResponseWith,
-  type ResponseContext,
-} from "@/lib/edge/analytics/providers/d1/internal/core-responses";
-import {
-  PRIVATE_CACHE_HEADERS,
-  PUBLIC_CACHE_HEADERS,
-} from "@/lib/edge/analytics/providers/d1/internal/core-types";
-import { analyticsDiagnosticHeaders } from "@/lib/edge/analytics/providers/d1/internal/diagnostics";
 import {
   demoBadRequest,
   demoErr,
   isErrorEnvelope,
-} from "@/lib/realtime/mock/envelope";
-
+} from "@/lib/demo/realtime/envelope";
+import type {
+  FilterDocument,
+  FilterScope,
+  QueryOperation,
+  QueryTime,
+} from "@/lib/edge/analytics/contract";
+import { analyticsDiagnosticHeaders } from "@/lib/edge/analytics/providers/d1/internal/diagnostics";
+import { formatFilterDsl } from "@/lib/filter-contract";
+import {
+  getRequestId,
+  jsonResponseWith,
+  type ResponseContext,
+} from "@/lib/response";
+const PRIVATE_CACHE_HEADERS = {
+  "cache-control": "private, no-store",
+  vary: "authorization, cookie",
+};
+const PUBLIC_CACHE_HEADERS = {
+  "cache-control": "public, max-age=300, s-maxage=300",
+  "access-control-allow-origin": "*",
+};
 export interface DemoQueryRuntimeInput {
   readonly request: Request;
   readonly url: URL;
@@ -25,13 +34,15 @@ export interface DemoQueryRuntimeInput {
   readonly context?: ResponseContext;
   /** Selected by the protocol adapter before the mock provider is invoked. */
   readonly operation?: QueryOperation;
+  /** Resolved by the canonical query service before demo data generation. */
+  readonly resolvedScope?: FilterScope;
+  /** Canonical query values, including the request-fixed clock and evaluation range. */
+  readonly canonicalQuery?: unknown;
 }
-
 const EMPTY_D1_DIAGNOSTICS = {
   rowsRead: 0,
   rowsReadAvailable: true,
 };
-
 function responseHeaders(
   publicQuery: boolean,
   success: boolean,
@@ -44,7 +55,6 @@ function responseHeaders(
     "content-type": "application/json; charset=utf-8",
   };
 }
-
 export function createDemoQueryResponse(
   payload: unknown,
   status: number,
@@ -62,25 +72,24 @@ export function createDemoQueryResponse(
     responseHeaders(publicQuery, status < 400),
   );
 }
-
 export interface DemoQueryPayloadResult {
   readonly payload: unknown;
   readonly status: number;
 }
-
 function successStatus(request: Request, url: URL): number {
   if (request.method !== "POST") return 200;
   const lastPathSegment = url.pathname.split("/").filter(Boolean).at(-1);
-  return lastPathSegment === "funnels" || lastPathSegment === "saved-filters"
+  return lastPathSegment === "funnels" ||
+    lastPathSegment === "goals" ||
+    lastPathSegment === "saved-filters"
     ? 201
     : 200;
 }
-
 function requiresJsonBodyValidation(request: Request, url: URL): boolean {
   if (request.method !== "POST") return false;
-  return url.pathname.split("/").filter(Boolean).at(-1) === "funnels";
+  const last = url.pathname.split("/").filter(Boolean).at(-1);
+  return last === "funnels" || last === "goals";
 }
-
 function unsupportedSavedFilterMethod(request: Request, url: URL): boolean {
   const marker = "/api/private/saved-filters";
   if (!url.pathname.startsWith(marker)) return false;
@@ -90,7 +99,6 @@ function unsupportedSavedFilterMethod(request: Request, url: URL): boolean {
     : new Set(["GET", "POST"]);
   return !allowedMethods.has(request.method);
 }
-
 async function requestBody(
   request: Request,
 ): Promise<
@@ -111,7 +119,6 @@ async function requestBody(
     return { valid: false };
   }
 }
-
 /**
  * Runs the existing demo generator at the server boundary. Keeping the
  * dispatcher import here prevents demo-only generators from entering the
@@ -146,9 +153,47 @@ export async function executeDemoQuery(
     string | number
   >;
   params.siteId = siteId;
+  if (input.operation) params.operation = input.operation;
+  if (input.resolvedScope) params.resolvedScope = input.resolvedScope;
+  if (input.canonicalQuery && typeof input.canonicalQuery === "object") {
+    const canonical = input.canonicalQuery as {
+      readonly time?: QueryTime;
+      readonly filters?: FilterDocument;
+      readonly scopePreference?: string;
+      readonly current?: {
+        readonly time?: QueryTime;
+        readonly filters?: FilterDocument;
+        readonly scopePreference?: string;
+      };
+    };
+    const side = canonical.current ?? canonical;
+    const { time, filters, scopePreference } = side;
+    if (!time)
+      return createDemoQueryResponse(
+        demoBadRequest("Canonical query is missing its time range"),
+        400,
+        publicQuery,
+        context,
+      );
+    params.from = time.range.startMs;
+    params.to = time.range.endExclusiveMs;
+    params.timeZone = time.reportingTimeZone;
+    params.nowMs = time.capturedAtMs;
+    params.__filterDsl = formatFilterDsl(filters ?? { version: 1, root: null });
+    params.scope = scopePreference ?? "auto";
+    if (time.fullHistory) params.__filterFullHistory = "true";
+    else delete params.__filterFullHistory;
+    if (time.evaluationRange) {
+      params.evaluationFromMs = time.evaluationRange.startMs;
+      params.evaluationToMs = time.evaluationRange.endExclusiveMs;
+    } else {
+      delete params.evaluationFromMs;
+      delete params.evaluationToMs;
+    }
+  }
 
   try {
-    const { handleDemoRequest } = await import("@/lib/realtime/mock");
+    const { handleDemoRequest } = await import("@/lib/demo/runtime");
     const result = handleDemoRequest({
       path: url.pathname,
       method: request.method,
@@ -165,6 +210,19 @@ export async function executeDemoQuery(
     return createDemoQueryResponse(result, status, publicQuery, context);
   } catch (error) {
     const message = error instanceof Error ? error.message : "demo_query_error";
+    if (
+      message === "filter_evaluation_range_unavailable" ||
+      message === "filter_activity_limit_exceeded" ||
+      message === "filter_sequence_match_limit_exceeded" ||
+      message === "filter_sequence_work_limit_exceeded"
+    ) {
+      return createDemoQueryResponse(
+        demoBadRequest(message),
+        400,
+        publicQuery,
+        context,
+      );
+    }
     return createDemoQueryResponse(
       demoErr("internal_error", message),
       500,
@@ -173,7 +231,6 @@ export async function executeDemoQuery(
     );
   }
 }
-
 /**
  * Exposes the fixture result as provider data while keeping the legacy
  * response-producing entry point available to focused runtime tests.

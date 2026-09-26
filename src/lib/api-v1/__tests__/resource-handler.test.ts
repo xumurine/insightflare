@@ -6,11 +6,10 @@ import {
   UpdateSharingSettingsInputSchema,
   UpdateSiteInputSchema,
   UpdateTrackingSettingsInputSchema,
-} from "@/lib/api-v1/application-registry";
-import { createResourceApplicationService } from "@/lib/api-v1/resource-application-service";
-import { handlePlannedResourceRoute } from "@/lib/api-v1/resource-handler";
-import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
-
+} from "@/lib/api-v1/contract/resources";
+import { createResourceApplicationService } from "@/lib/api-v1/resources/application-service";
+import { handlePlannedResourceRoute } from "@/lib/api-v1/resources/handler";
+import type { ApiKeyPrincipal } from "@/lib/edge/auth/api-key-auth";
 const resourceDependencies = vi.hoisted(() => ({
   createSiteWithDefaultSettings: vi.fn(),
   deleteSiteData: vi.fn(),
@@ -18,19 +17,16 @@ const resourceDependencies = vi.hoisted(() => ({
   readSiteScriptSettings: vi.fn(),
   upsertSiteScriptSettings: vi.fn(),
 }));
-
-vi.mock("@/lib/edge/admin-sites", () => ({
+vi.mock("@/lib/edge/admin/sites/handler", () => ({
   createSiteWithDefaultSettings:
     resourceDependencies.createSiteWithDefaultSettings,
   deleteSiteData: resourceDependencies.deleteSiteData,
   ensurePublicSlugAvailable: resourceDependencies.ensurePublicSlugAvailable,
 }));
-
-vi.mock("@/lib/edge/site-settings-store", () => ({
+vi.mock("@/lib/edge/sites/settings-store", () => ({
   readSiteScriptSettings: resourceDependencies.readSiteScriptSettings,
   upsertSiteScriptSettings: resourceDependencies.upsertSiteScriptSettings,
 }));
-
 const principal = (
   scopes: ApiKeyPrincipal["scopes"] = ["site:read"],
 ): ApiKeyPrincipal => ({
@@ -40,7 +36,6 @@ const principal = (
   scopes,
   siteIds: ["site-1"],
 });
-
 const siteRow = {
   id: "site-1",
   teamId: "team-1",
@@ -51,7 +46,6 @@ const siteRow = {
   createdAt: 1_700_000_000,
   updatedAt: 1_700_000_001,
 };
-
 function envWithSite() {
   const first = vi.fn().mockResolvedValue(siteRow);
   const all = vi.fn().mockResolvedValue({ results: [siteRow] });
@@ -63,7 +57,6 @@ function envWithSite() {
     all,
   };
 }
-
 const scriptSettings = {
   trackingStrength: "smart" as const,
   trackQueryParams: true,
@@ -74,7 +67,6 @@ const scriptSettings = {
   ignoreDoNotTrack: true,
   performanceSampleRate: 100,
 };
-
 const funnelRow = {
   id: "funnel-1",
   site_id: "site-1",
@@ -88,34 +80,47 @@ const funnelRow = {
   created_at: 1_700_000_000,
   updated_at: 1_700_000_001,
 };
-
 function resourceEnv(
   rows: {
     readonly site: typeof siteRow | null;
     readonly funnel: typeof funnelRow | null;
   } = { site: siteRow, funnel: funnelRow },
+  listRows: {
+    readonly sites: readonly (typeof siteRow)[];
+    readonly funnels: readonly (typeof funnelRow)[];
+  } = { sites: [siteRow], funnels: [funnelRow] },
 ) {
   const runs = vi.fn().mockResolvedValue({ success: true });
   const prepare = vi.fn((sql: string) => ({
-    bind: vi.fn(() => ({
+    bind: vi.fn((...parameters: unknown[]) => ({
       first: vi
         .fn()
         .mockResolvedValue(
           sql.includes("analysis_definitions") ? rows.funnel : rows.site,
         ),
       all: vi.fn().mockResolvedValue({
-        results: [
-          sql.includes("analysis_definitions") ? rows.funnel : rows.site,
-        ].filter(
-          (row): row is typeof siteRow | typeof funnelRow => row !== null,
-        ),
+        results: (() => {
+          const source = sql.includes("analysis_definitions")
+            ? listRows.funnels
+            : listRows.sites;
+          const cursorId = parameters.length >= 4 ? parameters.at(-2) : null;
+          const scoped = sql.includes("id IN")
+            ? source.filter((row) => parameters.includes(row.id))
+            : source;
+          return typeof cursorId === "string"
+            ? scoped.filter((row) => row.id > cursorId)
+            : scoped;
+        })(),
       }),
       run: runs,
     })),
   }));
-  return { env: { DB: { prepare } } as never, prepare, runs };
+  return {
+    env: { DB: { prepare }, MAIN_SECRET: "resource-test-secret" } as never,
+    prepare,
+    runs,
+  };
 }
-
 describe("typed API v1 resource boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -223,16 +228,98 @@ describe("typed API v1 resource boundary", () => {
   });
 
   it("keeps resource service inputs HTTP-free and filters a site list by the trusted context", async () => {
-    const db = envWithSite();
+    const db = resourceEnv();
     const service = createResourceApplicationService(db.env);
     const result = await service.execute(
       { teamId: "team-1", siteIds: ["site-2"] },
       "sites.list",
-      {},
+      { page: { limit: 100 } },
       {},
     );
-    expect(result).toEqual({ ok: true, value: [] });
-    expect(db.all).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ ok: true, value: { items: [] } });
+    expect(db.prepare).toHaveBeenCalledOnce();
+  });
+
+  it("paginates sites and funnels with stable keyset cursors", async () => {
+    const secondSite = { ...siteRow, id: "site-2", name: "Second" };
+    const secondFunnel = { ...funnelRow, id: "funnel-2", name: "Second" };
+    const db = resourceEnv(undefined, {
+      sites: [siteRow, secondSite],
+      funnels: [funnelRow, secondFunnel],
+    });
+    const service = createResourceApplicationService(db.env);
+    const context = { teamId: "team-1", siteIds: [] };
+
+    const firstSites = await service.execute(
+      context,
+      "sites.list",
+      { page: { limit: 1 } },
+      {},
+    );
+    expect(firstSites).toMatchObject({
+      ok: true,
+      value: {
+        items: [{ id: "site-1" }],
+        pagination: {
+          returned: 1,
+          hasMore: true,
+          nextCursor: expect.any(String),
+        },
+      },
+    });
+    if (!firstSites.ok) throw new Error("expected first site page");
+    const secondSites = await service.execute(
+      context,
+      "sites.list",
+      { page: { limit: 1, cursor: firstSites.value.pagination.nextCursor } },
+      {},
+    );
+    expect(secondSites).toMatchObject({
+      ok: true,
+      value: {
+        items: [{ id: "site-2" }],
+        pagination: { returned: 1, hasMore: false, nextCursor: null },
+      },
+    });
+
+    const firstFunnels = await service.execute(
+      context,
+      "funnels.list",
+      { siteId: "site-1", page: { limit: 1 } },
+      {},
+    );
+    expect(firstFunnels).toMatchObject({
+      ok: true,
+      value: {
+        items: [
+          {
+            id: "funnel-1",
+            links: {
+              self: "/api/v1/sites/site-1/funnels/funnel-1",
+              analysis: "/api/v1/sites/site-1/analytics/funnel-analysis",
+            },
+          },
+        ],
+        pagination: {
+          returned: 1,
+          hasMore: true,
+          nextCursor: expect.any(String),
+        },
+      },
+    });
+  });
+
+  it("maps an invalid resource cursor to HTTP 400", async () => {
+    const response = await handlePlannedResourceRoute({
+      request: new Request("https://app.test/api/v1/sites?limit=1&cursor=bad"),
+      env: resourceEnv(undefined, { sites: [siteRow], funnels: [] }).env,
+      principal: { ...principal(), siteIds: [] },
+      routeId: "sites.list",
+    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "invalid_cursor" },
+    });
   });
 
   it("rejects immutable settings fields and oversized mutation bodies at the HTTP boundary", async () => {
@@ -375,8 +462,8 @@ describe("typed API v1 resource boundary", () => {
           funnelId: "funnel-1",
           name: "Onboarding",
           steps: [
-            { type: "pageview", value: "/" },
-            { type: "event", value: "complete" },
+            { id: "start", filterDsl: 'page.path eq "/"' },
+            { id: "complete", filterDsl: 'event.name eq "complete"' },
           ],
         },
         {},
@@ -409,10 +496,10 @@ describe("typed API v1 resource boundary", () => {
     const context = { teamId: "team-1", siteIds: [] };
 
     await expect(
-      service.execute(context, "sites.list", {}, {}),
+      service.execute(context, "sites.list", { page: { limit: 100 } }, {}),
     ).resolves.toMatchObject({
       ok: true,
-      value: [{ id: "site-1" }],
+      value: { items: [{ id: "site-1" }] },
     });
     await expect(
       service.execute(
@@ -479,8 +566,16 @@ describe("typed API v1 resource boundary", () => {
     });
 
     await expect(
-      service.execute(context, "funnels.list", { siteId: "site-1" }, {}),
-    ).resolves.toMatchObject({ ok: true, value: [{ id: "funnel-1" }] });
+      service.execute(
+        context,
+        "funnels.list",
+        { siteId: "site-1", page: { limit: 100 } },
+        {},
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { items: [{ id: "funnel-1" }] },
+    });
     await expect(
       service.execute(
         context,
@@ -488,9 +583,12 @@ describe("typed API v1 resource boundary", () => {
         {
           siteId: "site-1",
           name: "New funnel",
+          filterDslVersion: 1,
+          progressionScope: "session",
+          conversionWindowMs: null,
           steps: [
-            { type: "pageview", value: "/" },
-            { type: "event", value: "signup" },
+            { id: "start", filterDsl: 'page.path eq "/"' },
+            { id: "signup", filterDsl: 'event.name eq "signup"' },
           ],
         },
         {},
@@ -889,8 +987,8 @@ describe("typed API v1 resource boundary", () => {
           siteId: "site-1",
           funnelId: "funnel-1",
           steps: [
-            { type: "pageview", value: "/" },
-            { type: "event", value: "signup" },
+            { id: "start", filterDsl: 'page.path eq "/"' },
+            { id: "signup", filterDsl: 'event.name eq "signup"' },
           ],
         },
         {},

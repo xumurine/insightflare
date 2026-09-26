@@ -7,6 +7,7 @@ navigation:
   sessions: Sessions
   events: Events
   funnels: Funnels
+  goals: Goals
   campaigns: Campaigns
   visitors: Visitors
   retention: Retention
@@ -34,7 +35,6 @@ common:
   entryPage: Entry Page
   exitPage: Exit Page
   referrer: Referrer
-  startedAt: Started
   event: Event
   location: Location
   browser: Browser
@@ -81,6 +81,10 @@ common:
   admin: Admin
   user: User
   search: Search
+  open: Open
+  sortBy: Sort by {label}
+  change: Change
+  new: New
   tableExport:
     action: Export
     title: Export CSV
@@ -94,7 +98,6 @@ common:
     fileNameLabel: File name
     download: Export CSV
     empty: No rows available to export.
-    allTabsUnavailable: All tabs can be exported after their data finishes loading.
   tableColumns:
     action: Columns
     title: Configure columns
@@ -124,7 +127,6 @@ ranges:
   last90d: Last 90 days
   last6m: Last 6 months
   last12m: Last 12 months
-  allTime: All Time
   custom: Custom Range
 intervals:
   minute: Minute
@@ -135,11 +137,30 @@ intervals:
 dashboardHeader:
   range: Time Range
   interval: Interval
-  filters: Filters
+  compareButton: Compare
+  compareTitle: Comparison settings
+  compareSubtitle: Choose a comparison period and filter conditions.
+  compareTimeLabel: Comparison period
+  compareCurrentPeriod: Current period
+  compareCurrentPeriodDescription: Use the currently selected time range.
+  comparePreviousPeriod: Previous period
+  comparePreviousPeriodDescription: Use the same-length range before the current period.
+  compareFilterLabel: Comparison filter
+  compareFollowCurrentFilter: Follow current filter
+  compareFollowCurrentFilterDescription: Use the filters currently applied to this page.
+  compareCustomFilter: Custom filter
+  compareCustomFilterDescription: Set separate filter conditions for the comparison.
+  compareApply: Apply comparison
+  compareCancel: Cancel
+  compareDisabled: Comparison is unavailable on this page.
+  filterButton: Filter
+  filterButtonEvent: Filter (Event)
+  filterButtonSession: Filter (Session)
+  filterButtonVisitor: Filter (Visitor)
   customRange: Select Custom Range
   customHint: Please select a start and end date.
   customPendingEnd: Start date selected. Please pick an end date.
-  customApply: Apply
+  customApply: Apply date range
   rangeGroupQuick: Quick Ranges
   rangeGroupCalendar: Calendar Periods
   rangeGroupRolling: Rolling Windows
@@ -155,10 +176,6 @@ dashboardHeader:
   nextPeriod: Next period
   customSelectionSummary: "Selected range: {from} to {to} ({days} days)"
 filters:
-  country: Country
-  device: Device
-  browser: Browser
-  all: All
   clear: Clear
 conditionDescription:
   and: and
@@ -171,33 +188,56 @@ conditionDescription:
   filterAnyOf: "{field} is one of {values}"
   filterNoneOf: "{field} is none of {values}"
   filterBetween: "{field} is between {from} and {to}"
+  filterContains: "{field} contains {value}"
   filterStartsWith: "{field} starts with {value}"
   filterEndsWith: "{field} ends with {value}"
+  filterGreaterThan: "{field} is greater than {value}"
+  filterGreaterThanOrEqual: "{field} is greater than or equal to {value}"
+  filterLessThan: "{field} is less than {value}"
+  filterLessThanOrEqual: "{field} is less than or equal to {value}"
+  filterExists: "{field} exists"
+  filterNotExists: "{field} does not exist"
+  filterIsNull: "{field} is null"
+  filterNotNull: "{field} is not null"
+  filterIsEmpty: "{field} is empty"
+  filterNotEmpty: "{field} is not empty"
 filterBuilder:
   fieldGroups:
+    advanced: Advanced
     page: Page
     session: Session
+    visitor: Visitor
     referrer: Sources & channels
     campaign: Campaign
     client: Client
     geography: Geography
     event: Event
+    acquisition: Acquisition
+    device: Device
+    geo: Geography
+    performance: Performance
+    user: User
+    time: Time
+    aggregation: Aggregation
+    calculation: Calculation
+    relation: Behavior relations
   fieldLabels:
     page.path: Page path
     page.title: Page title
-    page.hostname: Page hostname
-    page.query: Query string
-    page.hash: Hash fragment
+    page.collection: Page collection
+    page.hostname: Page domain
+    page.query: Query parameters
+    page.hash: URL hash
     session.entryPath: Entry page
     session.exitPath: Exit page
     referrer.domain: Referrer domain
     referrer.url: Referrer URL
     traffic.channel: Traffic channel
-    utm.source: Campaign source
-    utm.medium: Campaign medium
-    utm.campaign: Campaign name
-    utm.term: Campaign term
-    utm.content: Campaign content
+    utm.source: UTM source
+    utm.medium: UTM medium
+    utm.campaign: UTM campaign
+    utm.term: UTM term
+    utm.content: UTM content
     client.browser: Browser
     client.browserVersion: Browser version
     client.browserEngine: Browser engine
@@ -206,14 +246,55 @@ filterBuilder:
     client.deviceType: Device type
     client.language: Language
     client.screenSize: Screen size
-    geo.country: Country
-    geo.region: Region
+    geo.country: Country / Region
+    geo.region: Province / State / Region
     geo.city: City
     geo.continent: Continent
     geo.timeZone: Time zone
-    geo.organization: Organization
+    geo.organization: Network organization
+    event.collection: Event collection
     event.name: Event name
-    event.payload: Event payload
+    event.payload: Event properties
+    page.durationMs: Time on page
+    session.collection: Session collection
+    session.durationMs: Session duration
+    session.views: Page views
+    session.events: Event count
+    session.bounce: Bounced
+    visitor.collection: Visitor collection
+    visitor.sessions: Session count
+    visitor.views: Page views
+    visitor.events: Event count
+    performance.ttfbMs: TTFB
+    performance.fcpMs: FCP
+    performance.lcpMs: LCP
+    performance.cls: CLS
+    performance.inpMs: INP
+    user.id: User ID
+    user.name: User name
+    client.screenWidth: Screen width
+    client.screenHeight: Screen height
+    geo.isEU: EU region
+    time: Time
+    bucket(...): Time bucket
+    window(...): Relative time window
+    periods(...): Period groups
+    count(...): Count
+    first(...): First
+    last(...): Last
+    nth(...): Nth
+    countDistinct(...): Distinct count
+    sum(...): Sum
+    avg(...): Average
+    min(...): Minimum
+    max(...): Maximum
+    add(...): Add
+    sub(...): Subtract
+    mul(...): Multiply
+    div(...): Divide
+    sequence(...): Behavior sequence
+    adjacent(...): Adjacent sequence
+    without(...): Exclude intermediate behavior
   operatorLabels:
     eq: Equals
     neq: Does not equal
@@ -248,8 +329,18 @@ filterBuilder:
   valueLoading: Loading values
   valueSearchPlaceholder: Search or enter a value
   valueListPlaceholder: Search or enter a value, then press Enter
+  removeValue: Remove filter value "{value}"
   rangeStartPlaceholder: Lower bound
   rangeEndPlaceholder: Upper bound
+  unitAriaLabel: Display unit
+  units:
+    hours: Hours
+    minutes: Minutes
+    seconds: Seconds
+    milliseconds: Milliseconds
+    percent: "%"
+    perMille: "‰"
+    pixels: Pixels
   jsonPointer: JSON Pointer
   jsonPointerPlaceholder: Search or enter a JSON pointer
   match: Match
@@ -260,18 +351,84 @@ filterBuilder:
   expressionHelpTitle: Filter expression syntax
   expressionHelpDescription: Available fields and operators are generated from the active filter contract.
   expressionHelpSyntax: Syntax
-  expressionHelpLogicDescription: AND binds more tightly than OR. Use parentheses for nesting; AND(...) and OR(...) preserve an explicit one-condition group.
+  expressionHelpLogicDescription:
+    AND binds more tightly than OR. Use parentheses
+    for nesting; AND(...) and OR(...) preserve an explicit one-condition group.
   expressionHelpValues: Values
-  expressionHelpValuesDescription: Strings use JSON double quotes. Numbers and booleans are unquoted. Use [value, value] for sets and exactly two ordered values with between.
+  expressionHelpValuesDescription: Strings use JSON double quotes. Numbers and
+    booleans are unquoted. Use [value, value] for sets and exactly two ordered
+    values with between.
   expressionHelpOperators: Available operators
   expressionHelpUnaryOperators: Operators without a value
   expressionHelpFields: Available fields
   expressionHelpFieldType: Type
   expressionHelpFieldOperators: Operators
   expressionHelpOtherFields: Other
+  advancedEditor:
+    not: NOT
+    removeNot: Remove NOT
+    matchAll: Match all
+    matchAny: Match any
+    addCondition: Add condition
+    addGroup: Add group
+    wrapInNot: Wrap in NOT
+    remove: Remove
+    condition: Condition
+    literalValue: Literal value
+    compareWithExpression: Compare with expression
+    valuesAsJson: Filter values as JSON
+    scalarArrayHelp: Enter an array of JSON scalar values.
+    chooseValue: Choose a value
+    filterValue: Filter value
+    durationAmount: Duration amount
+    jsonPointer: Payload JSON pointer
+    jsonPointerPlaceholder: /property/path
+    entityMember: Entity member
+    nthIndex: Nth item index
+    nestedTooDeep: Expression is nested too deeply.
+    applyOffset: Apply offset
+    removeStep: Remove step
+    addStep: Add sequence step
+    excludedActivity: Excluded activity
+    coreRelation: Advanced filter
+    coreRelationExpression: Advanced filter expression
+    structuredEditor: Advanced filter controls
+    unavailableForObservation: Advanced filters are unavailable for Goal and Funnel steps.
+    targetKinds:
+      time: Time
+      field: Field
+      event-payload: Event payload
+      entity-root: Entity collection
+      context-root: Context
+      member: Member
+      selector: Selector
+      projection: Projection
+      reducer: Reducer
+      arithmetic: Arithmetic
+      duration: Duration
+      time-anchor: Relative time
+      bucket: Time bucket
+      window: Window
+      periods: Periods
+      sequence: Sequence
+      adjacent: Adjacent sequence
+      without: Sequence without
   savedFiltersLoading: Loading saved filters...
   noSavedFilter: Do not use a saved filter
   systemPresets: System presets
+  systemPresetCategories:
+    acquisition: Acquisition
+    device: Device
+    visitBehavior: Visit behavior
+    sessionEngagement: Session engagement
+    visitorBehavior: Visitor behavior
+    performance: Performance
+    dataQuality: Data quality
+  systemPresetScopes:
+    preserve: Keep current scope
+    event: Event scope
+    session: Session scope
+    visitor: Visitor scope
   systemPresetItems:
     directTraffic:
       name: Direct traffic
@@ -318,6 +475,75 @@ filterBuilder:
     tabletTraffic:
       name: Tablet traffic
       description: Visits from tablet devices.
+    longPageViews:
+      name: Long page views
+      description: Page views lasting at least 30 seconds.
+    shortPageViews:
+      name: Short page views
+      description: Page views lasting less than 10 seconds.
+    identifiedActivity:
+      name: Identified activity
+      description: Events associated with an identified user.
+    customEventActivity:
+      name: Custom event activity
+      description: Events with a recorded custom event name.
+    bouncedSessions:
+      name: Bounced sessions
+      description: Sessions containing a single page view.
+    nonBouncedSessions:
+      name: Non-bounced sessions
+      description: Sessions containing more than one page view.
+    longSessions:
+      name: Long sessions
+      description: Sessions lasting at least five minutes.
+    shortSessions:
+      name: Short sessions
+      description: Sessions lasting less than one minute.
+    deepSessions:
+      name: Deep sessions
+      description: Sessions with at least three page views.
+    eventfulSessions:
+      name: Eventful sessions
+      description: Sessions with at least one custom event.
+    highEngagementSessions:
+      name: Highly engaged sessions
+      description: Sessions with at least three views and two custom events.
+    returningVisitors:
+      name: Returning visitors
+      description: Visitors with at least two sessions.
+    frequentVisitors:
+      name: Frequent visitors
+      description: Visitors with at least five sessions.
+    deepVisitors:
+      name: Deep visitors
+      description: Visitors with at least five page views.
+    eventfulVisitors:
+      name: Eventful visitors
+      description: Visitors with at least two custom events.
+    identifiedVisitors:
+      name: Identified visitors
+      description: Visitors associated with an identified user.
+    organicSearchVisitors:
+      name: Organic search visitors
+      description: Visitors with an untagged search referral.
+    coreWebVitalsNeedsImprovement:
+      name: Core Web Vitals need improvement
+      description: Visits exceeding a Core Web Vitals threshold.
+    slowLcp:
+      name: Slow LCP
+      description: Visits with LCP above 2.5 seconds.
+    slowInp:
+      name: Slow INP
+      description: Visits with INP above 200 milliseconds.
+    highCls:
+      name: High CLS
+      description: Visits with CLS above 0.1.
+    slowTtfb:
+      name: Slow TTFB
+      description: Visits with TTFB above 800 milliseconds.
+    slowFcp:
+      name: Slow FCP
+      description: Visits with FCP above 1.8 seconds.
   savedFiltersPersonal: Personal filters
   savedFiltersTeam: Team filters
   savedFiltersAuthor: "Author: {name}"
@@ -331,6 +557,11 @@ filterBuilder:
   manageSavedFilter: Manage filter
   savedFilterName: Name
   savedFilterDescription: Notes
+  scopeLabel: Filter scope
+  scopeAuto: Automatically choose based on the current page
+  scopeEvent: Filter events matching these conditions
+  scopeSession: Filter sessions meeting these conditions
+  scopeVisitor: Filter visitors meeting these conditions
   savedFilterVisibility: Visibility
   savedFilterVisibilityPrivate: Only me
   savedFilterVisibilityTeam: Share with team
@@ -371,7 +602,6 @@ realtime:
   viewPage: View page
   customEvent: Custom event
   detailsTitle: Event details
-  detailsSection: Information
   browsingSection: Browsing
   geographySection: Geography
   sourceSection: Source
@@ -391,23 +621,17 @@ realtime:
   visitorHistorySubtitle: All records for this visitor in the current realtime window.
   visitorHistoryRange: Activity range
   visitorHistoryEmpty: No additional records are available for this visitor yet.
-  visitorMapSection: Visitor location
-  visitorMapSubtitle: Approximate location inferred from this event's coordinates.
   visitorMapUnavailable: This event does not include usable coordinates.
   visitorId: Visitor ID
   sessionId: Session ID
   visitId: Visit ID
-  eventType: Event type
   eventTime: Event time
   eventKind: Event kind
   eventName: Event name
-  eventId: Event ID
   siteId: Site ID
   traceId: Trace ID
-  sequence: Sequence
   receivedAt: Received at
   startedAt: Started at
-  previousVisitId: Previous visit ID
   previousVisitStartedAt: Previous visit started at
   userId: User ID
   userName: User name
@@ -421,23 +645,18 @@ realtime:
   browserVersion: Browser version
   osVersion: OS version
   userAgent: User agent
-  screenWidth: Screen width
-  screenHeight: Screen height
   postalCode: Postal code
   metroCode: Metro code
   status: Status
   visibilityState: Visibility state
-  hiddenAt: Hidden at
   endedAt: Ended at
-  finalizedAt: Finalized at
   duration: Duration
   durationSource: Duration source
   exitReason: Exit reason
   leaveAt: Left at
-  performanceVisitId: Performance visit ID
 overview:
   title: Traffic Overview
-  subtitle: Monitor high-level performance and audience behavior.
+  subtitle: View core metrics and traffic trends.
   trendTitle: Traffic Trend
   sourceTab: Source
   sourceDomainColumn: Source (Domain)
@@ -463,6 +682,9 @@ pages:
   title: Pages
   subtitle: Most visited paths in the selected range.
   pagesPerSession: Pages / Session
+  changePercentColumnLabel: "{metric} change (%)"
+  changePointsColumnLabel: "{metric} change (pp)"
+  percentagePointSuffix: pp
   untitled: Untitled Page
   empty: No page data matches the current filters.
   loadError: Failed to load page data. Please try again later.
@@ -538,6 +760,8 @@ sessions:
   empty: No sessions in this time range.
 sessionDetail:
   anonymous: Anonymous
+  userId: User ID
+  userName: User name
   back: Back to sessions
   missing: Missing sessionId.
   notFound: Session not found.
@@ -660,20 +884,41 @@ funnels:
   listSubtitle:
     Build a reusable sequence, then inspect conversion for the current
     dashboard window.
+  conversionRecords: Conversion records
+  converted: Converted
+  dropped: Dropped off
+  open: Open funnel
+  moreActions: More actions
   create: New funnel
   createTitle: Create funnel
-  createDescription: Define at least two ordered pageview or custom event steps.
+  createDescription: Define at least two ordered observation filters.
   nameLabel: Name
   namePlaceholder: Signup activation
   stepsLabel: Steps
   addStep: Add step
   removeStep: Remove step
-  stepTypePageview: Pageview
-  stepTypeEvent: Event
-  stepValueLabel: Value
-  pageviewPlaceholder: /pricing
-  eventPlaceholder: signup_started
+  progression: Progression identity
+  conversionWindow: Conversion window
+  custom: Custom
+  customWindowHours: Custom window in hours
+  stepFilter: Step filter
+  filter: Filter
+  apply: Apply
+  condition: condition
+  conditions: conditions
+  expression: Filter expression
+  filterPlaceholder: e.g. page.path eq "/pricing"
+  invalidFilter: Invalid filter
+  dragStep: Drag step
+  unnamed: (unnamed)
+  oneHour: 1 hour
+  oneDay: 24 hours
+  sevenDays: 7 days
+  thirtyDays: 30 days
   save: Create
+  saveEdit: Save changes
+  edit: Edit
+  editTitle: Edit funnel
   creating: Creating...
   cancel: Cancel
   delete: Delete
@@ -686,13 +931,16 @@ funnels:
   emptyHint: Create a funnel from pageviews and custom events to track conversion.
   loadError: Unable to load funnels.
   detailLoadError: Unable to load funnel analysis.
-  invalidFunnel: Add a name and at least two complete steps.
+  invalidFunnel: Add a name and at least two complete filters.
   created: Funnel created.
   createFailed: Unable to create funnel.
+  updatedSuccess: Funnel updated.
+  saveFailed: Unable to save funnel.
   deleted: Funnel deleted.
   deleteFailed: Unable to delete funnel.
   overallConversion: Overall conversion
   startedSessions: Started sessions
+  startedVisitors: Started visitors
   convertedSessions: Converted sessions
   convertedVisitors: Converted visitors
   largestDropOff: Largest drop-off
@@ -704,12 +952,53 @@ funnels:
   stepConversion: Step conversion rate
   dropOff: Drop-off
   updated: Updated
+goals:
+  title: Goals
+  subtitle: Measure conversion from a single reusable event or page condition.
+  listSubtitle: View conversion rate changes across this time range.
+  conversionRecords: Conversion records
+  open: Open goal
+  moreActions: More actions
+  create: New goal
+  createTitle: Create goal
+  nameLabel: Name
+  namePlaceholder: Purchase completed
+  filter: Conversion condition
+  apply: Apply
+  cancel: Cancel
+  save: Create
+  saveEdit: Save changes
+  edit: Edit
+  editTitle: Edit goal
+  creating: Creating...
+  delete: Delete
+  deleteTitle: Delete goal
+  deleteDescription:
+    This removes the saved goal definition. Historical analytics
+    data is not deleted.
+  deleteConfirm: Delete goal
+  empty: No goals yet.
+  emptyHint: Create a goal from a page condition or custom event to track conversion.
+  loadError: Unable to load goals.
+  detailLoadError: Unable to load goal analysis.
+  invalidGoal: Add a name and a complete conversion condition.
+  created: Goal created.
+  updatedSuccess: Goal updated.
+  saveFailed: Unable to save goal.
+  deleted: Goal deleted.
+  deleteFailed: Unable to delete goal.
+  sessions: Sessions
+  visitors: Visitors
+  total: Total
+  converted: Converted
+  conversion: Conversion rate
+  timeseries: Conversion rate
+  updated: Updated
 visitors:
   title: Visitors
   subtitle: Visitor-level breakdown and recency.
   search: Search visitors...
   visitor: Visitor
-  sessionId: Session ID
   anonymous: Anonymous
   referrer: Referrer
   location: Location
@@ -726,6 +1015,8 @@ visitors:
   empty: No visitors in this time range.
 visitorDetail:
   anonymous: Anonymous
+  userId: User ID
+  userName: User name
   back: Back to visitors
   missing: Missing visitorId.
   notFound: Visitor not found.
@@ -810,7 +1101,7 @@ geo:
   title: Location Analysis
   subtitle: Analyze traffic performance by location.
   mapTitle: Request Geo Distribution
-  countryLabel: Country
+  countryLabel: Country / Region
   regionLabel: Region
   cityLabel: City
   back: Back
@@ -820,7 +1111,7 @@ geo:
   visitorCoordinates: Visitor Coordinates
   ipNotice: Estimated location via IP. Coordinates are approximate and do not
     pinpoint a precise address.
-  multipleNotice: Estimated locations via IP. Multi-session journeys may span multiple cities.
+  multipleNotice: This visitor's journey across different sessions may span multiple cities.
   investigation:
     countryScopedLabel: "Country's {label}"
     capital: Capital
@@ -960,7 +1251,7 @@ performance:
   metricThresholdText: "Great: {good} or lower; needs improvement: {good} to
     {poor}; poor: above {poor}."
   scoreThresholdText: "Great: above 90; needs improvement: 50 to 90; poor: below 50."
-  countryHealthTitle: Country Health
+  countryHealthTitle: Country and Region Health
   countryHealthSubtitle: Boundary fill shows {metric} health by country or region.
   pathsTitle: Path Performance
   pathsAnalyzedLabel: Paths analyzed
@@ -980,6 +1271,11 @@ siteSettings:
     blocking:
       title: Blocking Rules
       description: Filter collection by request context before events reach storage.
+    protection:
+      title: Request Protection
+      description:
+        Control how detected bots and hosting or proxy traffic are handled
+        before requests enter analytics.
     danger:
       title: Danger Zone
       description: Destructive actions and operationally sensitive settings.
@@ -1010,6 +1306,13 @@ siteSettings:
   trackingStrengthWeakDescription: Always reduce tracking precision. This can
     count the same visitor multiple times across visits and make retention
     impossible.
+  botProtectionEnabledLabel: Block detected bots
+  botProtectionEnabledHint:
+    High-confidence bot requests are blocked when this is
+    enabled; otherwise they remain included in statistics.
+  hostingProxyBlockingEnabledLabel: Block hosting and proxy traffic
+  hostingProxyBlockingEnabledHint: Block suspected bot requests from hosting or
+    proxy networks. This is disabled by default.
   queryHashGroupTitle: Query and Hash Tracking
   queryHashGroupDescription: Control how query strings, URL hashes, and Do Not Track are handled.
   trackQueryParamsLabel: Track Query Parameters
@@ -1019,12 +1322,26 @@ siteSettings:
   blockingRulesDialogs:
     testButton: Test
     helpButton: Help
+    searchButton: Search
+    searchTitle: Search locations
+    searchDescription: Search by name or code, then select a result to add it to this card.
+    searchInputLabel: Search
+    searchInputPlaceholder: Search by name or code
+    searchCountryLabel: Country / region
+    searchRegionLabel: State / province
+    searchBack: Change country / region
+    searchLoading: Loading locations...
+    searchNoResults: No matching locations.
+    searchLoadError: Locations could not be loaded. Try again later.
+    searchClose: Close
     helpTitle: Rule Syntax
     helpDescription: Review the syntax, examples, and precedence for this field.
     syntaxTitle: Syntax
     examplesTitle: Example configuration
     actionsTitle: Rule actions
-    actionsDescription: A normal line blocks a match. Prefix a rule with - to allow it. If multiple lines match, the last matching line wins.
+    actionsDescription:
+      A normal line blocks a match. Prefix a rule with - to allow
+      it. If multiple lines match, the last matching line wins.
     actionBlock: Blocks when {example} matches
     actionAllow: Allows when {example} matches
     statusEmpty: No blocking rules are currently set for {field}.
@@ -1037,7 +1354,9 @@ siteSettings:
     errorTooManyLines: Too many rule lines.
     errorInvalidPattern: Line {line} has an invalid rule pattern.
     testTitle: Test Rules
-    testDescription: Enter a request value to evaluate the current contents of this card. Unsaved edits are included.
+    testDescription:
+      Enter a request value to evaluate the current contents of this
+      card. Unsaved edits are included.
     testRun: Run Test
     testClose: Close
     testInvalidRules: Fix invalid rules before testing.
@@ -1069,7 +1388,10 @@ siteSettings:
         - "-example.com"
         - "-*.example.com"
         - "admin.example.com"
-      exampleDescription: This configuration first blocks every domain, then allows example.com and its subdomains, and finally blocks the exact admin.example.com domain again.
+      exampleDescription:
+        This configuration first blocks every domain, then allows
+        example.com and its subdomains, and finally blocks the exact
+        admin.example.com domain again.
       testLabel: Hostname
       testPlaceholder: www.example.com
       testHint: Enter the page hostname without a scheme or path.
@@ -1090,7 +1412,9 @@ siteSettings:
         - "/admin/*"
         - "/checkout/*/confirm"
         - "-/admin/health"
-      exampleDescription: This configuration blocks paths under /admin/ and paths matching /checkout/*/confirm, while allowing /admin/health.
+      exampleDescription:
+        This configuration blocks paths under /admin/ and paths
+        matching /checkout/*/confirm, while allowing /admin/health.
       testLabel: URL path
       testPlaceholder: /admin/settings
       testHint: Enter the pathname only, including its leading slash.
@@ -1111,7 +1435,9 @@ siteSettings:
         - "utm_*"
         - "utm_source=*"
         - "-utm_source=trusted"
-      exampleDescription: This configuration blocks keys beginning with utm_ and any value of utm_source, while allowing utm_source=trusted.
+      exampleDescription:
+        This configuration blocks keys beginning with utm_ and any
+        value of utm_source, while allowing utm_source=trusted.
       testLabel: Query string
       testPlaceholder: utm_source=internal&utm_campaign=spring
       testHint: Enter a query string with or without the leading ?.
@@ -1132,7 +1458,8 @@ siteSettings:
         - "*.example.com"
         - "social.example.com"
         - "-trusted.example.com"
-      exampleDescription: This configuration blocks example.com referrers and social.example.com, while allowing trusted.example.com.
+      exampleDescription: This configuration blocks example.com referrers and
+        social.example.com, while allowing trusted.example.com.
       testLabel: Referrer
       testPlaceholder: https://social.example.com/article
       testHint: Enter a referrer URL or hostname.
@@ -1153,7 +1480,9 @@ siteSettings:
         - "*bot*"
         - "Mozilla/*"
         - "-Googlebot"
-      exampleDescription: This configuration blocks User-Agent values containing bot and values beginning with Mozilla/, while allowing Googlebot.
+      exampleDescription:
+        This configuration blocks User-Agent values containing bot
+        and values beginning with Mozilla/, while allowing Googlebot.
       testLabel: User-Agent
       testPlaceholder: Mozilla/5.0 (compatible; ExampleBot/1.0)
       testHint: Enter the complete or partial request User-Agent.
@@ -1178,7 +1507,9 @@ siteSettings:
         - "203.0.113.0/24"
         - "2001:db8::/32"
         - "-203.0.113.10..203.0.113.20"
-      exampleDescription: This configuration demonstrates individual IPv4/IPv6 addresses, CIDR ranges, and start..end ranges; the prefixed range is allowed.
+      exampleDescription: This configuration demonstrates individual IPv4/IPv6
+        addresses, CIDR ranges, and start..end ranges; the prefixed range is
+        allowed.
       testLabel: IP address
       testPlaceholder: 203.0.113.15
       testHint: Enter one IPv4 or IPv6 address to test.
@@ -1199,7 +1530,9 @@ siteSettings:
         - "64500"
         - "*"
         - "-64501"
-      exampleDescription: This configuration blocks ASN 64500 and any ASN, while the final rule allows ASN 64501.
+      exampleDescription:
+        This configuration blocks ASN 64500 and any ASN, while the
+        final rule allows ASN 64501.
       testLabel: ASN
       testPlaceholder: "64500"
       testHint: Enter the numeric autonomous system number.
@@ -1220,7 +1553,9 @@ siteSettings:
         - "DE"
         - "*"
         - "-US"
-      exampleDescription: This configuration blocks DE and any country, while the final rule allows US.
+      exampleDescription:
+        This configuration blocks DE and any country, while the
+        final rule allows US.
       testLabel: Country code
       testPlaceholder: DE
       testHint: Enter an ISO 3166-1 alpha-2 country code.
@@ -1241,7 +1576,9 @@ siteSettings:
         - "DE-BE"
         - "*"
         - "-US-CA"
-      exampleDescription: This configuration blocks DE-BE and any region, while the final rule allows US-CA.
+      exampleDescription:
+        This configuration blocks DE-BE and any region, while the
+        final rule allows US-CA.
       testLabel: Region code
       testPlaceholder: US-CA
       testHint: Enter the COUNTRY-REGION_CODE value from metadata.
@@ -1591,15 +1928,14 @@ accountLinks:
     passwordMismatch: Passwords do not match.
 empty:
   noTeams: No team available yet.
-  noSites: No site is available under this team.
-  siteNotFound: Team or site not found.
 errorPage:
   notFoundEyebrow: Page not found
   notFoundTitle: We couldn't find that page
   notFoundDescription: The address may be incorrect, or the page may have moved.
   errorEyebrow: Application error
   errorTitle: Something went wrong
-  errorDescription: InsightFlare couldn't complete this request. The diagnostic details below can help us investigate.
+  errorDescription: InsightFlare couldn't complete this request. The diagnostic
+    details below can help us investigate.
   statusLabel: Status
   reasonLabel: Reason
   requestLabel: Request path
@@ -1775,10 +2111,6 @@ teamManagement:
     scheduleInterval: Every {minutes} min
     scheduleCustom: Custom
     conditionReport: "{period} report"
-    conditionMilestone: "{metric} every {step}"
-    conditionThreshold: "{window} {metric} {operator} {value}"
-    conditionChange: "{window} {metric} change {operator} {value}"
-    conditionHealth: No data for {hours}h
     summaryWhenConditions: "When {combinator} of the following conditions match,
       send a {type} notification:"
     summaryWhenSingleCondition: "When this condition matches, send a {type} notification:"
@@ -2011,7 +2343,9 @@ teamManagement:
   members:
     title: Members
     subtitle: Invite members or remove existing members.
-    remove: Remove
+    remove: Remove member
+    removeMemberAction: Remove member "{target}"
+    removeMemberConfirm: Remove "{target}" from this team? They will lose access immediately.
     noMembers: No members found for this team.
     invitesTitle: Create invite link
     invitesSubtitle: Users join this team only after accepting an invite.
@@ -2020,17 +2354,21 @@ teamManagement:
     inviteExpiresLabel: Expires in hours
     createInvite: Create invite link
     creatingInvite: Creating...
-    copyInvite: Copy link
+    copyInvite: Copy invite link
     inviteLinksTitle: Invite links
     inviteLinksSubtitle: Review invite status and revoke active links.
     noInvites: This team has no invite links yet.
     anyEmail: Any email
     revokeInvite: Revoke invite
+    revokeInviteAction: Revoke invite for "{target}"
+    revokeInviteConfirm: Revoke the invite for "{target}"? The link will stop working.
     siteAccessLabel: Site access
     siteAccessAll: All sites
     siteAccessRestricted: Restricted
     siteAccessSelected: "Selected {count} sites"
-    siteAccessDescription: Leave this set to all sites, or choose the specific sites this member can access.
+    siteAccessDescription:
+      Leave this set to all sites, or choose the specific sites
+      this member can access.
     siteAccessAdmins: Admins can access every site in this team.
     siteAccessDialogTitle: Edit site access
     saveSiteAccess: Save access
@@ -2095,13 +2433,14 @@ managementPages:
     openCommit: Open commit
     commitCount: Commits
     source: Data source
-    loadFailed: Failed to load GitHub Releases.
+    loadFailed: Failed to load the release index.
     unknown: Unknown
   scheduledTasks:
     subtitle: View and manage system scheduled tasks.
     empty: No scheduled tasks yet.
     refresh: Refresh
     loadFailed: Failed to load scheduled tasks.
+    loadMore: Load more
     allStatuses: All statuses
     runs24h: Runs in 24h
     successRate24h: Success rate in 24h
@@ -2121,11 +2460,14 @@ managementPages:
     enabled: State
     enabledYes: Enabled
     enabledNo: Disabled
+    taskStateSaved: Task state updated.
+    taskStateSaveFailed: Failed to update task state.
     lastStatus: Last status
     runs30d: 30d runs
     successRate30d: 30d success rate
     avgDuration: Avg duration
     runHistoryTitle: Run history
+    nextRun: Next run
     runHistoryDescription: Task runs retained over the last 30 days.
     noRuns: No runs yet.
     scheduledAt: Scheduled
@@ -2166,7 +2508,13 @@ managementPages:
       notification_tick:
         name: Notification dispatch
         description: Evaluates notification rules and dispatches messages.
-        schedule: Every hour
+        schedule: Every 30 minutes
+      database_maintenance:
+        name: Database maintenance
+        description:
+          Removes expired run data and notifications, and optimizes D1 query
+          statistics.
+        schedule: Every day
 adminUsers:
   title: User Management
   subtitle: Only system admins can create and manage dashboard users.
@@ -2264,12 +2612,10 @@ adminTeams:
     action: Action
 requestObservation:
   title: Request Observability
-  subtitle: Monitor total requests, anomaly routing, and the normal collection
-    pipeline from Analytics Engine.
   tabs:
     overview: Overview
-    abnormal: Abnormal Requests
-    normal: Normal Requests
+    blocked: Blocked Requests
+    included: Included Requests
   refresh: Refresh
   loadFailed: Failed to load request observability data.
   notConfiguredTitle: Analytics Engine reader is not configured
@@ -2282,19 +2628,10 @@ requestObservation:
     request-observation data.
   openAnalyticsEngine: Open Analytics Engine
   openSettings: Open settings
-  highConfidenceBots: High-confidence Bots
   affectedSites: Affected Sites
-  uniqueCountries: Countries
+  uniqueCountries: Countries / Regions
   noData: No request data in this window.
   trendTitle: Routing Trend
-  trendDescription: Normal requests, abnormal requests, and diversion ratio by interval.
-  recentTitle: Recent Bot Requests
-  recentDescription: Detailed records written only to the bot Analytics Engine dataset.
-  recentLoadedAll: All records loaded
-  detailTitle: Bot Request Detail
-  detailSubtitle:
-    Inspect detection signals, network context, and client data for
-    this diverted request.
   client: Client
   edge: Edge
   identifiers: Identifiers
@@ -2309,9 +2646,7 @@ requestObservation:
   request: Request
   ip: IP
   userAgent: User agent
-  confidence: Confidence
-  blocked: Blocked
-  highConfidenceRequests: High-confidence Requests
+  category: Category
   emptyValue: Unknown
   kind: Type
   botScore: Bot Score
@@ -2322,7 +2657,7 @@ requestObservation:
   origin: Origin
   asOrganization: ASN Organization
   asn: ASN
-  country: Country
+  country: Country / Region
   region: Region
   city: City
   colo: Colo
@@ -2342,97 +2677,87 @@ requestObservation:
     access_asn: Access ASN
     missing_browser_provenance: Missing browser provenance
     origin_hostname_mismatch: Origin and hostname mismatch
-    blocked_pathname: Blocked pathname
+    custom_block: Custom block rule matched
+    blocked_domains: Blocked domains
+    blocked_paths: Blocked paths
+    blocked_query_parameters: Blocked query parameters
+    blocked_referrers: Blocked referrers
+    blocked_user_agents: Blocked User-Agents
+    blocked_ips: Blocked IPs
+    blocked_asns: Blocked ASNs
+    blocked_countries: Blocked countries
+    blocked_regions: Blocked regions
   requestKindLabels:
     pageview: Pageview
     custom_event: Custom Event
     request: Request
     visibility: Visibility
     leave: Leave
+    identify: Identify
   overviewLabels:
-    totalRequests: Total requests
-    normalRequests: Normal requests
-    abnormalRequests: Abnormal requests
-    abnormalRatio: Abnormal request ratio
-    p50Latency: P50 edge latency
-    p75Latency: P75 edge latency
-    p95Latency: P95 edge latency
-    p99Latency: P99 edge latency
-    avgLatency: Average edge latency
+    p50Latency: P50 Worker processing time
+    p75Latency: P75 Worker processing time
+    p99Latency: P99 Worker processing time
+    p95Latency: P95 Worker processing time
+    avgLatency: Average Worker processing time
     pageviews: Pageviews
     customEvents: Custom events
     overviewTrendTitle: Request routing trend
-    overviewTrendDescription:
-      Normal requests, abnormal requests, and abnormal ratio
-      bucketed by the top-bar interval.
-    trafficCompositionTitle: Request composition
-    trafficCompositionDescription: Normal requests, abnormal requests, and page events on the same timeline.
-    confidenceShareTitle: Request confidence breakdown
-    normalTrafficShare: Normal traffic
-    lowConfidenceTraffic: Low-confidence traffic
-    mediumConfidenceTraffic: Medium-confidence traffic
-    highConfidenceTraffic: High-confidence traffic
-    latencyTitle: Edge latency trend
-    latencyDescription: P50 / P75 / P95 / P99 edge latency recorded when normal
-      requests are written to AE.
-    abnormalSubtitle:
-      Focus on diverted abnormal requests. Maps and tables show only
-      red abnormal traffic.
-    normalSubtitle:
-      Focus on requests that entered the normal collection pipeline.
-      Maps and tables show only normal traffic.
+    trafficCompositionTitle: Business request composition
+    trafficCompositionDescription: Counts normal collection events by type over
+      time, including pageviews, leaves, visibility changes, custom events, and
+      identifications.
+    categoryShareTitle: Request category breakdown
+    latencyTitle: Worker processing time trend
+    latencyDescription:
+      P50 / P75 / P95 / P99 Worker processing time recorded when
+      normal requests are written to AE.
     requests: Requests
     windowDays: "Last {days} days"
     latencyMilliseconds: "{value} ms"
   normalDetail:
-    title: Normal Request Detail
-    subtitle:
-      Inspect pipeline, location, and latency fields recorded for a normal
-      request in AE.
     requestMethod: Request method
-    edgeLatency: Edge latency
+    edgeLatency: Worker processing time
     eventAt: Event time
     receivedAt: Received at
-    coordinates: Coordinates
     continent: Continent
-  recentNormal:
-    title: Recent Normal Requests
-    description: Detailed records written only to the normal request Analytics
-      Engine dataset.
 systemSettings:
   title: System Settings
   subtitle: Manage instance-wide configuration for this InsightFlare deployment.
   guide: Guide
-  botAnalyticsTitle: Analytics Engine
-  botAnalyticsDescription: Configure the Cloudflare credentials used to read
-    Analytics Engine data for Bot Protection and other analysis features.
-  botAnalyticsAccountIdLabel: Cloudflare Account ID
-  botAnalyticsApiTokenLabel: Cloudflare API token
-  botAnalyticsApiTokenPlaceholder: View the guide to get a Cloudflare API token
-  botAnalyticsSaved: Analytics Engine configuration saved.
-  botAnalyticsSaveFailed: Failed to save Analytics Engine configuration.
-  botAnalyticsDeleted: Analytics Engine configuration deleted.
-  botAnalyticsDeleteFailed: Failed to delete Analytics Engine configuration.
-  botAnalyticsDeleteConfirm: Delete the Analytics Engine read credentials?
+  analyticsEngineTitle: Analytics Engine
+  analyticsEngineDescription: Configure the Cloudflare credentials used to read
+    Analytics Engine data for request observation and future traffic and event
+    analytics.
+  analyticsEngineAccountIdLabel: Cloudflare Account ID
+  analyticsEngineApiTokenLabel: Cloudflare API token
+  analyticsEngineApiTokenPlaceholder: View the guide to get a Cloudflare API token
+  analyticsEngineSaved: Analytics Engine configuration saved.
+  analyticsEngineSaveFailed: Failed to save Analytics Engine configuration.
+  analyticsEngineDeleted: Analytics Engine configuration deleted.
+  analyticsEngineDeleteFailed: Failed to delete Analytics Engine configuration.
+  analyticsEngineDeleteConfirm: Delete the Analytics Engine read credentials?
     Features that depend on Analytics Engine will show configuration required
     until the credentials are restored.
-  botAnalyticsEngineDisabledTitle: Analytics Engine is not enabled
-  botAnalyticsEngineDisabledDescription: This deployment automatically disabled
-    the Analytics Engine binding because the Cloudflare account has not enabled
+  analyticsEngineDisabledTitle: Analytics Engine is not enabled
+  analyticsEngineDisabledDescription: This deployment automatically disabled the
+    Analytics Engine binding because the Cloudflare account has not enabled
     Analytics Engine. Enable Analytics Engine in Cloudflare, then redeploy
     InsightFlare to activate related analysis features.
-  botAnalyticsEngineDisabledHint: Analytics Engine settings are locked until
+  analyticsEngineDisabledHint: Analytics Engine settings are locked until
     Analytics Engine is enabled and the Worker is redeployed.
-  botAnalyticsOpenCloudflare: Open Cloudflare Analytics Engine
-  botAnalyticsGuideTitle: Get Analytics Engine credentials
-  botAnalyticsGuideDescription:
-    Analytics Engine needs Cloudflare account details
-    and an API token that can read Analytics Engine data.
-  botAnalyticsGuideSteps:
-    - Open the Cloudflare Dashboard, enter the target account, and copy the Account ID.
-    - Enable Analytics Engine under Workers & Pages; the bot and normal request datasets are created and bound automatically during deployment.
+  analyticsEngineOpenCloudflare: Open Cloudflare Analytics Engine
+  analyticsEngineGuideTitle: Get Analytics Engine credentials
+  analyticsEngineGuideDescription: Analytics Engine needs Cloudflare account
+    details and an API token that can read Analytics Engine data.
+  analyticsEngineGuideSteps:
+    - Open the Cloudflare Dashboard, enter the target account, and copy the
+      Account ID.
+    - Enable Analytics Engine under Workers & Pages; the Request, Traffic, and
+      Event datasets are created and bound automatically during deployment.
     - Go to My Profile → API Tokens and create a Custom token.
-    - Grant the token Account Analytics read access and scope it to the current account.
+    - Grant the token Account Analytics read access and scope it to the current
+      account.
     - Copy the token, then enter the Account ID and API token here.
   notificationEmailTitle: Email Notifications
   notificationEmailDescription: Configure the email service used for reports, alerts, and test messages.
@@ -2441,11 +2766,26 @@ systemSettings:
     To send system email through Resend, prepare
     a verified sender domain and an API key.
   notificationEmailGuideSteps:
-    - Open the Resend Dashboard and confirm the sender domain has passed DNS verification.
+    - Open the Resend Dashboard and confirm the sender domain has passed DNS
+      verification.
     - Create a new API key from the API Keys page.
-    - Choose the permissions required to send email, then copy the generated API key.
+    - Choose the permissions required to send email, then copy the generated API
+      key.
     - Enter the sender name, sender email, Reply-To, and Resend API key here.
     - Save the configuration, then send a test email to confirm delivery works.
+  retentionTitle: Operational data retention
+  retentionDescription:
+    Configure how long task runs, task logs, and notification
+    messages remain available. Changes affect new records only.
+  scheduledTaskLogsDaysLabel: Scheduled task logs and runs (days)
+  notificationTestDaysLabel: Test notifications (days)
+  notificationAttentionDaysLabel: Warning and critical notifications (days)
+  notificationDefaultDaysLabel: Other notifications (days)
+  retentionRangeHint: Enter an integer from 1 to 3650 days.
+  retentionSave: Save retention settings
+  retentionSaving: Saving...
+  retentionSaved: Retention settings saved.
+  retentionSaveFailed: Failed to save retention settings.
   loginTurnstileTitle: Login Turnstile Protection
   loginTurnstileDescription: When enabled, the login page runs Cloudflare
     Turnstile Invisible verification in the background and the server enforces
@@ -2478,7 +2818,8 @@ systemSettings:
     - Create a new widget and choose Invisible mode.
     - Add the current InsightFlare login domain to the allowed hostnames.
     - Copy the Site Key and Secret Key after the widget is created.
-    - Enter the Site Key and Secret Key here, run the verification test, then save the configuration.
+    - Enter the Site Key and Secret Key here, run the verification test, then
+      save the configuration.
   enabledLabel: Enable email sending
   enabledOn: Enabled
   enabledOff: Disabled
@@ -2589,6 +2930,10 @@ systemPerformance:
   doDiagnosticSiteAlarm: Alarm
   doDiagnosticSiteAlarmNone: None
   doDiagnosticSiteAlarmDue: Due
+  doDiagnosticSiteNextDue: Next due
+  doDiagnosticSiteNextDueFlush: Flush
+  doDiagnosticSiteNextDueHidden: Hidden fallback
+  doDiagnosticSiteNextDueTimeout: Visit timeout
   doDiagnosticSiteResponseMs: Response time
   doDiagnosticThresholdsHint: Thresholds — stale {stale}, timeout {timeout},
     hardAged {hardAged}, stuck flush_attempts ≥ {stuck}

@@ -20,10 +20,9 @@ import {
 } from "@/components/ui/chart";
 import { intlLocale } from "@/lib/dashboard/format";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
-import type { PerformanceMetricKey } from "@/lib/edge-client";
+import type { PerformanceMetricKey } from "@/lib/dashboard-api/client/edge";
 import type { Locale } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
-
 export interface PerformanceTrendChartPoint {
   timestampMs: number;
   p50: number | null;
@@ -32,45 +31,46 @@ export interface PerformanceTrendChartPoint {
   avg: number | null;
   samples: number;
 }
-
 export interface PerformanceTrendChartLabels {
   p50: string;
   p75: string;
   p95: string;
 }
-
 export type PerformanceTrendMetricThresholds = Readonly<
   Record<PerformanceMetricKey, { good: number; poor: number }>
 >;
-
 export interface PerformanceTrendChartProps {
   locale: Locale;
   activePanel: PerformanceMetricKey | "score";
   dataWindow: Pick<TimeWindow, "from" | "to" | "interval" | "timeZone">;
   points: ReadonlyArray<PerformanceTrendChartPoint>;
+  comparisonPoints?: ReadonlyArray<PerformanceTrendChartPoint>;
+  comparisonLabel?: string;
   labels: PerformanceTrendChartLabels;
   metricThresholds: PerformanceTrendMetricThresholds;
   formatValue: (value: number | null | undefined) => string;
   className?: string;
 }
-
 const PERFORMANCE_SERIES_COLORS = {
   p50: "var(--color-chart-1)",
   p75: "var(--color-chart-4)",
   p95: "var(--color-chart-5)",
+} as const;
+const PERFORMANCE_COMPARISON_SERIES_COLORS = {
+  p50: "var(--color-compare-chart-1)",
+  p75: "var(--color-compare-chart-4)",
+  p95: "var(--color-compare-chart-5)",
 } as const;
 const PERFORMANCE_TREND_ANIMATION_DURATION_MS = 1200;
 const PERFORMANCE_TREND_CONNECTOR_DELAY_MS =
   PERFORMANCE_TREND_ANIMATION_DURATION_MS + 120;
 const PERFORMANCE_TREND_LEGEND_CLASS =
   "pt-6 flex-wrap justify-center gap-x-4 gap-y-2 [&>div>div]:h-2.5 [&>div>div]:w-2.5 [&>div>div]:shrink-0 [&>div>div]:rounded-none";
-
 const ZONE_COLORS = {
   great: "var(--color-chart-2)",
   needsImprovement: "oklch(0.75 0.16 80)",
   poor: "var(--color-destructive)",
 } as const;
-
 function tickDateFormat(
   localeCode: string,
   interval: TimeWindow["interval"],
@@ -96,7 +96,6 @@ function tickDateFormat(
     day: "numeric",
   });
 }
-
 function tooltipDateFormat(
   localeCode: string,
   interval: TimeWindow["interval"],
@@ -125,7 +124,6 @@ function tooltipDateFormat(
     day: "numeric",
   });
 }
-
 function chartDomain(
   key: PerformanceMetricKey | "score",
   points: ReadonlyArray<PerformanceTrendChartPoint>,
@@ -148,7 +146,6 @@ function chartDomain(
     Math.max(thresholds.poor * 1.2, Math.ceil((observedMax * 1.2) / 100) * 100),
   ];
 }
-
 function zoneBackground(
   key: PerformanceMetricKey | "score",
   domainMax: number,
@@ -174,7 +171,6 @@ function zoneBackground(
   );
   return `linear-gradient(to bottom, ${poor} 0% ${poorEnd}%, ${needs} ${poorEnd}% ${needsEnd}%, ${great} ${needsEnd}% 100%)`;
 }
-
 function TrendZones({
   activePanel,
   metricThresholds,
@@ -219,7 +215,6 @@ function TrendZones({
     </>
   );
 }
-
 function hasTrendValue(
   point: PerformanceTrendChartPoint | undefined,
   seriesKey: PerformanceSeriesKey,
@@ -227,7 +222,6 @@ function hasTrendValue(
   const value = point?.[seriesKey];
   return value != null && Number.isFinite(value);
 }
-
 function isIsolatedTrendPoint(
   points: ReadonlyArray<PerformanceTrendChartPoint>,
   seriesKey: PerformanceSeriesKey,
@@ -239,7 +233,6 @@ function isIsolatedTrendPoint(
     !hasTrendValue(points[index + 1], seriesKey)
   );
 }
-
 function createIsolatedTrendDot(
   points: ReadonlyArray<PerformanceTrendChartPoint>,
   seriesKey: PerformanceSeriesKey,
@@ -276,16 +269,13 @@ function createIsolatedTrendDot(
     return <circle key={dotKey} cx={cx} cy={cy} r={3.2} fill={color} />;
   };
 }
-
 type PerformanceSeriesKey = "p50" | "p75" | "p95";
-
 interface TrendConnectorLinePoint {
   x?: number;
   y?: number;
   value?: number | null;
   payload?: PerformanceTrendChartPoint;
 }
-
 interface TrendFormattedGraphicalItem {
   item?: {
     props?: {
@@ -296,11 +286,9 @@ interface TrendFormattedGraphicalItem {
     points?: TrendConnectorLinePoint[];
   };
 }
-
 function isPerformanceSeriesKey(value: unknown): value is PerformanceSeriesKey {
   return value === "p50" || value === "p75" || value === "p95";
 }
-
 function isRenderedTrendPoint(
   point: TrendConnectorLinePoint,
   seriesKey: PerformanceSeriesKey,
@@ -313,15 +301,14 @@ function isRenderedTrendPoint(
     Number.isFinite(point.y)
   );
 }
-
 function gapConnectorPaths(
   points: TrendConnectorLinePoint[],
   seriesKey: PerformanceSeriesKey,
 ): string[] {
   const paths: string[] = [];
   let previous:
-    | (TrendConnectorLinePoint & { x: number; y: number; index: number })
-    | null = null;
+    (TrendConnectorLinePoint & { x: number; y: number; index: number }) | null =
+    null;
 
   points.forEach((point, index) => {
     if (!isRenderedTrendPoint(point, seriesKey)) return;
@@ -342,7 +329,6 @@ function gapConnectorPaths(
 
   return paths;
 }
-
 function TrendGapConnectorOverlay({
   visible,
   renderKey,
@@ -398,18 +384,37 @@ function TrendGapConnectorOverlay({
     </AutoTransition>
   );
 }
-
 export const PerformanceTrendChart = memo(function PerformanceTrendChart({
   locale,
   activePanel,
   dataWindow,
   points,
+  comparisonPoints,
+  comparisonLabel,
   labels,
   metricThresholds,
   formatValue,
   className,
 }: PerformanceTrendChartProps) {
   const chartPoints = useMemo(() => Array.from(points), [points]);
+  const comparisonChartPoints = useMemo(
+    () => (comparisonPoints ? Array.from(comparisonPoints) : []),
+    [comparisonPoints],
+  );
+  const chartData = useMemo(
+    () =>
+      chartPoints.map((point, index) => {
+        const comparisonPoint = comparisonChartPoints[index];
+        return {
+          ...point,
+          comparisonTimestampMs: comparisonPoint?.timestampMs,
+          comparisonP50: comparisonPoint?.p50 ?? null,
+          comparisonP75: comparisonPoint?.p75 ?? null,
+          comparisonP95: comparisonPoint?.p95 ?? null,
+        };
+      }),
+    [chartPoints, comparisonChartPoints],
+  );
   const localeCode = intlLocale(locale);
   const axisTickFormatter = useMemo(
     () => tickDateFormat(localeCode, dataWindow.interval, dataWindow.timeZone),
@@ -435,12 +440,35 @@ export const PerformanceTrendChart = memo(function PerformanceTrendChart({
           label: labels.p95,
           color: PERFORMANCE_SERIES_COLORS.p95,
         },
+        ...(comparisonLabel
+          ? {
+              comparisonP50: {
+                label: `${comparisonLabel} · ${labels.p50}`,
+                color: PERFORMANCE_COMPARISON_SERIES_COLORS.p50,
+              },
+              comparisonP75: {
+                label: `${comparisonLabel} · ${labels.p75}`,
+                color: PERFORMANCE_COMPARISON_SERIES_COLORS.p75,
+              },
+              comparisonP95: {
+                label: `${comparisonLabel} · ${labels.p95}`,
+                color: PERFORMANCE_COMPARISON_SERIES_COLORS.p95,
+              },
+            }
+          : {}),
       }) satisfies ChartConfig,
-    [labels.p50, labels.p75, labels.p95],
+    [comparisonLabel, labels.p50, labels.p75, labels.p95],
   );
   const [, domainMax] = useMemo(
-    () => chartDomain(activePanel, chartPoints, metricThresholds),
-    [activePanel, chartPoints, metricThresholds],
+    () =>
+      chartDomain(
+        activePanel,
+        comparisonChartPoints.length
+          ? [...chartPoints, ...comparisonChartPoints]
+          : chartPoints,
+        metricThresholds,
+      ),
+    [activePanel, chartPoints, comparisonChartPoints, metricThresholds],
   );
   const xStart = chartPoints[0]?.timestampMs ?? dataWindow.from;
   const rawXEnd =
@@ -465,8 +493,16 @@ export const PerformanceTrendChart = memo(function PerformanceTrendChart({
       totals.p50.toFixed(3),
       totals.p75.toFixed(3),
       totals.p95.toFixed(3),
+      comparisonChartPoints.length,
+      comparisonChartPoints
+        .reduce(
+          (sum, point) =>
+            sum + (point.p50 ?? 0) + (point.p75 ?? 0) + (point.p95 ?? 0),
+          0,
+        )
+        .toFixed(3),
     ].join(":");
-  }, [activePanel, chartPoints, rawXEnd, xStart]);
+  }, [activePanel, chartPoints, comparisonChartPoints, rawXEnd, xStart]);
   const [showGapConnectors, setShowGapConnectors] = useState(false);
   const isolatedDots = useMemo(
     () => ({
@@ -514,7 +550,7 @@ export const PerformanceTrendChart = memo(function PerformanceTrendChart({
       >
         <LineChart
           accessibilityLayer
-          data={chartPoints}
+          data={chartData}
           margin={{ left: 12, right: 12, top: 12, bottom: 4 }}
         >
           <TrendZones
@@ -551,7 +587,20 @@ export const PerformanceTrendChart = memo(function PerformanceTrendChart({
                   const timestamp = Number(
                     payload?.[0]?.payload?.timestampMs ?? value ?? 0,
                   );
-                  return tooltipFormatter.format(new Date(timestamp));
+                  const currentDate = tooltipFormatter.format(
+                    new Date(timestamp),
+                  );
+                  const comparisonTimestamp = Number(
+                    payload?.[0]?.payload?.comparisonTimestampMs ?? 0,
+                  );
+                  if (
+                    comparisonLabel &&
+                    Number.isFinite(comparisonTimestamp) &&
+                    comparisonTimestamp > 0
+                  ) {
+                    return `${currentDate} · ${comparisonLabel}: ${tooltipFormatter.format(new Date(comparisonTimestamp))}`;
+                  }
+                  return currentDate;
                 }}
                 formatter={(value, name) => (
                   <div className="flex w-full items-center justify-between gap-3">
@@ -610,6 +659,51 @@ export const PerformanceTrendChart = memo(function PerformanceTrendChart({
             isAnimationActive
             animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
           />
+          {comparisonLabel ? (
+            <Line
+              type="monotone"
+              dataKey="comparisonP50"
+              name={`${comparisonLabel} · ${labels.p50}`}
+              legendType="rect"
+              stroke={PERFORMANCE_COMPARISON_SERIES_COLORS.p50}
+              strokeWidth={2}
+              dot={false}
+              activeDot={false}
+              connectNulls={false}
+              isAnimationActive
+              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
+            />
+          ) : null}
+          {comparisonLabel ? (
+            <Line
+              type="monotone"
+              dataKey="comparisonP75"
+              name={`${comparisonLabel} · ${labels.p75}`}
+              legendType="rect"
+              stroke={PERFORMANCE_COMPARISON_SERIES_COLORS.p75}
+              strokeWidth={2.4}
+              dot={false}
+              activeDot={false}
+              connectNulls={false}
+              isAnimationActive
+              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
+            />
+          ) : null}
+          {comparisonLabel ? (
+            <Line
+              type="monotone"
+              dataKey="comparisonP95"
+              name={`${comparisonLabel} · ${labels.p95}`}
+              legendType="rect"
+              stroke={PERFORMANCE_COMPARISON_SERIES_COLORS.p95}
+              strokeWidth={2}
+              dot={false}
+              activeDot={false}
+              connectNulls={false}
+              isAnimationActive
+              animationDuration={PERFORMANCE_TREND_ANIMATION_DURATION_MS}
+            />
+          ) : null}
           <Customized
             component={
               <TrendGapConnectorOverlay

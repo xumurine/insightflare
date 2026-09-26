@@ -1,23 +1,28 @@
+import {
+  fetchPrivateJson,
+  fetchPrivateJsonMutate,
+} from "@/lib/dashboard/client/request";
 import type {
   SavedFilterDeleteResponse,
   SavedFilterInput,
   SavedFilterListResponse,
   SavedFilterResponse,
 } from "@/lib/saved-filters";
-
-import { fetchPrivateJson, fetchPrivateJsonMutate } from "./client-request";
-
 export function fetchSavedFilters(
   siteId: string,
-  options?: { signal?: AbortSignal },
+  options?: { limit?: number; cursor?: string | null; signal?: AbortSignal },
 ): Promise<SavedFilterListResponse> {
+  const params: Record<string, string | number> = {
+    siteId,
+    limit: options?.limit ?? 100,
+  };
+  if (options?.cursor) params.cursor = options.cursor;
   return fetchPrivateJson<SavedFilterListResponse>(
     "/api/private/saved-filters",
-    { siteId },
+    params,
     { signal: options?.signal },
   );
 }
-
 export function createSavedFilter(
   siteId: string,
   input: SavedFilterInput,
@@ -29,7 +34,6 @@ export function createSavedFilter(
     input,
   );
 }
-
 export function updateSavedFilter(
   siteId: string,
   filterId: string,
@@ -42,7 +46,6 @@ export function updateSavedFilter(
     input,
   );
 }
-
 export function deleteSavedFilter(
   siteId: string,
   filterId: string,
