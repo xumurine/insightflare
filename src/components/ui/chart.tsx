@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: "", dark: ".dark" } as const;
+// Resize the chart once after the sidebar's layout motion has settled.
+const CHART_RESIZE_DEBOUNCE_MS = 600;
 
 export type ChartConfig = {
   [k in string]: {
@@ -67,20 +69,33 @@ function ChartContainer({
 }: ChartContainerProps) {
   const uniqueId = React.useId();
   const chartId = `chart-${id || uniqueId.replace(/:/g, "")}`;
+  const chartRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!onChartResize) return;
+    const bounds = chartRef.current?.getBoundingClientRect();
+    if (bounds && bounds.width > 0 && bounds.height > 0) {
+      onChartResize(bounds.width, bounds.height);
+    }
+  }, [onChartResize]);
 
   return (
     <ChartContext.Provider value={{ config }}>
       <div
+        ref={chartRef}
         data-slot="chart"
         data-chart={chartId}
         className={cn(
-          "flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
+          "relative flex aspect-video justify-center text-xs [&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-border/50 [&_.recharts-curve.recharts-tooltip-cursor]:stroke-border [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-border [&_.recharts-radial-bar-background-sector]:fill-muted [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-muted [&_.recharts-reference-line_[stroke='#ccc']]:stroke-border [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden [&_.recharts-tooltip-wrapper]:z-[100]",
           className,
         )}
         {...props}
       >
         <ChartStyle id={chartId} config={config} />
-        <ResponsiveContainer onResize={onChartResize}>
+        <ResponsiveContainer
+          debounce={CHART_RESIZE_DEBOUNCE_MS}
+          onResize={onChartResize}
+        >
           {children}
         </ResponsiveContainer>
       </div>
@@ -127,6 +142,8 @@ ${colorConfig
   );
 });
 
+// Keep the original Recharts component identity. Recharts uses it to detect
+// the tooltip child and wire mouse interaction handlers onto the chart.
 const ChartTooltip = Tooltip;
 
 const CHART_AXIS_TICK_FONT_SIZE = 12;

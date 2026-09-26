@@ -40,6 +40,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check architecture
+        run: npm run check:architecture
+
+      - name: Check layer contract
+        run: npm run check:layer
+
       - name: Check translations
         run: npm run check:i18n
 
@@ -64,8 +70,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests with coverage
+      - name: Run core tests with coverage
         run: npm run test:coverage
+
+      - name: Run tracker tests with coverage
+        if: always()
+        run: npm run test:coverage:tracker
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.run_id }}
+          path: |
+            coverage/core
+            coverage/tracker
+          if-no-files-found: warn
 
   spec:
     name: OpenAPI & Skills Spec

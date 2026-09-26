@@ -1,16 +1,14 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 
-import { nf } from "@/lib/edge/admin-response";
+import { nf } from "@/lib/edge/admin/response";
 import {
   type AdminServiceRoute,
   executeAdminService,
-} from "@/lib/edge/admin-service";
+} from "@/lib/edge/admin/service/index";
 import type { AppEnv } from "@/lib/hono/types";
 import { requestUrl } from "@/lib/hono/utils/context";
-
 export const privateAdminRoutes = new Hono<AppEnv>();
-
 function adminServiceRoute(route: AdminServiceRoute) {
   return (c: Context<AppEnv>) =>
     executeAdminService({
@@ -20,7 +18,6 @@ function adminServiceRoute(route: AdminServiceRoute) {
       url: requestUrl(c),
     });
 }
-
 privateAdminRoutes.all("/account-links", adminServiceRoute("account-links"));
 privateAdminRoutes.all("/users", adminServiceRoute("users"));
 privateAdminRoutes.all("/profile", adminServiceRoute("profile"));
@@ -48,10 +45,13 @@ privateAdminRoutes.all(
   adminServiceRoute("login-turnstile/test"),
 );
 privateAdminRoutes.all(
-  "/bot-analytics-config",
-  adminServiceRoute("bot-analytics-config"),
+  "/analytics-engine-config",
+  adminServiceRoute("analytics-engine-config"),
 );
-privateAdminRoutes.all("/bot-analytics", adminServiceRoute("bot-analytics"));
+privateAdminRoutes.all(
+  "/request-observation",
+  adminServiceRoute("request-observation"),
+);
 privateAdminRoutes.all(
   "/notification-email-preview",
   adminServiceRoute("notification-email-preview"),
@@ -82,5 +82,4 @@ privateAdminRoutes.all(
 );
 privateAdminRoutes.all("/do-diagnostic", adminServiceRoute("do-diagnostic"));
 privateAdminRoutes.all("/e2e/flush", adminServiceRoute("e2e/flush"));
-
 privateAdminRoutes.all("/*", () => nf());

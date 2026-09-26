@@ -1,28 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  DEMO_SITE_PROFILES,
+  demoSitePublicSlug,
+} from "@/lib/demo/data/site-profiles";
+import { demoBadRequest, demoNotFound } from "@/lib/demo/realtime/envelope";
+import type * as DemoMockModule from "@/lib/demo/runtime";
+import { handleDemoRequest } from "@/lib/demo/runtime";
+import { createQueryTime } from "@/lib/edge/analytics/contract";
+import {
   executeDemoQuery,
   executeDemoQueryPayload,
 } from "@/lib/edge/analytics/providers/mock/demo-query";
-import {
-  DEMO_SITE_PROFILES,
-  demoSitePublicSlug,
-} from "@/lib/realtime/demo-site-profiles";
-import type * as DemoMockModule from "@/lib/realtime/mock";
-import { handleDemoRequest } from "@/lib/realtime/mock";
-import { demoBadRequest, demoNotFound } from "@/lib/realtime/mock/envelope";
-
-vi.mock("@/lib/realtime/mock", async (importOriginal) => {
+import { analyticsFilterRegistry, parseFilterDsl } from "@/lib/filter-contract";
+vi.mock("@/lib/demo/runtime", async (importOriginal) => {
   const actual = await importOriginal<typeof DemoMockModule>();
   return { ...actual, handleDemoRequest: vi.fn() };
 });
-
 const handleDemoRequestMock = vi.mocked(handleDemoRequest);
-
 function request(path: string, init?: RequestInit): Request {
   return new Request(`https://app.test${path}`, init);
 }
-
 describe("server demo query runtime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,6 +67,96 @@ describe("server demo query runtime", () => {
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("x-insightflare-data-source")).toBe("mock");
+  });
+
+  it("uses canonical side time, filter DSL, scope, and evaluation range", async () => {
+    handleDemoRequestMock.mockReturnValue({
+      ok: true,
+      requestId: "demo-request",
+      timestamp: "2026-08-22T00:00:00.000Z",
+      data: { views: 12 },
+    });
+    const time = {
+      ...createQueryTime(
+        Date.parse("2026-08-01T00:00:00Z"),
+        Date.parse("2026-08-08T00:00:00Z"),
+        "UTC",
+        Date.parse("2026-08-09T00:00:00Z"),
+      ),
+      evaluationRange: {
+        startMs: Date.parse("2026-07-01T00:00:00Z"),
+        endExclusiveMs: Date.parse("2026-08-01T00:00:00Z"),
+      },
+    };
+    const filters = parseFilterDsl(
+      'time gte @range.start AND time lt @range.end AND page.path eq "/docs"',
+      analyticsFilterRegistry,
+    );
+    await executeDemoQuery({
+      request: request("/api/private/comparison"),
+      url: new URL(
+        "https://app.test/api/private/comparison?evaluationFromMs=1&evaluationToMs=2",
+      ),
+      siteId: "demo-site-001",
+      operation: "comparison",
+      resolvedScope: "visitor",
+      canonicalQuery: {
+        current: { time, filters, scopePreference: "visitor" },
+      },
+    });
+
+    expect(handleDemoRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: expect.objectContaining({
+          siteId: "demo-site-001",
+          operation: "comparison",
+          resolvedScope: "visitor",
+          from: time.range.startMs,
+          to: time.range.endExclusiveMs,
+          timeZone: "UTC",
+          nowMs: time.capturedAtMs,
+          __filterDsl: expect.stringContaining("@range.start"),
+          scope: "visitor",
+          evaluationFromMs: time.evaluationRange.startMs,
+          evaluationToMs: time.evaluationRange.endExclusiveMs,
+        }),
+      }),
+    );
+  });
+
+  it("rejects missing canonical time and maps evaluation budget failures", async () => {
+    const missingTime = await executeDemoQuery({
+      request: request("/api/private/overview"),
+      url: new URL("https://app.test/api/private/overview"),
+      siteId: "demo-site-001",
+      canonicalQuery: { filters: { version: 1, root: null } },
+      context: { requestId: "missing-time" },
+    });
+    expect(missingTime.status).toBe(400);
+    expect(await missingTime.json()).toMatchObject({
+      error: { message: "Canonical query is missing its time range" },
+    });
+
+    for (const message of [
+      "filter_evaluation_range_unavailable",
+      "filter_activity_limit_exceeded",
+      "filter_sequence_match_limit_exceeded",
+      "filter_sequence_work_limit_exceeded",
+    ]) {
+      handleDemoRequestMock.mockImplementationOnce(() => {
+        throw new Error(message);
+      });
+      const response = await executeDemoQuery({
+        request: request("/api/private/overview"),
+        url: new URL("https://app.test/api/private/overview"),
+        siteId: "demo-site-001",
+        context: { requestId: message },
+      });
+      expect(response.status, message).toBe(400);
+      expect(await response.json(), message).toMatchObject({
+        error: { message },
+      });
+    }
   });
 
   it("exposes the demo response as a typed-provider payload", async () => {
@@ -317,7 +405,7 @@ describe("server demo query runtime", () => {
     vi.stubEnv("VITE_DEMO_MODE", "1");
     vi.resetModules();
     const { executePublicQuery } =
-      await import("@/lib/edge/analytics/adapters/public");
+      await import("@/lib/edge/analytics/interfaces/dashboard/public");
 
     for (const pathname of [
       "page-query",
@@ -343,7 +431,7 @@ describe("server demo query runtime", () => {
     vi.stubEnv("VITE_DEMO_MODE", "1");
     vi.resetModules();
     const { fetchPublicSite, resolvePrivateSiteForSession } =
-      await import("@/lib/edge/analytics/providers/d1/internal/core-sites");
+      await import("@/lib/edge/auth/site-access");
     const prepare = vi.fn(() => {
       throw new Error("D1 must not be used in demo site resolution");
     });
