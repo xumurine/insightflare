@@ -16,8 +16,8 @@ vi.mock("@/lib/edge/analytics/providers/mock/demo-query", () => ({
   executeDemoQueryPayload: mocks.executeDemoQueryPayload,
 }));
 
-import { executeMockQuery } from "@/lib/edge/analytics/adapters/mock";
 import { siteQueryContext } from "@/lib/edge/analytics/contract";
+import { executeMockQuery } from "@/lib/edge/analytics/interfaces/mock";
 
 describe("mock query provider", () => {
   it("forwards an authorized typed operation to the demo source", async () => {
@@ -30,7 +30,12 @@ describe("mock query provider", () => {
     };
     const response = await executeMockQuery(input);
     expect(response).toBeInstanceOf(Response);
-    expect(mocks.executeDemoQueryPayload).toHaveBeenCalledWith(input);
+    expect(mocks.executeDemoQueryPayload).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ...input,
+        resolvedScope: "event",
+      }),
+    );
     expect(mocks.createDemoQueryResponse).toHaveBeenCalledWith(
       { ok: true },
       200,

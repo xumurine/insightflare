@@ -6,9 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
-
-import { AutoTransition } from "@/components/ui/auto-transition";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
 import {
   type ChartConfig,
   ChartContainer,
@@ -16,13 +14,15 @@ import {
   ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
+} from "@insightflare/ui/chart";
+import { Skeleton } from "@insightflare/ui/skeleton";
+import { Spinner } from "@insightflare/ui/spinner";
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
 import {
   useAnimationOnChartSwitch,
   useChartVisibility,
-} from "@/hooks/use-chart-animation";
+} from "@/components/dashboard/charts/use-chart-animation";
 import {
   type ChartAxisDateFormat,
   createChartAxisDateFormatter,
@@ -54,6 +54,7 @@ export interface ShareTrendAreaChartProps {
   timeZone: string;
   interval: DashboardInterval;
   axisDateFormat?: ChartAxisDateFormat;
+  syncId?: string;
   showLegend?: boolean;
   loading?: boolean;
   className?: string;
@@ -130,6 +131,7 @@ export const ShareTrendAreaChart = memo(function ShareTrendAreaChart({
   timeZone,
   interval,
   axisDateFormat = "regular",
+  syncId,
   showLegend = true,
   loading = false,
   className,
@@ -263,6 +265,8 @@ export const ShareTrendAreaChart = memo(function ShareTrendAreaChart({
           accessibilityLayer
           data={chartData}
           margin={{ left: 12, right: 12, top: 12 }}
+          syncId={syncId}
+          syncMethod="index"
           stackOffset="expand"
         >
           <CartesianGrid vertical={false} />
@@ -286,7 +290,11 @@ export const ShareTrendAreaChart = memo(function ShareTrendAreaChart({
             width={44}
           />
           <ChartTooltip
-            cursor={false}
+            cursor={{
+              stroke: "var(--muted-foreground)",
+              strokeOpacity: 0.5,
+              strokeWidth: 1,
+            }}
             content={
               <ChartTooltipContent
                 className="min-w-[16rem]"
@@ -325,10 +333,7 @@ export const ShareTrendAreaChart = memo(function ShareTrendAreaChart({
                             }}
                           />
                         )}
-                        <span
-                          className="truncate text-muted-foreground"
-                          title={currentSeries?.label ?? seriesKey}
-                        >
+                        <span className="truncate text-muted-foreground">
                           {currentSeries?.label ?? seriesKey}
                         </span>
                       </span>
@@ -365,6 +370,8 @@ export const ShareTrendAreaChart = memo(function ShareTrendAreaChart({
               stroke={item.color}
               strokeOpacity={item.key === LOADING_SERIES_KEY ? 0.3 : 1}
               strokeWidth={1.6}
+              dot={false}
+              activeDot={false}
               stackId="share"
               isAnimationActive={isAnimationActive}
               animationDuration={

@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
+import { apiV1CoreRouteRegistry } from "@/lib/api-v1/application/core-registry";
+import { assertSavedFilterDocument } from "@/lib/api-v1/application/registry";
 import {
-  assertSavedFilterDocument,
-  GetTeamVisibleSavedFilterInputSchema,
-  ListTeamVisibleSavedFiltersInputSchema,
-  SavedFilterDefinitionSchema,
-} from "@/lib/api-v1/application-registry";
-import { apiV1CoreRouteRegistry } from "@/lib/api-v1/core-registry";
+  apiV1AnalyticsRouteById,
+  apiV1ApplicationRouteById,
+  apiV1BatchRouteById,
+  apiV1RouteById,
+  apiV1RouteVariantIds,
+  isApiV1BatchEligible,
+  isApiV1RouteVariantId,
+} from "@/lib/api-v1/application/route-lookups";
 import {
   apiV1AnalyticsBreakdownRouteRegistry,
   apiV1AnalyticsComparisonRouteRegistry,
@@ -16,6 +20,7 @@ import {
   apiV1AnalyticsEventTypesRouteRegistry,
   apiV1AnalyticsFilterValuesRouteRegistry,
   apiV1AnalyticsFunnelAnalysisRouteRegistry,
+  apiV1AnalyticsGoalRouteRegistry,
   apiV1AnalyticsJourneyDetailsRouteRegistry,
   apiV1AnalyticsJourneySearchRouteRegistry,
   apiV1AnalyticsJourneyTrajectoryRouteRegistry,
@@ -23,34 +28,37 @@ import {
   apiV1AnalyticsPerformanceRouteRegistry,
   apiV1AnalyticsRealtimeRouteRegistry,
   apiV1AnalyticsRetentionRouteRegistry,
-  apiV1AnalyticsRouteById,
   apiV1AnalyticsRouteRegistry,
   apiV1AnalyticsSchemaRouteRegistry,
   apiV1AnalyticsTeamBreakdownRouteRegistry,
   apiV1AnalyticsTeamSitesRouteRegistry,
   apiV1AnalyticsTimeseriesRouteRegistry,
-  apiV1ApplicationRouteById,
   apiV1ApplicationRouteRegistry,
   apiV1BatchEligibleRouteIds,
-  apiV1BatchRouteById,
   apiV1NonBatchRouteRegistry,
-  apiV1RouteById,
   apiV1RouteRegistry,
-  apiV1RouteVariantIds,
-  isApiV1BatchEligible,
-  isApiV1RouteVariantId,
-} from "@/lib/api-v1/route-registry";
+} from "@/lib/api-v1/application/route-registry";
+import {
+  GetTeamVisibleSavedFilterInputSchema,
+  ListTeamVisibleSavedFiltersInputSchema,
+  SavedFilterDefinitionSchema,
+} from "@/lib/api-v1/contract/resources";
 import {
   analyticsOperationById,
   analyticsOperationRegistry,
 } from "@/lib/edge/analytics/application/operation-registry";
-
 describe("target API v1 route registry", () => {
   it("keeps the batch allow-list explicit and read-only", () => {
     expect(apiV1BatchEligibleRouteIds).toContain("site.analytics.eventsSearch");
     expect(apiV1BatchEligibleRouteIds).toContain("site.saved-filters.list");
     expect(apiV1BatchEligibleRouteIds).not.toContain("batch");
     expect(apiV1BatchEligibleRouteIds).not.toContain("sites.create");
+    expect(apiV1BatchEligibleRouteIds).not.toContain(
+      "site.analytics.goalSummary",
+    );
+    expect(apiV1BatchEligibleRouteIds).not.toContain(
+      "site.analytics.goalTimeseries",
+    );
     for (const routeId of apiV1BatchEligibleRouteIds) {
       expect(apiV1RouteRegistry.some((route) => route.id === routeId)).toBe(
         true,
@@ -167,6 +175,7 @@ describe("target API v1 route registry", () => {
         path: "/api/v1/sites/{siteId}/analytics/cross-breakdowns",
         lifecycle: "exposed",
         operationId: "site.analytics.crossBreakdown",
+        declaredErrors: expect.arrayContaining(["dimension_not_supported"]),
         conditionalScopes: [
           {
             when: "filter.type=saved",
@@ -419,6 +428,7 @@ describe("target API v1 route registry", () => {
         ...apiV1AnalyticsFilterValuesRouteRegistry,
         ...apiV1AnalyticsRetentionRouteRegistry,
         ...apiV1AnalyticsFunnelAnalysisRouteRegistry,
+        ...apiV1AnalyticsGoalRouteRegistry,
         ...apiV1AnalyticsPerformanceRouteRegistry,
         ...apiV1AnalyticsEventsRouteRegistry,
         ...apiV1AnalyticsEventRecordsRouteRegistry,
@@ -450,8 +460,8 @@ describe("target API v1 route registry", () => {
   });
 
   it("includes planned saved-filter collection and item contracts", () => {
-    expect(apiV1ApplicationRouteRegistry).toHaveLength(19);
-    expect(apiV1RouteRegistry).toHaveLength(69);
+    expect(apiV1ApplicationRouteRegistry).toHaveLength(24);
+    expect(apiV1RouteRegistry).toHaveLength(76);
     expect(
       apiV1ApplicationRouteRegistry
         .filter((route) => route.id.startsWith("site.saved-filters."))
@@ -533,10 +543,30 @@ describe("target API v1 route registry", () => {
         name: "Team filter",
         description: "",
         visibility: "team",
+        scopePreference: "auto",
         filter: { version: 1, root: null },
         createdAt: "2026-08-01T00:00:00.000Z",
         updatedAt: "2026-08-01T00:00:00.000Z",
         ownerUserId: "user-1",
+      }).success,
+    ).toBe(false);
+    const validDefinition = {
+      id: "filter-1",
+      name: "Team filter",
+      description: "",
+      visibility: "team",
+      scopePreference: "event",
+      filter: { version: 1, root: null },
+      createdAt: "2026-08-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    };
+    expect(SavedFilterDefinitionSchema.safeParse(validDefinition).success).toBe(
+      true,
+    );
+    expect(
+      SavedFilterDefinitionSchema.safeParse({
+        ...validDefinition,
+        scopePreference: "account",
       }).success,
     ).toBe(false);
   });
