@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
+import { AutoResizer } from "@insightflare/ui/auto-resizer";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
+import { Badge } from "@insightflare/ui/badge";
+import { Button } from "@insightflare/ui/button";
+import { Input } from "@insightflare/ui/input";
+import { Label } from "@insightflare/ui/label";
+import { Spinner } from "@insightflare/ui/spinner";
 import { RiCheckLine, RiCloseLine, RiLoginBoxLine } from "@remixicon/react";
 import { toast } from "sonner";
 
-import { AutoResizer } from "@/components/ui/auto-resizer";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
-import { requestAdminService } from "@/lib/admin-service-client";
 import { shortDateTime } from "@/lib/dashboard/format";
+import { requestAdminService } from "@/lib/dashboard-api/client/admin-service";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { navigateWithTransition } from "@/lib/page-transition";
@@ -205,7 +205,7 @@ export function InviteLinkForm({ locale, copy }: InviteLinkFormProps) {
             </div>
             <Button asChild variant="outline" className="w-full">
               <Link href={`/${locale}/login`}>
-                <RiLoginBoxLine className="size-4" />
+                <RiLoginBoxLine data-icon="inline-start" />
                 {copy.signIn}
               </Link>
             </Button>
@@ -266,7 +266,7 @@ export function InviteLinkForm({ locale, copy }: InviteLinkFormProps) {
                 ) : requiresLogin ? (
                   <Button asChild className="w-full">
                     <Link href={loginHref}>
-                      <RiLoginBoxLine className="size-4" />
+                      <RiLoginBoxLine data-icon="inline-start" />
                       {copy.signIn}
                     </Link>
                   </Button>
@@ -330,17 +330,17 @@ export function InviteLinkForm({ locale, copy }: InviteLinkFormProps) {
               <div className="pt-4">
                 <Button type="submit" className="w-full" disabled={submitting}>
                   <AutoTransition
-                    className="inline-flex items-center gap-2"
+                    className="inline-flex items-center gap-[var(--button-content-gap)]"
                     transitionKey={submitting ? "submitting" : "idle"}
                   >
                     {submitting ? (
-                      <span className="inline-flex items-center gap-2">
-                        <Spinner className="size-4" />
+                      <span className="inline-flex items-center gap-[var(--button-content-gap)]">
+                        <Spinner data-icon="inline-start" />
                         {copy.accepting}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-2">
-                        <RiCheckLine className="size-4" />
+                      <span className="inline-flex items-center gap-[var(--button-content-gap)]">
+                        <RiCheckLine data-icon="inline-start" />
                         {copy.accept}
                       </span>
                     )}

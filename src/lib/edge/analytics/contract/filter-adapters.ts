@@ -1,10 +1,19 @@
-import { type FilterCodecOptions, parseFilterParams } from "./filter-codec";
-import { analyticsFilterRegistry } from "./filter-registry";
+import {
+  type FilterCodecOptions,
+  parseFilterParams,
+} from "@/lib/filter-contract/filter-codec";
+import { analyticsFilterRegistry } from "@/lib/filter-contract/filter-registry";
+import { analyzeFilterDocument } from "@/lib/filter-contract/filter-semantics";
 import {
   assertFilterAudience,
   type FilterDocument,
   normalizeFilterDocument,
-} from "./filters";
+} from "@/lib/filter-contract/filters";
+import {
+  attachFilterScopePreference,
+  parseFilterScopePreference,
+} from "@/lib/filter-contract/scope-preference";
+
 import type { QueryAudience } from "./types";
 
 export class FilterAdapterError extends Error {
@@ -26,7 +35,10 @@ function fromUrl(
   try {
     const document = parseFilterParams(input, analyticsFilterRegistry, options);
     assertFilterAudience(document, analyticsFilterRegistry, audience);
-    return document;
+    return attachFilterScopePreference(
+      document,
+      parseFilterScopePreference(input),
+    );
   } catch (error) {
     throw new FilterAdapterError(audience, error);
   }
@@ -35,6 +47,7 @@ function fromUrl(
 function fromJson(audience: QueryAudience, input: unknown): FilterDocument {
   try {
     const document = normalizeFilterDocument(input, analyticsFilterRegistry);
+    analyzeFilterDocument(document, analyticsFilterRegistry);
     assertFilterAudience(document, analyticsFilterRegistry, audience);
     return document;
   } catch (error) {

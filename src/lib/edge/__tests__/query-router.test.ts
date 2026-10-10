@@ -9,8 +9,7 @@ import {
   DASHBOARD_QUERY_PATHS,
   operationForQueryRoute,
   PUBLIC_QUERY_PATHS,
-} from "@/lib/edge/analytics/providers/d1/internal/router";
-
+} from "@/lib/edge/analytics/interfaces/dashboard/protocol/router";
 describe("query route policy", () => {
   it("exposes only the intended public paths", () => {
     expect(PUBLIC_QUERY_PATHS).toContain("overview");
@@ -20,6 +19,11 @@ describe("query route policy", () => {
     expect(PUBLIC_QUERY_PATHS).not.toContain("overview-source-link");
     expect(PUBLIC_QUERY_PATHS).toContain("overview-source-channel");
     expect(PUBLIC_QUERY_PATHS).toContain("referrer-channel-dimension-trend");
+    expect(PUBLIC_QUERY_PATHS).not.toContain("visitors");
+    expect(PUBLIC_QUERY_PATHS).not.toContain("sessions");
+    expect(PUBLIC_QUERY_PATHS).not.toContain("visitor-detail");
+    expect(PUBLIC_QUERY_PATHS).not.toContain("session-detail");
+    expect(PUBLIC_QUERY_PATHS).not.toContain("event-record-detail");
     expect(DASHBOARD_QUERY_PATHS).toContain("event-record-detail");
     expect(DASHBOARD_QUERY_PATHS).toContain("funnels");
     expect(DASHBOARD_QUERY_PATHS).toContain("overview-source-channel");

@@ -1,15 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  RiCloseLine,
-  RiDeleteBinLine,
-  RiSave3Line,
-  RiShieldCheckLine,
-  RiTestTubeLine,
-} from "@remixicon/react";
-import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
-
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -19,38 +9,46 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+} from "@insightflare/ui/alert-dialog";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
+import { Badge } from "@insightflare/ui/badge";
+import { Button } from "@insightflare/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@insightflare/ui/card";
+import { Input } from "@insightflare/ui/input";
+import { Label } from "@insightflare/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
-import { requestAdminService } from "@/lib/admin-service-client";
+} from "@insightflare/ui/select";
+import { Spinner } from "@insightflare/ui/spinner";
+import {
+  RiCloseLine,
+  RiDeleteBinLine,
+  RiSave3Line,
+  RiShieldCheckLine,
+  RiTestTubeLine,
+} from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+
 import type { SystemSettingsInitialData } from "@/lib/dashboard/management-data";
+import { requestAdminService } from "@/lib/dashboard-api/client/admin-service";
 import type { AppMessages } from "@/lib/i18n/messages";
 
 import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
-
 interface LoginTurnstileSettingsClientProps {
   messages: AppMessages;
   initialData?: SystemSettingsInitialData | null;
 }
-
 interface PublicLoginTurnstileAdminConfig {
   enabled: boolean;
   siteKey: string;
@@ -59,9 +57,7 @@ interface PublicLoginTurnstileAdminConfig {
   secretKeyHint: string;
   updatedAt: number;
 }
-
 type FormState = Pick<PublicLoginTurnstileAdminConfig, "enabled" | "siteKey">;
-
 interface TurnstileApi {
   render: (
     container: HTMLElement,
@@ -77,16 +73,13 @@ interface TurnstileApi {
   reset: (widgetId: string) => void;
   remove?: (widgetId: string) => void;
 }
-
 declare global {
   interface Window {
     turnstile?: TurnstileApi;
   }
 }
-
 const TURNSTILE_SCRIPT_ID = "cloudflare-turnstile-script";
 let turnstileScriptPromise: Promise<void> | null = null;
-
 function defaultConfig(): PublicLoginTurnstileAdminConfig {
   return {
     enabled: false,
@@ -97,14 +90,12 @@ function defaultConfig(): PublicLoginTurnstileAdminConfig {
     updatedAt: 0,
   };
 }
-
 function toFormState(config: PublicLoginTurnstileAdminConfig): FormState {
   return {
     enabled: config.enabled,
     siteKey: config.siteKey,
   };
 }
-
 async function fetchConfig(
   signal?: AbortSignal,
 ): Promise<PublicLoginTurnstileAdminConfig> {
@@ -113,7 +104,6 @@ async function fetchConfig(
     { signal },
   );
 }
-
 async function saveConfig(
   body: Record<string, unknown>,
 ): Promise<PublicLoginTurnstileAdminConfig> {
@@ -122,14 +112,12 @@ async function saveConfig(
     { method: "PATCH", body },
   );
 }
-
 async function deleteConfig(): Promise<PublicLoginTurnstileAdminConfig> {
   return requestAdminService<PublicLoginTurnstileAdminConfig>(
     "login-turnstile",
     { method: "DELETE" },
   );
 }
-
 async function testConfig(body: {
   siteKey: string;
   secretKey: string;
@@ -140,7 +128,6 @@ async function testConfig(body: {
     body,
   });
 }
-
 function loadTurnstileScript(): Promise<void> {
   if (window.turnstile) return Promise.resolve();
   if (turnstileScriptPromise) return turnstileScriptPromise;
@@ -172,7 +159,6 @@ function loadTurnstileScript(): Promise<void> {
 
   return turnstileScriptPromise;
 }
-
 export function LoginTurnstileSettingsClient({
   messages,
   initialData = null,
@@ -465,18 +451,21 @@ export function LoginTurnstileSettingsClient({
                 void handleTest();
               }}
             >
-              <AutoTransition className="inline-flex items-center gap-2">
+              <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
                 {testing ? (
                   <span
                     key="testing"
-                    className="inline-flex items-center gap-2"
+                    className="inline-flex items-center gap-[var(--button-content-gap)]"
                   >
-                    <Spinner className="size-4" />
+                    <Spinner data-icon="inline-start" />
                     {copy.loginTurnstileTesting}
                   </span>
                 ) : (
-                  <span key="test" className="inline-flex items-center gap-2">
-                    <RiTestTubeLine className="size-4" />
+                  <span
+                    key="test"
+                    className="inline-flex items-center gap-[var(--button-content-gap)]"
+                  >
+                    <RiTestTubeLine data-icon="inline-start" />
                     {copy.loginTurnstileTest}
                   </span>
                 )}
@@ -491,15 +480,21 @@ export function LoginTurnstileSettingsClient({
               type="submit"
               disabled={loading || saving || !hasChanges || !canSaveEnabled}
             >
-              <AutoTransition className="inline-flex items-center gap-2">
+              <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
                 {saving ? (
-                  <span key="saving" className="inline-flex items-center gap-2">
-                    <Spinner className="size-4" />
+                  <span
+                    key="saving"
+                    className="inline-flex items-center gap-[var(--button-content-gap)]"
+                  >
+                    <Spinner data-icon="inline-start" />
                     {copy.saving}
                   </span>
                 ) : (
-                  <span key="save" className="inline-flex items-center gap-2">
-                    <RiSave3Line className="size-4" />
+                  <span
+                    key="save"
+                    className="inline-flex items-center gap-[var(--button-content-gap)]"
+                  >
+                    <RiSave3Line data-icon="inline-start" />
                     {copy.save}
                   </span>
                 )}
@@ -524,21 +519,21 @@ export function LoginTurnstileSettingsClient({
                     config.updatedAt === 0
                   }
                 >
-                  <AutoTransition className="inline-flex items-center gap-2">
+                  <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
                     {deletingConfig ? (
                       <span
                         key="deleting-config"
-                        className="inline-flex items-center gap-2"
+                        className="inline-flex items-center gap-[var(--button-content-gap)]"
                       >
-                        <Spinner className="size-4" />
+                        <Spinner data-icon="inline-start" />
                         {copy.deleting}
                       </span>
                     ) : (
                       <span
                         key="delete-config"
-                        className="inline-flex items-center gap-2"
+                        className="inline-flex items-center gap-[var(--button-content-gap)]"
                       >
-                        <RiDeleteBinLine className="size-4" />
+                        <RiDeleteBinLine data-icon="inline-start" />
                         {copy.delete}
                       </span>
                     )}

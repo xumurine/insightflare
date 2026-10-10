@@ -1,37 +1,35 @@
 import { describe, expect, it, vi } from "vitest";
-
 const readers = vi.hoisted(() => ({
   queryBrowserRadarFromD1: vi.fn(),
   queryFunnelAnalysis: vi.fn(),
   queryFunnelDefinition: vi.fn(),
   queryFunnelDefinitions: vi.fn(),
+  queryFunnelDefinitionsPage: vi.fn(),
+  decodeFunnelDefinitionCursor: vi.fn(),
 }));
-
 vi.mock("@/lib/edge/analytics/providers/d1/internal/funnels", () => ({
   queryFunnelAnalysis: readers.queryFunnelAnalysis,
   queryFunnelDefinition: readers.queryFunnelDefinition,
   queryFunnelDefinitions: readers.queryFunnelDefinitions,
+  queryFunnelDefinitionsPage: readers.queryFunnelDefinitionsPage,
+  decodeFunnelDefinitionCursor: readers.decodeFunnelDefinitionCursor,
 }));
-
 vi.mock("@/lib/edge/analytics/providers/d1/internal/technology/radar", () => ({
   queryBrowserRadarFromD1: readers.queryBrowserRadarFromD1,
   queryReferrerRadarFromD1: vi.fn(),
 }));
-
-import { handleFunnelAnalysisContract } from "@/lib/edge/analytics/composition/protocol/funnels-contract-adapter";
+import { handleFunnelAnalysisContract } from "@/lib/edge/analytics/interfaces/dashboard/protocol/funnels";
 import {
   handleBrowserRadarContract,
   handleBrowserVersionBreakdownContract,
   handleClientDimensionTrendContract,
   handleCrossBreakdownContract,
   handleUtmDimensionTrendContract,
-} from "@/lib/edge/analytics/composition/protocol/technology-contract-adapter";
+} from "@/lib/edge/analytics/interfaces/dashboard/protocol/technology";
 import type { Env } from "@/lib/edge/types";
-
 const env = { DB: {} } as unknown as Env;
 const siteId = "site-contract-branches";
 const base = "from=1767225600000&to=1767312000000";
-
 describe("typed contract adapter data branches", () => {
   it("runs funnel analysis only for a complete definition", async () => {
     readers.queryFunnelDefinition.mockResolvedValue({
@@ -61,9 +59,16 @@ describe("typed contract adapter data branches", () => {
   });
 
   it("returns funnel definitions inside the standard data envelope", async () => {
-    readers.queryFunnelDefinitions.mockResolvedValueOnce([
-      { id: "funnel-1", name: "Signup" },
-    ]);
+    readers.decodeFunnelDefinitionCursor.mockResolvedValueOnce(null);
+    readers.queryFunnelDefinitionsPage.mockResolvedValueOnce({
+      items: [{ id: "funnel-1", name: "Signup" }],
+      pagination: {
+        limit: 50,
+        returned: 1,
+        hasMore: false,
+        nextCursor: null,
+      },
+    });
 
     const response = await handleFunnelAnalysisContract(
       env,
@@ -75,7 +80,8 @@ describe("typed contract adapter data branches", () => {
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       data: {
-        funnels: [{ id: "funnel-1", name: "Signup" }],
+        items: [{ id: "funnel-1", name: "Signup" }],
+        pagination: { returned: 1, hasMore: false },
       },
     });
   });

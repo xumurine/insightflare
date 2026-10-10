@@ -1,10 +1,10 @@
 import { useState } from "react";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
+import { Button } from "@insightflare/ui/button";
+import { Spinner } from "@insightflare/ui/spinner";
 import { RiLogoutBoxLine } from "@remixicon/react";
 import { toast } from "sonner";
 
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import type { Locale } from "@/lib/i18n/config";
 import { navigateWithTransition } from "@/lib/page-transition";
 import { useRouter } from "@/lib/router";
@@ -53,15 +53,21 @@ export function LogoutActionButton({
       onClick={() => void handleLogout()}
       disabled={pending}
     >
-      <AutoTransition className="inline-flex items-center gap-2">
+      <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
         {pending ? (
-          <span key="pending" className="inline-flex items-center gap-2">
-            <Spinner className="size-4" />
+          <span
+            key="pending"
+            className="inline-flex items-center gap-[var(--button-content-gap)]"
+          >
+            <Spinner data-icon="inline-start" />
             {pendingLabel}
           </span>
         ) : (
-          <span key="idle" className="inline-flex items-center gap-2">
-            <RiLogoutBoxLine className="size-4" />
+          <span
+            key="idle"
+            className="inline-flex items-center gap-[var(--button-content-gap)]"
+          >
+            <RiLogoutBoxLine data-icon="inline-start" />
             {label}
           </span>
         )}

@@ -68,6 +68,33 @@ function createTasks(fix: boolean): CheckTask[] {
 
   return [
     {
+      name: "Layer contract",
+      steps: [
+        {
+          name: "Layer contract",
+          args: ["run", "check:layer"],
+        },
+      ],
+    },
+    {
+      name: "Architecture",
+      steps: [
+        {
+          name: "Architecture",
+          args: ["run", "check:architecture"],
+        },
+      ],
+    },
+    {
+      name: "UI contracts",
+      steps: [
+        {
+          name: "UI contracts",
+          args: ["run", "check:ui-contracts"],
+        },
+      ],
+    },
+    {
       name: "Tracker SDK",
       steps: [
         {
@@ -134,8 +161,8 @@ function createTasks(fix: boolean): CheckTask[] {
     {
       name: "Build",
       dependsOn: fix
-        ? ["Spec", "Lint", "Tracker SDK"]
-        : ["Spec", "Tracker SDK"],
+        ? ["Spec", "Lint", "Tracker SDK", "Coverage"]
+        : ["Spec", "Tracker SDK", "Coverage"],
       steps: [
         {
           name: "Build",
@@ -146,17 +173,17 @@ function createTasks(fix: boolean): CheckTask[] {
   ];
 }
 
-function npmSpawnCommand(args: string[]): { command: string; args: string[] } {
+function pnpmSpawnCommand(args: string[]): { command: string; args: string[] } {
   if (process.platform !== "win32") {
     return {
-      command: "npm",
+      command: "pnpm",
       args,
     };
   }
 
   return {
     command: process.env.ComSpec || "cmd.exe",
-    args: ["/d", "/s", "/c", ["npm", ...args].join(" ")],
+    args: ["/d", "/s", "/c", ["pnpm", ...args].join(" ")],
   };
 }
 
@@ -165,7 +192,7 @@ async function runStep(
   step: CheckStep,
   verbose: boolean,
 ): Promise<StepResult> {
-  const command = npmSpawnCommand(step.args);
+  const command = pnpmSpawnCommand(step.args);
   const result = await runCapturedProcess({
     command: command.command,
     args: command.args,
