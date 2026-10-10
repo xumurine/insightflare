@@ -19,9 +19,8 @@ import {
   serializeSiteIds,
   timingSafeEqualString,
   toPublicApiKey,
-} from "@/lib/edge/api-key-store";
+} from "@/lib/edge/auth/api-key-store";
 import type { Env } from "@/lib/edge/types";
-
 function createMockEnv(
   matchFirst?: ApiKeyRow | Record<string, unknown> | null,
   matchAll?: Array<ApiKeyRow | Record<string, unknown>>,
@@ -44,7 +43,6 @@ function createMockEnv(
     } as unknown as D1Database,
   } as unknown as Env;
 }
-
 function makeRow(overrides: Partial<ApiKeyRow> = {}): ApiKeyRow {
   return {
     id: "key-1",
@@ -65,7 +63,6 @@ function makeRow(overrides: Partial<ApiKeyRow> = {}): ApiKeyRow {
     ...overrides,
   };
 }
-
 describe("api key store utilities", () => {
   beforeEach(() => {
     vi.useRealTimers();
@@ -175,7 +172,6 @@ describe("api key store utilities", () => {
     expect(apiKeyStatus({ expires_at: 1, revoked_at: 2 })).toBe("revoked");
   });
 });
-
 describe("toPublicApiKey", () => {
   it("converts a row to public representation", () => {
     const row = makeRow();
@@ -227,7 +223,6 @@ describe("toPublicApiKey", () => {
     vi.useRealTimers();
   });
 });
-
 describe("serializeScopes / serializeSiteIds", () => {
   it("serializes scopes to JSON", () => {
     const result = serializeScopes(["site:read", "analytics:read"]);
@@ -253,7 +248,6 @@ describe("serializeScopes / serializeSiteIds", () => {
     expect(JSON.parse(result)).toEqual(["site-1"]);
   });
 });
-
 describe("expiresAtFromDays", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -284,13 +278,13 @@ describe("expiresAtFromDays", () => {
     expect(result).toBe(Math.floor(Date.now() / 1000) + 180 * 86400);
   });
 });
-
 describe("DB operations", () => {
   it("listApiKeys returns mapped public keys", async () => {
     const env = createMockEnv(null, [makeRow()]);
     const result = await listApiKeys(env, "team-1");
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("key-1");
+    expect(env.DB.prepare).toHaveBeenCalledTimes(1);
   });
 
   it("getApiKeyById returns a row or null", async () => {
@@ -298,20 +292,24 @@ describe("DB operations", () => {
     const row = await getApiKeyById(envWithRow, "key-1");
     expect(row).not.toBeNull();
     expect(row!.id).toBe("key-1");
+    expect(envWithRow.DB.prepare).toHaveBeenCalledTimes(1);
 
     const envNull = createMockEnv(null);
     const missing = await getApiKeyById(envNull, "missing");
     expect(missing).toBeNull();
+    expect(envNull.DB.prepare).toHaveBeenCalledTimes(1);
   });
 
   it("getApiKeyByPrefix returns a row or null", async () => {
     const envWithRow = createMockEnv(makeRow());
     const row = await getApiKeyByPrefix(envWithRow, "prefix123");
     expect(row).not.toBeNull();
+    expect(envWithRow.DB.prepare).toHaveBeenCalledTimes(1);
 
     const envNull = createMockEnv(null);
     const missing = await getApiKeyByPrefix(envNull, "nope");
     expect(missing).toBeNull();
+    expect(envNull.DB.prepare).toHaveBeenCalledTimes(1);
   });
 
   it("createApiKeyRecord inserts and returns created key", async () => {
@@ -326,6 +324,7 @@ describe("DB operations", () => {
 
     expect(result.key.id).toBe("key-1");
     expect(result.secret).toMatch(/^ifk_live_/);
+    expect(env.DB.prepare).toHaveBeenCalledTimes(2);
   });
 
   it("createApiKeyRecord throws if row not found after insert", async () => {
@@ -338,6 +337,7 @@ describe("DB operations", () => {
         siteIds: [],
       }),
     ).rejects.toThrow("api_key_create_failed");
+    expect(env.DB.prepare).toHaveBeenCalledTimes(2);
   });
 
   it("revokeApiKeyRecord returns null if key not found", async () => {
@@ -347,6 +347,7 @@ describe("DB operations", () => {
       teamId: "team-1",
     });
     expect(result).toBeNull();
+    expect(env.DB.prepare).toHaveBeenCalledTimes(2);
   });
 
   it("revokeApiKeyRecord returns revoked key", async () => {
@@ -358,11 +359,12 @@ describe("DB operations", () => {
     });
     expect(result).not.toBeNull();
     expect(result!.status).toBe("revoked");
+    expect(env.DB.prepare).toHaveBeenCalledTimes(2);
   });
 
   it("markApiKeyUsed executes update", async () => {
     const env = createMockEnv();
     await markApiKeyUsed(env, "key-1");
-    expect(env.DB.prepare).toHaveBeenCalled();
+    expect(env.DB.prepare).toHaveBeenCalledTimes(1);
   });
 });

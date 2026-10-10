@@ -4,15 +4,13 @@ import {
   AnalysisDefinitionIntegrityError,
   AnalysisDefinitionReadCancelledError,
   createAnalysisDefinitionReader,
-} from "@/lib/api-v1/analysis-definition-reader";
-
+} from "@/lib/api-v1/analytics/analysis-definition-reader";
 function database(row: unknown) {
   const first = vi.fn().mockResolvedValue(row);
   const bind = vi.fn().mockReturnValue({ first });
   const prepare = vi.fn().mockReturnValue({ bind });
   return { db: { prepare }, prepare, bind, first };
 }
-
 describe("API v1 analysis definition reader", () => {
   it("reads only a team-visible definition scoped to the API key's team", async () => {
     const fake = database({
@@ -28,13 +26,20 @@ describe("API v1 analysis definition reader", () => {
       id: "filter-1",
     });
 
-    expect(fake.prepare).toHaveBeenCalledWith(
-      expect.stringContaining("INNER JOIN sites s ON s.id = sf.site_id"),
+    const query = fake.prepare.mock.calls[0]?.[0];
+    expect(query).toContain("INNER JOIN");
+    expect(query).toContain('"saved_filters"');
+    expect(query).toContain('"sites"');
+    expect(fake.bind.mock.calls[0]).toEqual(
+      expect.arrayContaining([
+        "site-1",
+        "filter-1",
+        "team",
+        "team-1",
+        "auto",
+        1,
+      ]),
     );
-    expect(fake.prepare).toHaveBeenCalledWith(
-      expect.stringContaining("sf.visibility = 'team'"),
-    );
-    expect(fake.bind).toHaveBeenCalledWith("site-1", "filter-1", "team-1");
     expect(result).toMatchObject({
       document: {
         version: 1,
