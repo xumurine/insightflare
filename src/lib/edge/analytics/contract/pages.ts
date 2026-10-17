@@ -1,4 +1,6 @@
-import { type FilterDocument } from "./filters";
+import { type FilterDocument } from "@/lib/filter-contract/filters";
+import type { PageResult } from "@/lib/pagination";
+
 import { EMPTY_FILTER_DOCUMENT } from "./helpers";
 import { assertDetailAllowed, assertOperationAllowed } from "./policy";
 import type {
@@ -31,11 +33,11 @@ export interface ReferrersReaderInput {
 
 export interface PagesReader {
   readPages(input: PagesReaderInput): Promise<{
-    readonly value: readonly PageItem[];
+    readonly value: PageResult<PageItem>;
     readonly source: QuerySource;
   }>;
   readReferrers(input: ReferrersReaderInput): Promise<{
-    readonly value: readonly ReferrerItem[];
+    readonly value: PageResult<ReferrerItem>;
     readonly source: QuerySource;
   }>;
 }
@@ -61,7 +63,7 @@ export async function executePages(
   });
   return {
     ok: true,
-    data: { items: result.value },
+    data: result.value,
     meta: {
       time: input.time,
       source: result.source,
@@ -89,7 +91,7 @@ export async function executeReferrers(
   });
   return {
     ok: true,
-    data: { items: result.value },
+    data: result.value,
     meta: {
       time: input.time,
       source: result.source,

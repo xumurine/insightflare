@@ -1,20 +1,53 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  prepareScopedQuery,
+  type QueryInput,
+  type QueryTime,
+  teamQueryContext,
+} from "@/lib/edge/analytics/contract";
 import type { Env } from "@/lib/edge/types";
-
-vi.mock("@/lib/edge/hourly-rollup", () => ({
-  queryOverviewAndTrendForSitesFromHourlyRollupsPartial: vi.fn(),
-  queryOverviewForSitesFromHourlyRollupsPartial: vi.fn(),
-  queryTrendForSitesFromHourlyRollupsPartial: vi.fn(),
-}));
-
+vi.mock(
+  "@/lib/edge/analytics/providers/d1/internal/hourly-rollup-queries",
+  () => ({
+    queryOverviewAndTrendForSitesFromHourlyRollupsPartial: vi.fn(),
+    queryOverviewForSitesFromHourlyRollupsPartial: vi.fn(),
+    queryTrendForSitesFromHourlyRollupsPartial: vi.fn(),
+  }),
+);
 vi.mock("@/lib/edge/analytics/providers/d1/internal/core", () => ({
-  badRequest: vi.fn(
-    (msg: string) =>
-      new Response(JSON.stringify({ ok: false, error: msg }), { status: 400 }),
-  ),
   buildTimeBuckets: vi.fn(() => ({ buckets: [1, 2, 3], interval: "day" })),
   buildVisitSourceCteForSites: vi.fn(() => "visit_source AS (...)"),
+  mapOverviewAggregate: vi.fn((row: Record<string, unknown>) => ({
+    views: Number(row.views ?? 0),
+    sessions: Number(row.sessions ?? 0),
+    visitors: Number(row.visitors ?? 0),
+    bounceRate: 0,
+    avgDurationMs: 0,
+    totalDuration: Number(row.totalDuration ?? 0),
+    durationViews: Number(row.durationViews ?? 0),
+  })),
+  percentChange: vi.fn((current: number, previous: number) =>
+    previous > 0 ? ((current - previous) / previous) * 100 : null,
+  ),
+  queryD1All: vi.fn(),
+  timeBucketCase: vi.fn(() => ({ sql: "CASE ...", bindings: [] })),
+  timeBucketTimestamp: vi.fn(
+    (_buckets: unknown, bucket: number) => bucket * 86400000,
+  ),
+  visitSourceBindingsForSites: vi.fn(() => []),
+}));
+vi.mock("@/lib/edge/analytics/interfaces/dashboard/protocol/parsers", () => ({
+  parseInterval: vi.fn(() => "day"),
+  parseWindow: vi.fn(),
+}));
+vi.mock("@/lib/edge/analytics/interfaces/dashboard/protocol/responses", () => ({
+  badRequest: vi.fn(
+    (msg: string) =>
+      new Response(JSON.stringify({ ok: false, error: msg }), {
+        status: 400,
+      }),
+  ),
   jsonResponseWith: vi.fn(
     (
       _ctx: unknown,
@@ -32,41 +65,31 @@ vi.mock("@/lib/edge/analytics/providers/d1/internal/core", () => ({
     totalDuration: Number(row.totalDuration ?? 0),
     durationViews: Number(row.durationViews ?? 0),
   })),
-  parseInterval: vi.fn(() => "day"),
-  parseWindow: vi.fn(),
-  percentChange: vi.fn((current: number, previous: number) =>
-    previous > 0 ? ((current - previous) / previous) * 100 : null,
-  ),
   PRIVATE_CACHE_HEADERS: { "cache-control": "private, max-age=60" },
-  queryD1All: vi.fn(),
+}));
+vi.mock("@/lib/edge/auth/site-access", () => ({
   resolvePrivateTeam: vi.fn(),
   resolvePrivateTeamForSession: vi.fn(),
-  timeBucketCase: vi.fn(() => ({ sql: "CASE ...", bindings: [] })),
-  timeBucketTimestamp: vi.fn(
-    (_buckets: unknown, bucket: number) => bucket * 86400000,
-  ),
-  visitSourceBindingsForSites: vi.fn(() => []),
 }));
-
-import { executePrivateTeamDashboard } from "@/lib/edge/analytics/adapters/private";
-import {
-  badRequest,
-  parseWindow,
-  queryD1All,
-  resolvePrivateTeam,
-  resolvePrivateTeamForSession,
-} from "@/lib/edge/analytics/providers/d1/internal/core";
-import {
-  listTeamSites,
-  queryTeamOverviewFromD1,
-  queryTeamTrendFromD1,
-} from "@/lib/edge/analytics/providers/d1/internal/team";
+import { executePrivateTeamDashboard } from "@/lib/edge/analytics/interfaces/dashboard/private";
+import { parseWindow } from "@/lib/edge/analytics/interfaces/dashboard/protocol/parsers";
+import { badRequest } from "@/lib/edge/analytics/interfaces/dashboard/protocol/responses";
+import { queryD1All } from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   queryOverviewAndTrendForSitesFromHourlyRollupsPartial,
   queryOverviewForSitesFromHourlyRollupsPartial,
   queryTrendForSitesFromHourlyRollupsPartial,
-} from "@/lib/edge/hourly-rollup";
-
+} from "@/lib/edge/analytics/providers/d1/internal/hourly-rollup-queries";
+import {
+  listTeamSites,
+  queryTeamDashboardForTeam,
+  queryTeamOverviewFromD1,
+  queryTeamTrendFromD1,
+} from "@/lib/edge/analytics/providers/d1/internal/team";
+import {
+  resolvePrivateTeam,
+  resolvePrivateTeamForSession,
+} from "@/lib/edge/auth/site-access";
 const queryOverviewMock = vi.mocked(
   queryOverviewForSitesFromHourlyRollupsPartial,
 );
@@ -80,7 +103,6 @@ const resolvePrivateTeamForSessionMock = vi.mocked(
   resolvePrivateTeamForSession,
 );
 const queryD1AllMock = vi.mocked(queryD1All);
-
 function makeDbMock() {
   return {
     prepare: vi.fn().mockReturnThis(),
@@ -91,17 +113,37 @@ function makeDbMock() {
     batch: vi.fn(),
   };
 }
-
 function makeEnv(results: Record<string, unknown>[] = []): Env {
   const db = makeDbMock();
   db.all.mockResolvedValue({ results });
   return { DB: db } as unknown as Env;
 }
-
 function makeWindow(startMs = 1000, endExclusiveMs = 2000) {
   return { startMs, endExclusiveMs, nowMs: 3000, timeZone: "UTC" };
 }
-
+function scopedTeamFilters(
+  scopePreference: "auto" | "session" | "visitor" = "auto",
+) {
+  const query = prepareScopedQuery("team-dashboard", {
+    context: teamQueryContext("team-1", "private-dashboard", ["s1"]),
+    time: {
+      range: { startMs: 1000, endExclusiveMs: 2000 },
+      reportingTimeZone: "UTC",
+      capturedAtMs: 3000,
+    } as unknown as QueryTime,
+    filters: {
+      version: 1,
+      root: {
+        kind: "condition",
+        target: { kind: "field", field: "page.path" },
+        operator: "eq",
+        value: "/docs",
+      },
+    },
+    scopePreference,
+  } as QueryInput & { time: QueryTime });
+  return query.filters!;
+}
 function makeUrl(path: string, params?: Record<string, string>): URL {
   const url = new URL(`https://app.test${path}`);
   if (params) {
@@ -109,7 +151,6 @@ function makeUrl(path: string, params?: Record<string, string>): URL {
   }
   return url;
 }
-
 async function handleTeamDashboard(
   request: Request,
   env: Env,
@@ -125,7 +166,6 @@ async function handleTeamDashboard(
     url,
   });
 }
-
 async function handleTeamDashboardForSession(
   request: Request,
   env: Env,
@@ -142,7 +182,6 @@ async function handleTeamDashboardForSession(
     url,
   });
 }
-
 function handleTeamDashboardForTeam(
   env: Env,
   url: URL,
@@ -159,7 +198,6 @@ function handleTeamDashboardForTeam(
     url,
   });
 }
-
 describe("queryTeamOverviewFromD1", () => {
   it("returns empty Map for empty siteIds", async () => {
     const env = makeEnv();
@@ -185,15 +223,107 @@ describe("queryTeamOverviewFromD1", () => {
     expect(result.get("s1")?.sessions).toBe(50);
   });
 });
-
 describe("queryTeamTrendFromD1", () => {
   it("returns empty array for empty siteIds", async () => {
     const env = makeEnv();
     const result = await queryTeamTrendFromD1(env, [], makeWindow(), "day");
     expect(result).toEqual([]);
   });
-});
 
+  it("connects the unfiltered source CTE directly to SELECT", async () => {
+    queryD1AllMock.mockResolvedValueOnce([]);
+
+    await queryTeamTrendFromD1(makeEnv(), ["s1"], makeWindow(), "day");
+
+    const sql = String(queryD1AllMock.mock.calls.at(-1)?.[1]);
+    expect(sql).toContain("visit_source AS (...)\nSELECT");
+    expect(sql).not.toMatch(/\),\s*SELECT/);
+  });
+});
+describe("filtered team dashboard aggregates", () => {
+  beforeEach(() => {
+    queryOverviewMock.mockReset();
+    queryTrendMock.mockReset();
+    queryOverviewAndTrendMock.mockReset();
+    queryD1AllMock.mockReset();
+    queryD1AllMock.mockResolvedValue([]);
+  });
+
+  it("uses the scoped dataset for filtered current and previous data", async () => {
+    const filters = scopedTeamFilters();
+    const env = makeEnv();
+    const sites = [
+      {
+        id: "s1",
+        teamId: "t1",
+        name: "Site 1",
+        domain: "example.com",
+        publicEnabled: 1,
+        publicSlug: "s1",
+        createdAt: 1000,
+        updatedAt: 2000,
+      },
+    ];
+
+    const result = await queryTeamDashboardForTeam(
+      env,
+      "team-1",
+      makeWindow(),
+      "day",
+      ["s1"],
+      undefined,
+      sites,
+      filters,
+    );
+
+    expect(result.source).toBe("raw");
+    expect(queryOverviewAndTrendMock).not.toHaveBeenCalled();
+    expect(queryOverviewMock).not.toHaveBeenCalled();
+    expect(queryTrendMock).not.toHaveBeenCalled();
+    expect(queryD1AllMock).toHaveBeenCalledTimes(3);
+    expect(
+      queryD1AllMock.mock.calls.every(([, sql]) =>
+        String(sql).includes("FROM scope_final_visits"),
+      ),
+    ).toBe(true);
+  });
+
+  it.each(["session", "visitor"] as const)(
+    "uses entity-scoped relations for %s filters",
+    async (scopePreference) => {
+      const filters = scopedTeamFilters(scopePreference);
+      const result = await queryTeamDashboardForTeam(
+        makeEnv(),
+        "team-1",
+        makeWindow(),
+        "day",
+        ["s1"],
+        undefined,
+        [
+          {
+            id: "s1",
+            teamId: "t1",
+            name: "Site 1",
+            domain: "example.com",
+            publicEnabled: 1,
+            publicSlug: "s1",
+            createdAt: 1000,
+            updatedAt: 2000,
+          },
+        ],
+        filters,
+      );
+
+      expect(result.source).toBe("raw");
+      expect(queryD1AllMock).toHaveBeenCalledTimes(3);
+      expect(
+        queryD1AllMock.mock.calls.every(([, sql]) =>
+          String(sql).includes("scope_membership_"),
+        ),
+      ).toBe(true);
+    },
+  );
+});
 describe("listTeamSites", () => {
   it("returns sites for a team", async () => {
     const db = makeDbMock();
@@ -218,7 +348,6 @@ describe("listTeamSites", () => {
     expect(sites[0].id).toBe("s1");
   });
 });
-
 describe("handleTeamDashboard", () => {
   beforeEach(() => {
     parseWindowMock.mockReset();
@@ -291,7 +420,6 @@ describe("handleTeamDashboard", () => {
     expect(resolvePrivateTeamMock).not.toHaveBeenCalled();
   });
 });
-
 describe("handleTeamDashboardForTeam", () => {
   beforeEach(() => {
     queryOverviewMock.mockReset();

@@ -1,13 +1,17 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useRouterState,
+} from "@tanstack/react-router";
 
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { DashboardShell } from "@/components/dashboard/shell/dashboard-shell";
 import {
   loadDashboardInitialWindow,
   loadDashboardRoot,
 } from "@/lib/dashboard/route-data";
+import type { DashboardTeamContext } from "@/lib/dashboard/server";
 import { buildManagementSections } from "@/lib/dashboard/team-sections";
 import { usePathname } from "@/lib/router";
-
 export const Route = createFileRoute("/$locale/app")({
   beforeLoad: async () => {
     const [dashboardRoot, initialDashboardWindow] = await Promise.all([
@@ -18,25 +22,33 @@ export const Route = createFileRoute("/$locale/app")({
   },
   component: AppLayout,
 });
-
 function AppLayout() {
   const { locale, messages, dashboardRoot, initialDashboardWindow } =
     Route.useRouteContext();
   const pathname = usePathname();
+  const teamRouteContext = useRouterState({
+    select: ({ matches }) =>
+      matches.find((match) => match.routeId === "/$locale/app/$teamSlug")
+        ?.context as { teamContext?: DashboardTeamContext } | undefined,
+  });
+  const teamContext = teamRouteContext?.teamContext;
 
-  if (!dashboardRoot) return <Outlet />;
+  const shellContext = dashboardRoot ?? teamContext;
+  if (!shellContext) return <Outlet />;
   return (
     <DashboardShell
       locale={locale}
       pathname={pathname}
       messages={messages}
-      user={dashboardRoot.user}
-      teams={dashboardRoot.teams}
-      teamGroups={dashboardRoot.teamGroups}
-      unreadAttentionCount={dashboardRoot.unreadAttentionCount}
+      user={shellContext.user}
+      teams={shellContext.teams}
+      teamGroups={shellContext.teamGroups}
+      activeTeamSlug={dashboardRoot ? undefined : teamContext?.activeTeam.slug}
+      sites={dashboardRoot ? undefined : teamContext?.sites}
+      unreadAttentionCount={shellContext.unreadAttentionCount}
       initialQueryWindow={initialDashboardWindow}
       managementSections={
-        dashboardRoot.user.systemRole === "admin"
+        shellContext.user.systemRole === "admin"
           ? buildManagementSections(locale, messages)
           : undefined
       }
