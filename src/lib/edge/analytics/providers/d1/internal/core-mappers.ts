@@ -1,5 +1,4 @@
 import { parseGeoFilterValue } from "./core-filters";
-import { customEventJsonTypeLabel } from "./core-parsers";
 import { avgDuration, bounceRate } from "./core-time";
 import {
   type DashboardFilterOption,
@@ -18,7 +17,7 @@ import {
   type TrendAggregateRow,
   type VisitorRow,
 } from "./core-types";
-
+import { customEventJsonTypeLabel } from "./core-values";
 export function mapOverviewAggregate(
   row: OverviewAggregateRow,
   options?: { approximateVisitors?: boolean },
@@ -34,7 +33,6 @@ export function mapOverviewAggregate(
     approximateVisitors: Boolean(options?.approximateVisitors),
   };
 }
-
 export function emptyOverviewAggregateRow(): OverviewAggregateRow {
   return {
     views: 0,
@@ -45,7 +43,6 @@ export function emptyOverviewAggregateRow(): OverviewAggregateRow {
     durationViews: 0,
   };
 }
-
 export function mapPageCardMetrics(row: OverviewAggregateRow) {
   const overview = mapOverviewAggregate(row);
   return {
@@ -58,7 +55,6 @@ export function mapPageCardMetrics(row: OverviewAggregateRow) {
     avgDurationMs: overview.avgDurationMs,
   };
 }
-
 export function mapTrendRows(rows: TrendAggregateRow[], source: "detail") {
   return rows.map((row) => ({
     bucket: row.bucket,
@@ -72,7 +68,6 @@ export function mapTrendRows(rows: TrendAggregateRow[], source: "detail") {
     source,
   }));
 }
-
 export function mapPages(rows: PageRow[]) {
   return rows.map((row) => ({
     pathname: row.pathname,
@@ -82,29 +77,25 @@ export function mapPages(rows: PageRow[]) {
     sessions: row.sessions,
   }));
 }
-
-export function mapTabs(rows: DimensionRow[]) {
-  return rows.map((row) => ({
+export function mapTabs(rows: readonly DimensionRow[] | null | undefined) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
     label: row.value,
     views: row.views,
     sessions: row.sessions,
     visitors: row.visitors,
   }));
 }
-
 export function mapDimensionRows(rows: DimensionRow[]) {
   return rows.map((row) => ({
-    value: row.value,
-    // Keep label for existing public consumers while exposing the typed value.
+    key: row.value,
     label: row.value,
     views: row.views,
     sessions: row.sessions,
     visitors: row.visitors,
   }));
 }
-
-export function mapGeoTabs(rows: GeoTabRow[]) {
-  return rows.map((row) => ({
+export function mapGeoTabs(rows: readonly GeoTabRow[] | null | undefined) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
     value: row.value,
     label: row.label,
     views: row.views,
@@ -112,7 +103,6 @@ export function mapGeoTabs(rows: GeoTabRow[]) {
     visitors: row.visitors,
   }));
 }
-
 export function mapEventAnalyticsContextCards(
   cards: EventAnalyticsContextCards,
 ) {
@@ -146,20 +136,18 @@ export function mapEventAnalyticsContextCards(
     },
   };
 }
-
 export function mapEventSummaryCards(cards: EventSummaryCards) {
   return {
     event: {
-      name: mapTabs(cards.event.name),
+      name: mapTabs(cards?.event?.name),
     },
     page: {
-      path: mapTabs(cards.page.path),
-      title: mapTabs(cards.page.title),
-      hostname: mapTabs(cards.page.hostname),
+      path: mapTabs(cards?.page?.path),
+      title: mapTabs(cards?.page?.title),
+      hostname: mapTabs(cards?.page?.hostname),
     },
   };
 }
-
 export function mapEventRecord(row: EventRecordRow) {
   return {
     eventId: row.eventId,
@@ -186,7 +174,6 @@ export function mapEventRecord(row: EventRecordRow) {
     valueCount: row.valueCount,
   };
 }
-
 export function mapEventField(row: EventFieldRow) {
   let exampleValue: string | number | boolean | null = null;
   if (row.valueType === 1 && row.stringValue !== null) {
@@ -206,7 +193,6 @@ export function mapEventField(row: EventFieldRow) {
     exampleValue,
   };
 }
-
 export function mapEventFieldValue(row: EventFieldValueRow) {
   let value: string | number | boolean | null = null;
   if (row.valueType === 1) {
@@ -224,7 +210,6 @@ export function mapEventFieldValue(row: EventFieldValueRow) {
     lastSeenAt: Number(row.lastSeenAt ?? 0),
   };
 }
-
 export function mapReferrers(rows: ReferrerRow[]) {
   return rows.map((row) => ({
     referrer: row.referrer,
@@ -232,10 +217,11 @@ export function mapReferrers(rows: ReferrerRow[]) {
     sessions: row.sessions,
   }));
 }
-
 export function mapVisitors(rows: VisitorRow[]) {
   return rows.map((row) => ({
     visitorId: row.visitorId,
+    userId: row.userId,
+    userName: row.userName,
     sessionId: row.sessionId ?? "",
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
@@ -257,7 +243,6 @@ export function mapVisitors(rows: VisitorRow[]) {
     screenHeight: row.screenHeight ?? null,
   }));
 }
-
 export function dedupeFilterOptions(
   options: DashboardFilterOption[],
 ): DashboardFilterOption[] {
@@ -275,7 +260,6 @@ export function dedupeFilterOptions(
   }
   return deduped;
 }
-
 export function mapDimensionRowsToFilterOptions(
   rows: DimensionRow[],
 ): DashboardFilterOption[] {
@@ -289,7 +273,6 @@ export function mapDimensionRowsToFilterOptions(
     }),
   );
 }
-
 export function mapReferrerRowsToFilterOptions(
   rows: ReferrerRow[],
 ): DashboardFilterOption[] {
@@ -309,7 +292,6 @@ export function mapReferrerRowsToFilterOptions(
     }),
   );
 }
-
 export function mapGeoRowsToFilterOptions(
   rows: DimensionRow[],
   group: "country" | "region" | "city",
@@ -356,17 +338,14 @@ export function mapGeoRowsToFilterOptions(
     }),
   );
 }
-
 export interface DimensionAccumulator {
   views: number;
   sessions: Set<string>;
   visitors: Set<string>;
 }
-
 export interface GeoDimensionAccumulator extends DimensionAccumulator {
   visitors: Set<string>;
 }
-
 export function addDimensionValue(
   buckets: Map<string, DimensionAccumulator>,
   rawValue: string,
@@ -385,7 +364,6 @@ export function addDimensionValue(
   if (visitorId) bucket.visitors.add(visitorId);
   buckets.set(value, bucket);
 }
-
 export function finalizeDimensionBuckets(
   buckets: Map<string, DimensionAccumulator>,
   limit: number,
@@ -405,7 +383,6 @@ export function finalizeDimensionBuckets(
     )
     .slice(0, limit);
 }
-
 export function addGeoDimensionValue(
   buckets: Map<string, GeoDimensionAccumulator>,
   rawValue: string,
@@ -424,7 +401,6 @@ export function addGeoDimensionValue(
   if (visitorId) bucket.visitors.add(visitorId);
   buckets.set(value, bucket);
 }
-
 export function finalizeGeoDimensionBuckets(
   buckets: Map<string, GeoDimensionAccumulator>,
   limit: number,
@@ -447,7 +423,6 @@ export function finalizeGeoDimensionBuckets(
     )
     .slice(0, limit);
 }
-
 export function geoTabLabel(value: string, tab: OverviewGeoTabKey): string {
   const parsed = parseGeoFilterValue(value);
   if (tab === "country") {

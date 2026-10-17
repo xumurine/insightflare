@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { PagesClientPage } from "@/components/dashboard/site-pages/pages-client-page";
+import { PagesClientPage } from "@/components/dashboard/site-pages/pages/pages-client-page";
 import { buildSitePath } from "@/lib/dashboard/paths";
 import { dashboardPageTitle } from "@/lib/page-title";
 
@@ -24,12 +24,14 @@ function Page() {
       locale={locale}
       messages={messages}
       siteId={c.activeSite.id}
+      siteDomain={c.activeSite.domain}
       pathname={buildSitePath(
         locale,
         c.activeTeam.slug,
         c.activeSite.slug,
         "pages",
       )}
+      sitePathname={buildSitePath(locale, c.activeTeam.slug, c.activeSite.slug)}
     />
   );
 }
