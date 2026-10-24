@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { dispatchApiV1ApplicationRoute } from "@/lib/api-v1/application-dispatcher";
-import type { ApiV1ApplicationService } from "@/lib/api-v1/application-registry";
-import { handlePlannedSavedFilters } from "@/lib/api-v1/saved-filters-handler";
-import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
+import { dispatchApiV1ApplicationRoute } from "@/lib/api-v1/application/dispatcher";
+import type { ApiV1ApplicationService } from "@/lib/api-v1/application/registry";
+import { handlePlannedSavedFilters } from "@/lib/api-v1/resources/saved-filters-handler";
+import type { ApiKeyPrincipal } from "@/lib/edge/auth/api-key-auth";
 
 const principal = (
   overrides: Partial<ApiKeyPrincipal> = {},
@@ -80,7 +80,7 @@ describe("planned saved-filter HTTP adapter", () => {
     expect(execute).toHaveBeenCalledWith(
       { teamId: "team-1", siteIds: [] },
       "savedFilters.list",
-      { siteId: "site-1", limit: 20, cursor: "abc" },
+      { siteId: "site-1", page: { limit: 20, cursor: "abc" } },
       {},
     );
 
@@ -138,7 +138,12 @@ describe("planned saved-filter HTTP adapter", () => {
       ok: true,
       value: {
         items: [],
-        page: { kind: "keyset", limit: 100, nextCursor: null, hasMore: false },
+        pagination: {
+          limit: 100,
+          returned: 0,
+          nextCursor: null,
+          hasMore: false,
+        },
       },
     });
     const response = await handlePlannedSavedFilters(
@@ -152,7 +157,15 @@ describe("planned saved-filter HTTP adapter", () => {
     expect(response.status).toBe(200);
     expect(execute).toHaveBeenCalledOnce();
     await expect(response.json()).resolves.toMatchObject({
-      data: { page: { kind: "keyset" } },
+      data: {
+        items: [],
+        pagination: {
+          limit: 100,
+          returned: 0,
+          nextCursor: null,
+          hasMore: false,
+        },
+      },
     });
   });
 

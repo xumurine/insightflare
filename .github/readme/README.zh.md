@@ -183,12 +183,16 @@ Cloudflare 会自动 Clone 这个仓库、创建并绑定所需要的资源。�
 
 ### 启用分析引擎来进行深度分析
 
-InsightFlare 中包含的部分可选的附加功能，例如机器人流量检测等，将会使用 Cloudflare Analytics Engine 来进行额外的增强分析，以尽量避免影响主数据库。
+Analytics Engine 是 InsightFlare 可选的高吞吐分析层，用于将请求观测以及未来的流量、事件分析投影与主数据库解耦：
+
+- `REQUEST_ANALYTICS` → 请求观测和异常流量
+- `TRAFFIC_ANALYTICS` → 采样后的流量事实
+- `EVENT_ANALYTICS` → 采样后的自定义事件事实
 
 但是，这需要您手动开启 Analytics Engine。您只需要前往 [Cloudflare Dashboard](
 https://dash.cloudflare.com/?to=/:account/workers/analytics-engine) 并点击右侧的“启用”按钮即可。之后部署 InsightFlare 时，系统会自动将 Analytics Engine 与您的 Cloudflare 账户绑定。
 
-这样，InsightFlare 就可以向 Analytics Engine 写入数据。但是，Analytics Engine 需要一个 API Token 才能读取数据集。请在系统设置中填写 Cloudflare Account ID 和具备“账户分析”读取权限的 API Token，详见 InsightFlare 后台的设置页面的“教程”按钮。
+启用后，InsightFlare 会写入以上三个数据集。当前版本的“请求观测”页面已经使用新的 `REQUEST_ANALYTICS` 数据集查询；`TRAFFIC_ANALYTICS` 和 `EVENT_ANALYTICS` 会持续积累数据，供后续 Analytics Engine Provider 使用。读取数据集需要 API Token，请在系统设置中填写 Cloudflare Account ID 和具备“账户分析”读取权限的 API Token。Reader 配置仍保存在主数据库 D1 中，详见 InsightFlare 后台设置页面的“教程”按钮。
 
 ### 接入 AI Agents 进行分析
 
@@ -275,6 +279,25 @@ InsightFlare 的前端 SDK 支持以手动调用的方式上报自定义事件�
 - `setGlobalProperties(props)`：为后续事件追加公共字段。
 - `clearGlobalProperties()`：清除公共字段。
 
+#### 用户身份识别
+
+使用 `identify` 将当前访问与登录用户关联，同时保留原有的匿名访客边界：
+
+```html
+<script>
+  window.insightflare.identify("user-123", { name: "Alice" });
+</script>
+```
+
+用户登录后调用 `identify`，即可将当前及后续访问按用户统一分析。首次页面访问前调用也受支持。用户退出登录时调用 `reset()`，结束当前身份、创建新的匿名访客边界，并避免后续事件继承旧账号：
+
+```js
+window.insightflare.reset();
+window.insightflare.identify("user-456", { name: "Bob" });
+```
+
+切换账号前请先调用 `reset()`。单独调用 `identify("user-456")` 不会创建新的访客边界。
+
 #### DOM 属性自动上报
 
 ```html
@@ -310,14 +333,6 @@ InsightFlare 的前端 SDK 支持以手动调用的方式上报自定义事件�
   ...
 </form>
 
-<!-- 5. 元素进入视口时触发一次 -->
-<section
-  data-insightflare-event="pricing_viewed"
-  data-insightflare-event-trigger="enterviewport"
-  data-insightflare-event-plan="pro"
->
-  ...
-</section>
 ```
 
 ## 技术栈
@@ -346,38 +361,38 @@ InsightFlare 的前端 SDK 支持以手动调用的方式上报自定义事件�
 ### 本地开发
 
 1. 克隆这个仓库到本地 : `git clone https://github.com/RavelloH/InsightFlare`
-2. 安装依赖 : `npm install`
-3. 创建本地数据库 : `npm run db:migrate:local`
+2. 安装依赖 : `pnpm install`
+3. 创建本地数据库 : `pnpm run db:migrate:local`
 4. 设置环境变量：（参照 `.dev.vars.example`）
-5. 运行开发服务器 : `npm run dev`
+5. 运行开发服务器 : `pnpm run dev`
 
-`npm run dev:ui` 会以 Demo 模式启动 Vite 开发服务器，使用前端模拟数据进行 UI 测试。若通过 `npm run dev` 启动，可设置 `DEMO_MODE=1` 启用 Demo 模式。
+`pnpm run dev:ui` 会以 Demo 模式启动 Vite 开发服务器，使用前端模拟数据进行 UI 测试。若通过 `pnpm run dev` 启动，可设置 `DEMO_MODE=1` 启用 Demo 模式。
 
 ## 常用命令
 
 | 命令                                          | 用途                                                                    |
 | --------------------------------------------- | ----------------------------------------------------------------------- |
-| `npm run dev`                                 | Vite + Cloudflare Workers 本地开发（使用 `http://localhost:3000`）      |
-| `npm run dev:ui`                              | 以 Demo 模式启动 Vite 仪表板开发服务器                                  |
-| `npm run preview:local`                       | 使用本地资源构建并启动 Wrangler 预览                                    |
-| `npm run build`                               | Cloudflare 托管构建入口                                                 |
-| `npm run build:local`                         | 本地预检 + 本地 D1 迁移 + 构建                                          |
-| `npm run build:demo`                          | 无资源绑定的 Demo 构建                                                  |
-| `npm run deploy`                              | Cloudflare 托管部署入口                                                 |
-| `npm run publish`                             | 在允许的 Cloudflare 环境中构建并主动发布                                |
-| `npm run publish:demo`                        | 构建并发布 Demo Worker                                                  |
-| `npm run check`                               | 自动修复格式和 lint，并执行 build + typecheck + i18n + test + spec 检查 |
-| `npm run check:verify`                        | 严格执行完整检查，不自动修复                                            |
-| `npm run typecheck`                           | TypeScript 类型检查                                                     |
-| `npm run lint` / `lint:fix`                   | ESLint                                                                  |
-| `npm run format` / `format:check`             | Prettier                                                                |
-| `npm run check:i18n`                          | 校验翻译键的完整性                                                      |
-| `npm run db:migrate:local`                    | 本地 D1 迁移                                                            |
-| `npm run db:migrate:cf`                       | Cloudflare D1 迁移                                                      |
-| `npm run db:migration:create`                 | 新建迁移文件                                                            |
-| `npm run ops:secret:main`                     | 设置 `MAIN_SECRET` Worker Secret                                        |
-| `npm run ops:secret:bootstrap-admin-password` | 设置初始化管理员密码 Secret                                             |
-| `npm run ops:tail`                            | 查看线上 Worker 日志                                                    |
+| `pnpm run dev`                                 | Vite + Cloudflare Workers 本地开发（使用 `http://localhost:3000`）      |
+| `pnpm run dev:ui`                              | 以 Demo 模式启动 Vite 仪表板开发服务器                                  |
+| `pnpm run preview:local`                       | 使用本地资源构建并启动 Wrangler 预览                                    |
+| `pnpm run build`                               | Cloudflare 托管构建入口                                                 |
+| `pnpm run build:local`                         | 本地预检 + 本地 D1 迁移 + 构建                                          |
+| `pnpm run build:demo`                          | 无资源绑定的 Demo 构建                                                  |
+| `pnpm run deploy`                              | Cloudflare 托管部署入口                                                 |
+| `pnpm run publish`                             | 在允许的 Cloudflare 环境中构建并主动发布                                |
+| `pnpm run publish:demo`                        | 构建并发布 Demo Worker                                                  |
+| `pnpm run check`                               | 自动修复格式和 lint，并执行 build + typecheck + i18n + test + spec 检查 |
+| `pnpm run check:verify`                        | 严格执行完整检查，不自动修复                                            |
+| `pnpm run typecheck`                           | TypeScript 类型检查                                                     |
+| `pnpm run lint` / `lint:fix`                   | ESLint                                                                  |
+| `pnpm run format` / `format:check`             | Prettier                                                                |
+| `pnpm run check:i18n`                          | 校验翻译键的完整性                                                      |
+| `pnpm run db:migrate:local`                    | 本地 D1 迁移                                                            |
+| `pnpm run db:migrate:cf`                       | Cloudflare D1 迁移                                                      |
+| `pnpm run db:migration:create`                 | 新建迁移文件                                                            |
+| `pnpm run ops:secret:main`                     | 设置 `MAIN_SECRET` Worker Secret                                        |
+| `pnpm run ops:secret:bootstrap-admin-password` | 设置初始化管理员密码 Secret                                             |
+| `pnpm run ops:tail`                            | 查看线上 Worker 日志                                                    |
 
 ---
 
