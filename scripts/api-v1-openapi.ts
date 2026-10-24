@@ -1,15 +1,17 @@
 import { z } from "zod";
 
-import { type ApiV1ErrorCode, apiV1ErrorRegistry } from "@/lib/api-v1/errors";
+import { isApiV1BatchEligible } from "@/lib/api-v1/application/route-lookups";
+import { apiV1RouteRegistry } from "@/lib/api-v1/application/route-registry";
 import {
-  apiV1RouteRegistry,
-  isApiV1BatchEligible,
-} from "@/lib/api-v1/route-registry";
-import { ApiV1ErrorEnvelopeSchema } from "@/lib/api-v1/wire";
-
+  type ApiV1ErrorCode,
+  apiV1ErrorRegistry,
+} from "@/lib/api-v1/contract/errors";
+import {
+  ApiV1ErrorEnvelopeSchema,
+  ApiV1ResponseMetaSchema,
+} from "@/lib/api-v1/contract/wire";
 type JsonSchema = Record<string, unknown>;
 type HttpMethod = "get" | "post" | "patch" | "delete";
-
 export type ApiV1OpenApiOperation = {
   operationId: string;
   summary: string;
@@ -25,12 +27,10 @@ export type ApiV1OpenApiOperation = {
   "x-api-v1-batch-eligible": boolean;
   "x-api-v1-conditional-scopes"?: unknown;
 };
-
 export type ApiV1OpenApiPaths = Record<
   string,
   Partial<Record<HttpMethod, ApiV1OpenApiOperation>>
 >;
-
 const json = "application/json";
 const httpMethods: Record<string, HttpMethod> = {
   GET: "get",
@@ -38,17 +38,14 @@ const httpMethods: Record<string, HttpMethod> = {
   PATCH: "patch",
   DELETE: "delete",
 };
-
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
-
 function jsonSchema(schema: z.ZodType): JsonSchema {
   const result = z.toJSONSchema(schema) as JsonSchema;
   delete result.$schema;
   return result;
 }
-
 function optionalJsonSchema(
   schema: z.ZodType | undefined,
 ): JsonSchema | undefined {
@@ -65,11 +62,9 @@ function optionalJsonSchema(
     throw error;
   }
 }
-
 function pathParameterNames(path: string): string[] {
   return [...path.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]);
 }
-
 function objectProperties(schema: JsonSchema): Record<string, JsonSchema> {
   const properties = schema.properties;
   return properties &&
@@ -78,7 +73,6 @@ function objectProperties(schema: JsonSchema): Record<string, JsonSchema> {
     ? (properties as Record<string, JsonSchema>)
     : {};
 }
-
 function requiredProperties(schema: JsonSchema): Set<string> {
   return new Set(
     Array.isArray(schema.required)
@@ -88,7 +82,6 @@ function requiredProperties(schema: JsonSchema): Set<string> {
       : [],
   );
 }
-
 function pathParameters(
   path: string,
   schema: JsonSchema,
@@ -107,7 +100,6 @@ function pathParameters(
     description: `${name} path parameter.`,
   }));
 }
-
 function schemaWithoutPathParameters(
   path: string,
   schema: JsonSchema,
@@ -129,24 +121,57 @@ function schemaWithoutPathParameters(
   else delete result.required;
   return result;
 }
-
 function queryParameters(
   path: string,
   schema: JsonSchema,
 ): Array<Record<string, unknown>> {
   const pathNames = new Set(pathParameterNames(path));
   const required = requiredProperties(schema);
-  return Object.entries(objectProperties(schema))
-    .filter(([name]) => !pathNames.has(name))
-    .map(([name, parameterSchema]) => ({
-      name,
-      in: "query",
-      required: required.has(name),
-      schema: clone(parameterSchema),
-      description: `${name} query parameter.`,
-    }));
+  return Object.entries(objectProperties(schema)).flatMap(
+    ([name, parameterSchema]) => {
+      if (pathNames.has(name)) return [];
+      if (name === "page" && parameterSchema.type === "object") {
+        const pageProperties = objectProperties(parameterSchema);
+        if (pageProperties.limit || pageProperties.cursor) {
+          return [
+            ...(pageProperties.limit
+              ? [
+                  {
+                    name: "limit",
+                    in: "query",
+                    required: false,
+                    schema: clone(pageProperties.limit),
+                    description: "Maximum number of results.",
+                  },
+                ]
+              : []),
+            ...(pageProperties.cursor
+              ? [
+                  {
+                    name: "cursor",
+                    in: "query",
+                    required: false,
+                    schema: clone(pageProperties.cursor),
+                    description:
+                      "Opaque pagination cursor from the previous response.",
+                  },
+                ]
+              : []),
+          ];
+        }
+      }
+      return [
+        {
+          name,
+          in: "query",
+          required: required.has(name),
+          schema: clone(parameterSchema),
+          description: `${name} query parameter.`,
+        },
+      ];
+    },
+  );
 }
-
 function tagForOperation(operationId: string): string {
   if (operationId.includes(".performance")) return "Performance";
   if (operationId.includes(".realtime")) return "Realtime";
@@ -177,11 +202,9 @@ function tagForOperation(operationId: string): string {
   if (operationId.startsWith("funnels.")) return "Funnels";
   return "Sites";
 }
-
 function summaryForOperation(operationId: string): string {
   return `API v1 ${operationId.replaceAll(".", " ")} operation`;
 }
-
 function descriptionForOperation(routeId: string): string {
   if (routeId === "site.analytics.performanceBreakdown") {
     return "Breaks down Core Web Vitals by page.path or geo.country. Other dimensions are not supported and return validation_failed.";
@@ -194,7 +217,6 @@ function descriptionForOperation(routeId: string): string {
   }
   return "Typed API v1 operation. Authenticate with an API key through the BearerAuth security scheme.";
 }
-
 function successStatus(method: string, operationId: string): string {
   if (method === "DELETE") return "204";
   if (operationId === "sites.create" || operationId === "funnels.create") {
@@ -202,7 +224,6 @@ function successStatus(method: string, operationId: string): string {
   }
   return "200";
 }
-
 function errorResponse(
   codes: readonly ApiV1ErrorCode[],
 ): Record<string, unknown> {
@@ -231,7 +252,6 @@ function errorResponse(
     },
   };
 }
-
 function errorResponses(
   codes: readonly ApiV1ErrorCode[],
 ): Record<string, unknown> {
@@ -250,7 +270,6 @@ function errorResponses(
     ]),
   );
 }
-
 function isEmptySchema(schema: JsonSchema): boolean {
   return (
     schema.type === "object" &&
@@ -261,7 +280,20 @@ function isEmptySchema(schema: JsonSchema): boolean {
     typeof schema.$ref !== "string"
   );
 }
-
+function successResponseSchema(schema: z.ZodType): JsonSchema {
+  const data = jsonSchema(schema);
+  const properties = objectProperties(data);
+  if (properties.data && properties.meta) return data;
+  return {
+    type: "object",
+    properties: {
+      data,
+      meta: jsonSchema(ApiV1ResponseMetaSchema),
+    },
+    required: ["data", "meta"],
+    additionalProperties: false,
+  };
+}
 /** Build API v1 OpenAPI operations directly from the executable route registry. */
 export function buildApiV1OpenApiPaths(): ApiV1OpenApiPaths {
   const paths: ApiV1OpenApiPaths = {};
@@ -329,7 +361,9 @@ export function buildApiV1OpenApiPaths(): ApiV1OpenApiPaths {
                   },
                 },
                 content: {
-                  [json]: { schema: jsonSchema(route.responseSchema) },
+                  [json]: {
+                    schema: successResponseSchema(route.responseSchema),
+                  },
                 },
               },
         ...errorResponses(route.declaredErrors),

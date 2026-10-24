@@ -1,5 +1,10 @@
 import {
+  buildRegionLocationValue,
+  parseGeoLocationValue,
+} from "@/lib/analytics/geo-location";
+import {
   analyticsFilterRegistry,
+  attachFilterScopePreference,
   type CanonicalJsonPath,
   FILTER_DOCUMENT_VERSION,
   type FilterCondition,
@@ -7,16 +12,12 @@ import {
   type FilterExpression,
   type FilterFieldId,
   filterFingerprint,
+  filterScopePreferenceFromDocument,
   type FilterValue,
   normalizeFilterDocument,
+  parseFilterParams,
   serializeFilterParams,
 } from "@/lib/filter-contract";
-
-import {
-  buildRegionLocationValue,
-  parseGeoLocationValue,
-} from "./geo-location";
-
 export const DASHBOARD_FILTER_CONTROL_KEYS = [
   "country",
   "device",
@@ -40,14 +41,11 @@ export const DASHBOARD_FILTER_CONTROL_KEYS = [
   "geoTimezone",
   "geoOrganization",
 ] as const;
-
 export type DashboardFilterControlKey =
   (typeof DASHBOARD_FILTER_CONTROL_KEYS)[number];
-
 export type DashboardFilterPresentation = Partial<
   Record<DashboardFilterControlKey, string>
 >;
-
 const FIELD_BY_CONTROL_KEY: Readonly<
   Record<Exclude<DashboardFilterControlKey, "geo">, FilterFieldId>
 > = {
@@ -72,12 +70,98 @@ const FIELD_BY_CONTROL_KEY: Readonly<
   geoTimezone: "geo.timeZone" as FilterFieldId,
   geoOrganization: "geo.organization" as FilterFieldId,
 };
-
 export const EMPTY_DASHBOARD_FILTER_DOCUMENT: FilterDocument = Object.freeze({
   version: FILTER_DOCUMENT_VERSION,
   root: null,
 });
+export const DASHBOARD_COMPARISON_MODES = ["same", "previous"] as const;
+export type DashboardComparisonMode =
+  (typeof DASHBOARD_COMPARISON_MODES)[number];
+export interface DashboardComparisonSearchState {
+  readonly mode?: DashboardComparisonMode;
+  readonly filterDocument: FilterDocument;
+}
+const COMPARISON_FILTER_PREFIX = "compareFilter";
+function isDashboardComparisonMode(
+  value: string | null,
+): value is DashboardComparisonMode {
+  return DASHBOARD_COMPARISON_MODES.includes(value as DashboardComparisonMode);
+}
+function comparisonFilterParamsFromSearchParams(
+  searchParams: URLSearchParams,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of searchParams) {
+    if (!key.startsWith(`${COMPARISON_FILTER_PREFIX}[`)) continue;
+    params.append(`filter${key.slice(COMPARISON_FILTER_PREFIX.length)}`, value);
+  }
+  return params;
+}
+function comparisonFilterParamsFromDocument(
+  document: FilterDocument,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of serializeFilterParams(
+    document,
+    analyticsFilterRegistry,
+  )) {
+    params.append(
+      `${COMPARISON_FILTER_PREFIX}${key.slice("filter".length)}`,
+      value,
+    );
+  }
+  return params;
+}
+export function parseDashboardComparisonSearchParams(
+  searchParams: URLSearchParams,
+): DashboardComparisonSearchState {
+  const mode = searchParams.get("compare");
+  let filterDocument = EMPTY_DASHBOARD_FILTER_DOCUMENT;
+  try {
+    filterDocument = parseFilterParams(
+      comparisonFilterParamsFromSearchParams(searchParams),
+      analyticsFilterRegistry,
+    );
+  } catch {
+    // An invalid comparison filter must not make the dashboard unusable.
+    filterDocument = EMPTY_DASHBOARD_FILTER_DOCUMENT;
+  }
 
+  if (
+    !isDashboardComparisonMode(mode) ||
+    (mode === "same" && !filterDocument.root)
+  ) {
+    return { filterDocument: EMPTY_DASHBOARD_FILTER_DOCUMENT };
+  }
+
+  return { mode, filterDocument };
+}
+/** Replaces comparison state while preserving the current dashboard query. */
+export function withDashboardComparisonSearchParams(
+  searchParams: URLSearchParams,
+  mode: DashboardComparisonMode | null | undefined,
+  filterDocument?: FilterDocument | null,
+): URLSearchParams {
+  const next = new URLSearchParams(searchParams.toString());
+  for (const key of [...next.keys()]) {
+    if (key === "compare" || key.startsWith(`${COMPARISON_FILTER_PREFIX}[`)) {
+      next.delete(key);
+    }
+  }
+
+  const hasComparisonFilter = Boolean(filterDocument?.root);
+  if (!mode || (mode === "same" && !hasComparisonFilter)) return next;
+
+  next.set("compare", mode);
+  if (filterDocument) {
+    for (const [key, value] of comparisonFilterParamsFromDocument(
+      filterDocument,
+    )) {
+      next.append(key, value);
+    }
+  }
+  return next;
+}
 function visitExpression(
   expression: FilterExpression | null,
   visit: (condition: FilterCondition) => void,
@@ -94,7 +178,6 @@ function visitExpression(
   }
   expression.children.forEach((child) => visitExpression(child, visit));
 }
-
 function conditionValueForField(
   document: FilterDocument,
   field: FilterFieldId,
@@ -114,7 +197,6 @@ function conditionValueForField(
   });
   return value;
 }
-
 function withoutFields(
   expression: FilterExpression | null,
   fields: ReadonlySet<string>,
@@ -137,14 +219,19 @@ function withoutFields(
   if (children.length === 1) return children[0]!;
   return { kind: expression.kind, children };
 }
-
-function normalizedDocument(root: FilterExpression | null): FilterDocument {
-  return normalizeFilterDocument(
+function normalizedDocument(
+  root: FilterExpression | null,
+  source?: FilterDocument,
+): FilterDocument {
+  const normalized = normalizeFilterDocument(
     { version: FILTER_DOCUMENT_VERSION, root },
     analyticsFilterRegistry,
   );
+  const preference = filterScopePreferenceFromDocument(source);
+  return preference
+    ? attachFilterScopePreference(normalized, preference)
+    : normalized;
 }
-
 function geoConditions(value: string): FilterExpression | null {
   const parsed = parseGeoLocationValue(value);
   if (!parsed) return null;
@@ -183,7 +270,6 @@ function geoConditions(value: string): FilterExpression | null {
     ? conditions[0]!
     : { kind: "and", children: conditions };
 }
-
 function fieldsForControlKey(
   key: DashboardFilterControlKey,
 ): ReadonlySet<string> {
@@ -192,13 +278,11 @@ function fieldsForControlKey(
   }
   return new Set([FIELD_BY_CONTROL_KEY[key].toString()]);
 }
-
 export function dashboardFilterFieldId(
   key: Exclude<DashboardFilterControlKey, "geo">,
 ): FilterFieldId {
   return FIELD_BY_CONTROL_KEY[key];
 }
-
 export function dashboardFilterValue(
   document: FilterDocument,
   key: DashboardFilterControlKey,
@@ -219,7 +303,6 @@ export function dashboardFilterValue(
   if (!city) return `${country}::${region}`;
   return `${country}::${region}::${city}`;
 }
-
 export function dashboardFilterPresentation(
   document: FilterDocument,
 ): DashboardFilterPresentation {
@@ -230,7 +313,6 @@ export function dashboardFilterPresentation(
   }
   return result;
 }
-
 export function dashboardFilterDocumentFromPresentation(
   presentation: DashboardFilterPresentation,
 ): FilterDocument {
@@ -241,16 +323,15 @@ export function dashboardFilterDocumentFromPresentation(
   }
   return document;
 }
-
 export function withoutDashboardFilter(
   document: FilterDocument,
   key: DashboardFilterControlKey,
 ): FilterDocument {
   return normalizedDocument(
     withoutFields(document.root, fieldsForControlKey(key)),
+    document,
   );
 }
-
 export function setDashboardFilterValue(
   document: FilterDocument,
   key: DashboardFilterControlKey,
@@ -275,14 +356,13 @@ export function setDashboardFilterValue(
         base.root
           ? { kind: "and", children: [base.root, expression] }
           : expression,
+        document,
       )
     : base;
 }
-
 export function dashboardFilterFingerprint(document: FilterDocument): string {
   return filterFingerprint(document, analyticsFilterRegistry);
 }
-
 /** Replaces only typed filter parameters and preserves unrelated URL state. */
 export function withDashboardFilterSearchParams(
   searchParams: URLSearchParams,
@@ -302,6 +382,9 @@ export function withDashboardFilterSearchParams(
       next.delete(key);
     }
   }
+  // A scope preference only has meaning together with an active filter. Keep
+  // stale scope-only URLs from surviving when the last filter is removed.
+  if (!document.root) next.delete("scope");
   for (const [key, value] of serializeFilterParams(
     document,
     analyticsFilterRegistry,
@@ -310,7 +393,6 @@ export function withDashboardFilterSearchParams(
   }
   return next;
 }
-
 /** Formats dashboard navigation query strings without escaping filter syntax. */
 export function serializeDashboardSearchParams(
   searchParams: URLSearchParams,
@@ -322,14 +404,22 @@ export function serializeDashboardSearchParams(
         .replaceAll("%5D", "]")
         .replaceAll("%2F", "/")
         .replaceAll("%3A", ":");
-      const readableValue = encodeURIComponent(value)
+      // Keep a terminal slash encoded. TanStack Router normalizes a raw
+      // trailing slash in a query value (for example `filter[page.path]=/`)
+      // to an empty value during client navigation. Interior slashes remain
+      // readable, so ordinary paths such as `/politics` keep their existing
+      // URL shape.
+      const hasTerminalSlash = value.endsWith("/");
+      const readableValue = encodeURIComponent(
+        hasTerminalSlash ? value.slice(0, -1) : value,
+      )
+        .replaceAll("%3A", ":")
         .replaceAll("%2F", "/")
-        .replaceAll("%3A", ":");
+        .concat(hasTerminalSlash ? "%2F" : "");
       return `${readableKey}=${readableValue}`;
     })
     .join("&");
 }
-
 export function appendEventPayloadFilter(
   document: FilterDocument,
   path: string,
@@ -350,9 +440,9 @@ export function appendEventPayloadFilter(
     document.root
       ? { kind: "and", children: [document.root, condition] }
       : condition,
+    document,
   );
 }
-
 export function dashboardFilterFieldsForControl(
   key: DashboardFilterControlKey,
 ): readonly string[] {

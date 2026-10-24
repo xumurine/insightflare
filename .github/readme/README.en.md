@@ -183,11 +183,15 @@ After filling in the variables, wait about 3 minutes for the deployment to finis
 
 ### Enable Analytics Engine for Deep Analysis
 
-Some optional InsightFlare features, such as bot traffic detection, use Cloudflare Analytics Engine for enhanced analysis while keeping pressure off the primary database.
+Analytics Engine is InsightFlare's optional high-throughput analytical layer. It keeps request observability and future traffic/event projections separate from the primary database:
+
+- `REQUEST_ANALYTICS` → request observation and abnormal traffic
+- `TRAFFIC_ANALYTICS` → sampled traffic facts
+- `EVENT_ANALYTICS` → sampled custom-event facts
 
 This requires enabling Analytics Engine manually. Open the [Cloudflare Dashboard](https://dash.cloudflare.com/?to=/:account/workers/analytics-engine) and click the "Enable" button on the right. After that, InsightFlare will automatically bind Analytics Engine to your Cloudflare account during deployment.
 
-Once enabled, InsightFlare can write data to Analytics Engine. Reading those datasets requires an API Token. In system settings, enter your Cloudflare Account ID and an API Token with the "Account Analytics" read permission. See the "Guide" button in the InsightFlare dashboard settings page for details.
+Once enabled, InsightFlare writes the three datasets above. The current version uses the new `REQUEST_ANALYTICS` dataset for the Request Observation page; the Traffic and Event datasets are accumulated for future Analytics Engine providers. Reading the datasets requires an API Token. In system settings, enter your Cloudflare Account ID and an API Token with the "Account Analytics" read permission. Reader configuration remains in the primary D1 database. See the "Guide" button in the InsightFlare dashboard settings page for details.
 
 ### Connect AI Agents for Analysis
 
@@ -274,6 +278,25 @@ Available methods:
 - `setGlobalProperties(props)`: Add shared properties to subsequent events.
 - `clearGlobalProperties()`: Clear shared properties.
 
+#### Identify Users
+
+Associate the current visit with a signed-in user without changing the anonymous visitor boundary:
+
+```html
+<script>
+  window.insightflare.identify("user-123", { name: "Alice" });
+</script>
+```
+
+Call `identify` after sign-in so the current and subsequent visits can be analyzed together. Calling it before the first page view is also supported. On logout, call `reset()` to end the current identity, create a new anonymous visitor boundary, and prevent later events from inheriting the old account:
+
+```js
+window.insightflare.reset();
+window.insightflare.identify("user-456", { name: "Bob" });
+```
+
+Use `reset()` before switching accounts. Calling `identify("user-456")` alone does not create a new visitor boundary.
+
 #### Automatic Reporting via DOM Attributes
 
 ```html
@@ -309,14 +332,6 @@ Available methods:
   ...
 </form>
 
-<!-- 5. Trigger once when an element enters the viewport -->
-<section
-  data-insightflare-event="pricing_viewed"
-  data-insightflare-event-trigger="enterviewport"
-  data-insightflare-event-plan="pro"
->
-  ...
-</section>
 ```
 
 ## Tech Stack
@@ -345,38 +360,38 @@ If you do not use the deploy button, deploy with the steps below:
 ### Local Development
 
 1. Clone this repository locally: `git clone https://github.com/RavelloH/InsightFlare`
-2. Install dependencies: `npm install`
-3. Create the local database: `npm run db:migrate:local`
+2. Install dependencies: `pnpm install`
+3. Create the local database: `pnpm run db:migrate:local`
 4. Set environment variables by referring to `.dev.vars.example`
-5. Start the development server: `npm run dev`
+5. Start the development server: `pnpm run dev`
 
-`npm run dev:ui` starts the Vite development server in Demo Mode and uses frontend mock data for UI testing. To enable Demo Mode with `npm run dev`, set `DEMO_MODE=1`.
+`pnpm run dev:ui` starts the Vite development server in Demo Mode and uses frontend mock data for UI testing. To enable Demo Mode with `pnpm run dev`, set `DEMO_MODE=1`.
 
 ## Common Commands
 
 | Command                                       | Purpose                                                                       |
 | --------------------------------------------- | ----------------------------------------------------------------------------- |
-| `npm run dev`                                 | Vite + Cloudflare Workers local development (use `http://localhost:3000`)     |
-| `npm run dev:ui`                              | Start the Vite dashboard development server in Demo Mode                      |
-| `npm run preview:local`                       | Build with local resources and run Wrangler preview                           |
-| `npm run build`                               | Cloudflare managed build entrypoint                                           |
-| `npm run build:local`                         | Local precheck + local D1 migration + build                                   |
-| `npm run build:demo`                          | Demo build without resource bindings                                          |
-| `npm run deploy`                              | Cloudflare managed deploy entrypoint                                          |
-| `npm run publish`                             | Build and publish from an allowed Cloudflare environment                      |
-| `npm run publish:demo`                        | Build and publish the demo Worker                                             |
-| `npm run check`                               | Auto-fix format/lint, then run build + typecheck + i18n + tests + spec checks |
-| `npm run check:verify`                        | Run the full check suite without automatic fixes                              |
-| `npm run typecheck`                           | TypeScript type checking                                                      |
-| `npm run lint` / `lint:fix`                   | ESLint                                                                        |
-| `npm run format` / `format:check`             | Prettier                                                                      |
-| `npm run check:i18n`                          | Validate translation key completeness                                         |
-| `npm run db:migrate:local`                    | Local D1 migration                                                            |
-| `npm run db:migrate:cf`                       | Cloudflare D1 migration                                                       |
-| `npm run db:migration:create`                 | Create a new migration file                                                   |
-| `npm run ops:secret:main`                     | Set the `MAIN_SECRET` Worker secret                                           |
-| `npm run ops:secret:bootstrap-admin-password` | Set the bootstrap admin password secret                                       |
-| `npm run ops:tail`                            | View online Worker logs                                                       |
+| `pnpm run dev`                                 | Vite + Cloudflare Workers local development (use `http://localhost:3000`)     |
+| `pnpm run dev:ui`                              | Start the Vite dashboard development server in Demo Mode                      |
+| `pnpm run preview:local`                       | Build with local resources and run Wrangler preview                           |
+| `pnpm run build`                               | Cloudflare managed build entrypoint                                           |
+| `pnpm run build:local`                         | Local precheck + local D1 migration + build                                   |
+| `pnpm run build:demo`                          | Demo build without resource bindings                                          |
+| `pnpm run deploy`                              | Cloudflare managed deploy entrypoint                                          |
+| `pnpm run publish`                             | Build and publish from an allowed Cloudflare environment                      |
+| `pnpm run publish:demo`                        | Build and publish the demo Worker                                             |
+| `pnpm run check`                               | Auto-fix format/lint, then run build + typecheck + i18n + tests + spec checks |
+| `pnpm run check:verify`                        | Run the full check suite without automatic fixes                              |
+| `pnpm run typecheck`                           | TypeScript type checking                                                      |
+| `pnpm run lint` / `lint:fix`                   | ESLint                                                                        |
+| `pnpm run format` / `format:check`             | Prettier                                                                      |
+| `pnpm run check:i18n`                          | Validate translation key completeness                                         |
+| `pnpm run db:migrate:local`                    | Local D1 migration                                                            |
+| `pnpm run db:migrate:cf`                       | Cloudflare D1 migration                                                       |
+| `pnpm run db:migration:create`                 | Create a new migration file                                                   |
+| `pnpm run ops:secret:main`                     | Set the `MAIN_SECRET` Worker secret                                           |
+| `pnpm run ops:secret:bootstrap-admin-password` | Set the bootstrap admin password secret                                       |
+| `pnpm run ops:tail`                            | View online Worker logs                                                       |
 
 ---
 
