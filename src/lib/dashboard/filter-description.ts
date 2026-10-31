@@ -6,7 +6,10 @@ import {
   type FilterCondition,
   type FilterExpression,
   type FilterFieldRegistry,
+  type FilterTargetExpression,
   type FilterValue,
+  formatFilterTargetExpression,
+  isLegacyFilterTarget,
 } from "@/lib/filter-contract";
 import type { AppMessages } from "@/lib/i18n/messages";
 import { formatI18nTemplate } from "@/lib/i18n/template";
@@ -38,7 +41,25 @@ function formatValue(value: FilterValue): string {
 function isFilterValueList(
   value: FilterCondition["value"],
 ): value is readonly FilterValue[] {
-  return Array.isArray(value);
+  return Array.isArray(value) && value.every(isFilterValue);
+}
+
+function isFilterValue(value: unknown): value is FilterValue {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  );
+}
+
+function targetText(condition: FilterCondition): string {
+  if (!isLegacyFilterTarget(condition.target)) {
+    return formatFilterTargetExpression(condition.target);
+  }
+  return condition.target.kind === "event-payload"
+    ? `event.payload(${JSON.stringify(condition.target.path)})`
+    : condition.target.field;
 }
 
 function formatValues(
@@ -53,6 +74,7 @@ function fieldDescription(
   registry: FilterFieldRegistry,
   messages: FilterDescriptionMessages,
 ): string {
+  if (!isLegacyFilterTarget(condition.target)) return targetText(condition);
   if (condition.target.kind === "event-payload") {
     const label =
       messages.filterBuilder.fieldLabels["event.payload"] ?? "event.payload";
@@ -70,12 +92,67 @@ function conditionDescription(
   registry: FilterFieldRegistry,
   messages: FilterDescriptionMessages,
 ): string {
+  if (!isLegacyFilterTarget(condition.target)) {
+    const field = targetText(condition);
+    const operator =
+      messages.filterBuilder.operatorLabels[condition.operator] ??
+      condition.operator;
+    if (condition.value === undefined) return `${field} ${operator}`;
+    const value = condition.value;
+    const formattedValue =
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      "kind" in value
+        ? formatFilterTargetExpression(value as FilterTargetExpression)
+        : isFilterValueList(value)
+          ? formatValues(value, messages)
+          : isFilterValue(value)
+            ? formatValue(value)
+            : String(value);
+    return `${field} ${operator} ${formattedValue}`;
+  }
   const field = fieldDescription(condition, registry, messages);
   const operator =
     messages.filterBuilder.operatorLabels[condition.operator] ??
     condition.operator;
-  if (condition.value === undefined) return `${field} ${operator}`;
+  if (condition.value === undefined) {
+    if (condition.operator === "exists") {
+      return formatI18nTemplate(messages.conditionDescription.filterExists, {
+        field,
+      });
+    }
+    if (condition.operator === "notExists") {
+      return formatI18nTemplate(messages.conditionDescription.filterNotExists, {
+        field,
+      });
+    }
+    if (condition.operator === "isNull") {
+      return formatI18nTemplate(messages.conditionDescription.filterIsNull, {
+        field,
+      });
+    }
+    if (condition.operator === "notNull") {
+      return formatI18nTemplate(messages.conditionDescription.filterNotNull, {
+        field,
+      });
+    }
+    if (condition.operator === "isEmpty") {
+      return formatI18nTemplate(messages.conditionDescription.filterIsEmpty, {
+        field,
+      });
+    }
+    if (condition.operator === "notEmpty") {
+      return formatI18nTemplate(messages.conditionDescription.filterNotEmpty, {
+        field,
+      });
+    }
+    return `${field} ${operator}`;
+  }
   const value = condition.value;
+  if (!isFilterValue(value) && !isFilterValueList(value)) {
+    return `${field} ${operator} ${JSON.stringify(value)}`;
+  }
   if (condition.operator === "eq" && !isFilterValueList(value)) {
     return formatI18nTemplate(messages.conditionDescription.filterEquals, {
       field,
@@ -99,6 +176,36 @@ function conditionDescription(
       field,
       value: formatValue(value),
     });
+  }
+  if (condition.operator === "contains" && !isFilterValueList(value)) {
+    return formatI18nTemplate(messages.conditionDescription.filterContains, {
+      field,
+      value: formatValue(value),
+    });
+  }
+  if (condition.operator === "gt" && !isFilterValueList(value)) {
+    return formatI18nTemplate(messages.conditionDescription.filterGreaterThan, {
+      field,
+      value: formatValue(value),
+    });
+  }
+  if (condition.operator === "gte" && !isFilterValueList(value)) {
+    return formatI18nTemplate(
+      messages.conditionDescription.filterGreaterThanOrEqual,
+      { field, value: formatValue(value) },
+    );
+  }
+  if (condition.operator === "lt" && !isFilterValueList(value)) {
+    return formatI18nTemplate(messages.conditionDescription.filterLessThan, {
+      field,
+      value: formatValue(value),
+    });
+  }
+  if (condition.operator === "lte" && !isFilterValueList(value)) {
+    return formatI18nTemplate(
+      messages.conditionDescription.filterLessThanOrEqual,
+      { field, value: formatValue(value) },
+    );
   }
   if (isFilterValueList(value)) {
     if (condition.operator === "in") {

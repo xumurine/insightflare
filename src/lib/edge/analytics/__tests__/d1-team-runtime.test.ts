@@ -50,7 +50,15 @@ describe("D1 team query runtime", () => {
       approximateVisitors: false,
     });
     vi.mocked(readTeamSites).mockResolvedValue({
-      data: { sites: [] },
+      data: {
+        items: [],
+        pagination: {
+          limit: 20,
+          returned: 0,
+          hasMore: false,
+          nextCursor: null,
+        },
+      },
       source: "raw",
       approximateVisitors: false,
     });
@@ -78,20 +86,25 @@ describe("D1 team query runtime", () => {
     });
     const breakdown = await runtime.execute("dimension", {
       ...base,
+      mode: "breakdown",
       dimension: "country",
       limit: 10,
     });
 
     expect(overview.ok && overview.data).toMatchObject({
-      data: { views: 10 },
+      current: { views: 10 },
     });
     expect(trend.ok && trend.data).toMatchObject({
-      data: { interval: "day" },
+      interval: "day",
     });
     expect(sites.ok && sites.data).toEqual({
-      data: { sites: [] },
-      source: "raw",
-      approximateVisitors: false,
+      items: [],
+      pagination: {
+        limit: 20,
+        returned: 0,
+        hasMore: false,
+        nextCursor: null,
+      },
     });
     expect(breakdown).toMatchObject({ ok: true, data: { items: [] } });
     expect(readTeamOverview).toHaveBeenCalledWith({
@@ -123,7 +136,7 @@ describe("D1 team query runtime", () => {
     await runtime.execute("team-sites", {
       ...base,
       allowedSiteIds: ["site-1", 7],
-    });
+    } as never);
     await runtime.execute("overview", {
       context,
       time,
@@ -137,8 +150,16 @@ describe("D1 team query runtime", () => {
     });
     await runtime.execute("dimension", {
       ...base,
+      mode: "breakdown",
       dimension: "country",
       limit: Number.NaN,
+    });
+    await runtime.execute("dimension", {
+      context,
+      time,
+      mode: "breakdown",
+      dimension: "country",
+      teamId: undefined,
     });
 
     expect(readTeamSites).toHaveBeenCalledWith({
@@ -146,6 +167,8 @@ describe("D1 team query runtime", () => {
       teamId: "",
       allowedSiteIds: undefined,
       interval: undefined,
+      page: undefined,
+      audience: "api-v1",
       window: {
         startMs: 100,
         endExclusiveMs: 200,
@@ -160,6 +183,14 @@ describe("D1 team query runtime", () => {
         allowedSiteIds: undefined,
         dimension: "country",
         limit: 20,
+      }),
+    );
+    expect(readTeamBreakdown).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamId: "",
+        dimension: "country",
+        limit: 20,
+        filters: EMPTY_FILTER_DOCUMENT,
       }),
     );
   });

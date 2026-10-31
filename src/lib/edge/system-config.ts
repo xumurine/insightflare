@@ -1,14 +1,47 @@
+import {
+  compileD1Mutation,
+  compileD1Query,
+  createD1DatabaseClient,
+  deleteFrom,
+  eq,
+  excluded,
+  filter,
+  insert,
+  limit,
+  onConflictDoUpdate,
+  param,
+  project,
+  scan,
+  unixepoch,
+} from "@/lib/db";
+import { schema } from "@/lib/db/schema";
+
 import type { Env } from "./types";
+
+function database(env: Pick<Env, "DB">) {
+  return createD1DatabaseClient(env.DB);
+}
 
 export async function readConfig(
   env: Pick<Env, "DB">,
   key: string,
 ): Promise<Record<string, unknown> | null> {
-  const row = await env.DB.prepare(
-    "SELECT value_json FROM configs WHERE config_key = ? LIMIT 1",
-  )
-    .bind(key)
-    .first<{ value_json: string | null }>();
+  const configs = scan(schema.configs);
+  const matchingConfig = filter(
+    configs,
+    eq(configs.columns.config_key, param(key)),
+  );
+  const row = await database(env).first(
+    compileD1Query(
+      limit(
+        project(matchingConfig, {
+          value_json: matchingConfig.columns.value_json,
+        }),
+        1,
+      ),
+      { tag: "system-config.ts.configs.first" },
+    ),
+  );
   if (!row?.value_json) return null;
   try {
     const parsed = JSON.parse(row.value_json) as unknown;
@@ -25,24 +58,35 @@ export async function upsertConfig(
   key: string,
   value: Record<string, unknown>,
 ): Promise<void> {
-  await env.DB.prepare(
-    `
-      INSERT INTO configs (config_key, value_json, created_at, updated_at)
-      VALUES (?, ?, unixepoch(), unixepoch())
-      ON CONFLICT(config_key) DO UPDATE SET
-        value_json = excluded.value_json,
-        updated_at = unixepoch()
-    `,
-  )
-    .bind(key, JSON.stringify(value))
-    .run();
+  await database(env).run(
+    compileD1Mutation(
+      onConflictDoUpdate(
+        insert(schema.configs, {
+          config_key: key,
+          value_json: JSON.stringify(value),
+          created_at: unixepoch(),
+          updated_at: unixepoch(),
+        }),
+        ["config_key"],
+        {
+          value_json: excluded(schema.configs.columns.value_json),
+          updated_at: unixepoch(),
+        },
+      ),
+      { tag: "system.configs.upsert" },
+    ),
+  );
 }
 
 export async function deleteConfig(
   env: Pick<Env, "DB">,
   key: string,
 ): Promise<void> {
-  await env.DB.prepare("DELETE FROM configs WHERE config_key = ?")
-    .bind(key)
-    .run();
+  const configs = schema.configs;
+  await database(env).run(
+    compileD1Mutation(
+      deleteFrom(configs, (columns) => eq(columns.config_key, param(key))),
+      { tag: "system.configs.delete" },
+    ),
+  );
 }
