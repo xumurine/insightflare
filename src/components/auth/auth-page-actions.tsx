@@ -1,3 +1,14 @@
+import { Button } from "@insightflare/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@insightflare/ui/dropdown-menu";
 import {
   RiArrowDownSLine,
   RiCheckLine,
@@ -8,31 +19,15 @@ import {
 } from "@remixicon/react";
 
 import { useTheme } from "@/components/theme-provider";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { type Locale, SUPPORTED_LOCALES } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
+import { nativeLocaleName } from "@/lib/i18n/native-locale-names";
 import Link from "@/lib/router";
 
 interface AuthPageActionsProps {
   locale: Locale;
   messages: AppMessages;
   buildHref: (locale: Locale) => string;
-}
-
-function localeLabel(messages: AppMessages, locale: Locale): string {
-  if (locale === "zh") return messages.actions.switchToChinese;
-  if (locale === "ja") return messages.actions.switchToJapanese;
-  return messages.actions.switchToEnglish;
 }
 
 function pickThemeIcon(theme: string) {
@@ -73,12 +68,18 @@ export function AuthPageActions({
           <Button
             type="button"
             variant="outline"
-            className="inline-flex gap-2 bg-background"
+            className="inline-flex bg-background"
             aria-label={messages.common.theme}
           >
-            <ThemeIcon className="size-4 text-muted-foreground" />
+            <ThemeIcon
+              data-icon="inline-start"
+              className="text-muted-foreground"
+            />
             <span>{messages.common.theme}</span>
-            <RiArrowDownSLine className="size-4 text-muted-foreground" />
+            <RiArrowDownSLine
+              data-icon="inline-end"
+              className="text-muted-foreground"
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
@@ -107,12 +108,18 @@ export function AuthPageActions({
           <Button
             type="button"
             variant="outline"
-            className="inline-flex gap-2 bg-background"
+            className="inline-flex bg-background"
             aria-label={messages.common.language}
           >
-            <RiGlobalLine className="size-4 text-muted-foreground" />
+            <RiGlobalLine
+              data-icon="inline-start"
+              className="text-muted-foreground"
+            />
             <span>{messages.common.language}</span>
-            <RiArrowDownSLine className="size-4 text-muted-foreground" />
+            <RiArrowDownSLine
+              data-icon="inline-end"
+              className="text-muted-foreground"
+            />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40">
@@ -124,7 +131,7 @@ export function AuthPageActions({
                 <span className="inline-flex w-4 justify-center">
                   {locale === item ? <RiCheckLine className="size-4" /> : null}
                 </span>
-                <span>{localeLabel(messages, item)}</span>
+                <span>{nativeLocaleName(item)}</span>
               </Link>
             </DropdownMenuItem>
           ))}
