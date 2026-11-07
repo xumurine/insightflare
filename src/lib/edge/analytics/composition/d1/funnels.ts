@@ -1,33 +1,49 @@
 import type { AnalyticsProviderRegistry } from "@/lib/edge/analytics/application/provider-registry";
-import { typedQueryProvider } from "@/lib/edge/analytics/application/provider-registry";
-import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import { typedQueryProviderFor } from "@/lib/edge/analytics/application/provider-registry";
 import {
+  EMPTY_FILTER_DOCUMENT,
+  type FunnelConfigV2,
+} from "@/lib/edge/analytics/contract";
+import {
+  decodeFunnelDefinitionCursor,
   queryFunnelAnalysis,
   queryFunnelDefinition,
-  queryFunnelDefinitions,
+  queryFunnelDefinitionsPage,
 } from "@/lib/edge/analytics/providers/d1/internal/funnels";
+import { InvalidCursorError } from "@/lib/pagination";
 
-import {
-  type D1SiteQueryRuntimeOptions,
-  query,
-  stringField,
-  timeWindow,
-} from "./shared";
-
+import { type D1SiteRuntimeBindings, stringField, timeWindow } from "./shared";
+export {
+  archiveFunnelDefinition,
+  createFunnelDefinition,
+  queryFunnelDefinition,
+  updateFunnelDefinition,
+} from "@/lib/edge/analytics/providers/d1/internal/funnels";
 export function registerFunnelProvider(
   registry: AnalyticsProviderRegistry,
-  options: D1SiteQueryRuntimeOptions,
+  options: D1SiteRuntimeBindings,
 ): void {
   registry.register(
     "funnel-analysis",
-    typedQueryProvider<Record<string, unknown>>(async (input) => {
-      const request = query(input!);
+    typedQueryProviderFor("funnel-analysis", async (input) => {
+      const request = input;
       const funnelId = stringField(request, "funnelId");
       if (!funnelId) {
+        const limit = request.page?.limit ?? 50;
+        const cursorText = request.page?.cursor ?? null;
+        const cursor = await decodeFunnelDefinitionCursor(
+          options.env,
+          options.siteId,
+          cursorText,
+        );
+        if (cursorText && !cursor) throw new InvalidCursorError("funnels");
         return {
-          value: {
-            funnels: await queryFunnelDefinitions(options.env, options.siteId),
-          } as Record<string, unknown>,
+          value: await queryFunnelDefinitionsPage(
+            options.env,
+            options.siteId,
+            limit,
+            cursor,
+          ),
         };
       }
       const funnel = await queryFunnelDefinition(
@@ -45,10 +61,15 @@ export function registerFunnelProvider(
                   options.siteId,
                   timeWindow(request.time),
                   request.filters ?? EMPTY_FILTER_DOCUMENT,
-                  funnel.steps,
+                  {
+                    filterDslVersion: funnel.filterDslVersion,
+                    progressionScope: funnel.progressionScope,
+                    conversionWindowMs: funnel.conversionWindowMs,
+                    steps: funnel.steps,
+                  } satisfies FunnelConfigV2,
                 )
               : null,
-        } as Record<string, unknown>,
+        },
       };
     }),
   );

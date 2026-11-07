@@ -1,21 +1,19 @@
-import { parseGeoLocationValue } from "@/lib/dashboard/geo-location";
+import { parseGeoLocationValue } from "@/lib/analytics/geo-location";
 import {
-  analyticsFilterRegistry,
-  compileFilterDocument,
   type FilterDocument,
   type FilterExpression,
-  normalizeFilterDocument,
+  planObservationFilter,
+  scopedFilterMetadata,
 } from "@/lib/edge/analytics/contract";
 
-import type { EventRecordSortKey, ListSort } from "./core-types";
-
+import type { EventRecordSortKey, ListSort, QueryWindow } from "./core-types";
+import { compileFilterDocument } from "./filter-compiler";
 export interface ParsedGeoFilter {
   country: string;
   regionCode?: string;
   regionName?: string;
   city?: string;
 }
-
 /** Presentation-only location decoder. It is not part of the SQL filter contract. */
 export function parseGeoFilterValue(
   value: string | undefined,
@@ -31,47 +29,10 @@ export function parseGeoFilterValue(
       : {}),
   };
 }
-
-function removeFields(
-  expression: FilterExpression | null,
-  fields: ReadonlySet<string>,
-): FilterExpression | null {
-  if (!expression) return null;
-  if (expression.kind === "condition") {
-    return expression.target.kind === "field" &&
-      fields.has(expression.target.field)
-      ? null
-      : expression;
-  }
-  if (expression.kind === "not") {
-    const child = removeFields(expression.child, fields);
-    return child ? { kind: "not", child } : null;
-  }
-  const children = expression.children
-    .map((child) => removeFields(child, fields))
-    .filter((child): child is FilterExpression => child !== null);
-  if (children.length === 0) return null;
-  if (children.length === 1) return children[0]!;
-  return { kind: expression.kind, children };
-}
-
-export function withoutFilterKey(
-  filters: FilterDocument,
-  field: string,
-): FilterDocument {
-  return normalizeFilterDocument(
-    { version: 1, root: removeFields(filters.root, new Set([field])) },
-    analyticsFilterRegistry,
-  );
-}
-
-export function withoutGeoFilter(filters: FilterDocument): FilterDocument {
-  return withoutFilterKey(
-    withoutFilterKey(withoutFilterKey(filters, "geo.country"), "geo.region"),
-    "geo.city",
-  );
-}
-
+export {
+  withoutFilterKey,
+  withoutGeoFilter,
+} from "@/lib/edge/analytics/contract";
 export function usesSessionBoundaryFilter(filters: FilterDocument): boolean {
   const visit = (expression: FilterExpression | null): boolean => {
     if (!expression) return false;
@@ -87,34 +48,49 @@ export function usesSessionBoundaryFilter(filters: FilterDocument): boolean {
   };
   return visit(filters.root);
 }
-
-export function usesEventFilter(filters: FilterDocument): boolean {
-  const visit = (expression: FilterExpression | null): boolean => {
-    if (!expression) return false;
-    if (expression.kind === "condition") {
-      return (
-        expression.target.kind === "event-payload" ||
-        (expression.target.kind === "field" &&
-          expression.target.field === "event.name")
-      );
-    }
-    if (expression.kind === "not") return visit(expression.child);
-    return expression.children.some(visit);
-  };
-  return visit(filters.root);
-}
-
-export function buildVisitFilterSql(
+function compileObservationPredicate(
   filters: FilterDocument,
-  alias = "visit_source",
+  observationKind: "visit" | "event",
+  alias: string,
+  sessionSource?: string,
 ): { clause: string; bindings: Array<string | number> } {
-  if (usesEventFilter(filters)) {
-    const eventFilter = buildEventFilterSql(filters, "event_filter_source", {
-      sessionSource: "visit_source",
-    });
-    const eventClause = eventFilter.clause.replace(/^WHERE\s+/i, "");
-    return {
-      clause: `WHERE EXISTS (
+  const predicate = planObservationFilter(filters.root)[observationKind];
+  if (predicate.kind === "all") return { clause: "", bindings: [] };
+  if (predicate.kind === "none") return { clause: "WHERE 0", bindings: [] };
+  const compiled = compileFilterDocument(
+    { version: 1, root: predicate.expression },
+    {
+      alias,
+      eventAlias: alias,
+      sessionSource,
+    },
+  );
+  return { clause: compiled.clause, bindings: [...compiled.bindings] };
+}
+function matchingEventExistsSql(
+  filters: FilterDocument,
+  outerAlias: string,
+  scoped: NonNullable<ReturnType<typeof scopedFilterMetadata>> | undefined,
+  window?: QueryWindow,
+): { clause: string; bindings: Array<string | number> } | null {
+  const eventPredicate = compileObservationPredicate(
+    filters,
+    "event",
+    "event_filter_source",
+    "visit_source",
+  );
+  if (!eventPredicate.clause) return null;
+  const eventClause = eventPredicate.clause.replace(/^WHERE\s+/i, "");
+  const eventWindow =
+    scoped?.time.range ??
+    (window
+      ? { startMs: window.startMs, endExclusiveMs: window.endExclusiveMs }
+      : undefined);
+  const timePredicate = eventWindow
+    ? "AND ce.occurred_at >= ? AND ce.occurred_at < ?"
+    : "";
+  return {
+    clause: `EXISTS (
   SELECT 1
   FROM (
     SELECT
@@ -127,18 +103,52 @@ export function buildVisitFilterSql(
     INNER JOIN visits v
       ON v.site_pk = ce.site_pk
      AND v.visit_id = ce.visit_id
-    WHERE ce.site_pk = ${alias}.site_pk
-      AND ce.visit_id = ${alias}.visit_id
+    WHERE ce.site_pk = ${outerAlias}.site_pk
+      AND ce.visit_id = ${outerAlias}.visit_id
+      ${timePredicate}
   ) event_filter_source
   WHERE ${eventClause}
 )`,
-      bindings: eventFilter.bindings,
-    };
-  }
-  const compiled = compileFilterDocument(filters, { alias });
-  return { clause: compiled.clause, bindings: [...compiled.bindings] };
+    bindings: eventWindow
+      ? [
+          eventWindow.startMs,
+          eventWindow.endExclusiveMs,
+          ...eventPredicate.bindings,
+        ]
+      : eventPredicate.bindings,
+  };
 }
-
+export function buildVisitFilterSql(
+  filters: FilterDocument,
+  alias = "visit_source",
+  options?: {
+    readonly includeEventBranch?: boolean;
+    readonly window?: QueryWindow;
+  },
+): { clause: string; bindings: Array<string | number> } {
+  const scoped = scopedFilterMetadata(filters);
+  const visitPredicate = compileObservationPredicate(filters, "visit", alias);
+  const eventExists =
+    options?.includeEventBranch === false
+      ? null
+      : matchingEventExistsSql(filters, alias, scoped, options?.window);
+  const clauses = [
+    ...(visitPredicate.clause
+      ? [visitPredicate.clause.replace(/^WHERE\s+/i, "")]
+      : []),
+    ...(eventExists ? [eventExists.clause] : []),
+  ];
+  const bindings = [
+    ...visitPredicate.bindings,
+    ...(eventExists?.bindings ?? []),
+  ];
+  if (clauses.length === 0) {
+    return planObservationFilter(filters.root).visit.kind === "all"
+      ? { clause: "", bindings }
+      : { clause: "WHERE 0", bindings };
+  }
+  return { clause: `WHERE (${clauses.join(" OR ")})`, bindings };
+}
 export function buildEventFilterSql(
   filters: FilterDocument,
   alias = "es",
@@ -148,11 +158,12 @@ export function buildEventFilterSql(
     sessionSource?: string;
   },
 ): { clause: string; bindings: Array<string | number> } {
-  const compiled = compileFilterDocument(filters, {
+  const compiled = compileObservationPredicate(
+    filters,
+    "event",
     alias,
-    eventAlias: alias,
-    sessionSource: options?.sessionSource,
-  });
+    options?.sessionSource,
+  );
   const clauses = compiled.clause
     ? [compiled.clause.replace(/^WHERE\s+/i, "")]
     : [];
@@ -177,7 +188,6 @@ export function buildEventFilterSql(
     ? { clause: `WHERE ${clauses.join(" AND ")}`, bindings }
     : { clause: "", bindings };
 }
-
 export function eventRecordOrderBy(sort: ListSort<EventRecordSortKey>): string {
   const direction = sort.direction === "asc" ? "ASC" : "DESC";
   if (sort.key === "eventName")

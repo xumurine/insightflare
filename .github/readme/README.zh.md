@@ -1,24 +1,192 @@
+<div align="center">
+
 # InsightFlare
 
+### 数据属于你，分析运行在自己的 Cloudflare 上。
+
+兼顾隐私与分析深度的开源网站统计平台：实时流量、访客旅程、转化漏斗，以及 AI Agent 数据分析。
+
+[**在线体验**](https://insight-demo.ravelloh.com/) &nbsp;·&nbsp; [**一键部署到 Cloudflare**](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FRavelloH%2FInsightFlare) &nbsp;·&nbsp; [**源代码**](https://github.com/RavelloH/InsightFlare)
+
+[![GitHub stars](https://img.shields.io/github/stars/RavelloH/InsightFlare?style=flat-square&logo=github)](https://github.com/RavelloH/InsightFlare/stargazers) [![Latest release](https://img.shields.io/github/v/release/RavelloH/InsightFlare?style=flat-square)](https://github.com/RavelloH/InsightFlare/releases) [![License: MIT](https://img.shields.io/github/license/RavelloH/InsightFlare?style=flat-square)](/LICENSE)
+
 <!-- auto-readme-i18n-switcher start -->
-| [English](/.github/readme/README.en.md) | [日本語](/.github/readme/README.ja.md) | 中文 |
+| [English](/.github/readme/README.en.md) | [日本語](/.github/readme/README.ja.md) | [中文（台灣）](/.github/readme/README.zh-tw.md) | 中文 |
 <!-- auto-readme-i18n-switcher end -->
 
-> 功能强大、隐私友好的开源网站访问分析工具，完全运行于 Cloudflare 上。
+</div>
 
-Demo: [http://insight-demo.ravelloh.com](http://insight-demo.ravelloh.com/)
+<a href="https://insight-demo.ravelloh.com/"><img src="/.github/screenshot/001.webp" alt="InsightFlare analytics dashboard" width="100%"></a>
 
-![ScreenShot](/.github/screenshot/001.webp)
+## 为什么选择 InsightFlare？
 
-完全符合 GDPR，无任何 Cookie ，无需用户同意即可合法追踪访问数据。独创的智能跟踪强度机制，可根据不同地区的隐私法规自动调整访客标识的持久性，最大程度兼顾数据完整性与用户隐私保护。
+不止于访问量统计，也不必将分析数据交给第三方平台。InsightFlare 运行在你自己的 Cloudflare 账户中，将流量、访客行为和运行观测整合在一个仪表盘里。
 
-前端统计脚本 SDK 在 gzip 压缩后仅约 3 KB，通过 Cloudflare 全球 CDN 分发，访问性能优秀。SDK 自带自定义事件追踪（`data-insightflare-event`）和性能指标追踪。
+- **自己的基础设施，自己的数据。** 基于 Cloudflare Workers、D1 和 Durable Objects 自托管，无需注册第三方分析 SaaS。
+- **看懂访客行为。** 分析会话、访问旅程、漏斗、自定义事件、UTM 活动和流量来源质量。
+- **实时掌握网站动态。** 观察实时访问、性能指标、地理分布、浏览器和设备。
+- **辨别无效流量。** 通过机器人防护和异常请求观测，区分纯粹的访问量与真实有价值的访问。
+- **让 AI Agent 帮忙分析。** 借助 Skills 入口和具备权限控制的 API，自然语言查询访问数据。
+- **从小规模开始，按需扩展。** 支持一键部署、多站点与团队、可选的 R2 归档及灵活配置。
 
-多语言的仪表盘使用前所未有的可视化效果，让你对访问数据了如指掌。独创的地名多语言翻译功能，自动翻译全球 95% 以上的地名，让你轻松了解访客的地理分布。
+**隐私与费用说明：** 追踪器采用无 Cookie 设计，不保存原始 IP。具体法律合规要求与 Cloudflare 费用取决于部署配置、流量和适用地区。
 
-Cloudflare 的免费额度可提供每日 10 万次访问的免费追踪，结合边缘计算带来极佳性能。
+## 界面预览
 
-我们不存储原始 IP 信息，依靠 Cloudflare 进行地理位置解析，在保护用户隐私的同时提供极高精准度的分析。
+<table>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/004.webp"><img src="/.github/screenshot/004.webp" alt="实时访问" width="100%"><br><strong>实时访问</strong></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/018.webp"><img src="/.github/screenshot/018.webp" alt="访客会话" width="100%"><br><strong>访客会话</strong></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/054.webp"><img src="/.github/screenshot/054.webp" alt="事件漏斗" width="100%"><br><strong>事件漏斗</strong></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/010.webp"><img src="/.github/screenshot/010.webp" alt="来源分析" width="100%"><br><strong>来源分析</strong></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/026.webp"><img src="/.github/screenshot/026.webp" alt="地理分布" width="100%"><br><strong>地理分布</strong></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/058.webp"><img src="/.github/screenshot/058.webp" alt="机器人观测" width="100%"><br><strong>机器人观测</strong></a></td>
+  </tr>
+</table>
+
+## 完整功能预览
+
+### 流量概览与来源分析
+
+<table>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/001.webp"><img src="/.github/screenshot/001.webp" width="100%" alt="完整的访问维度追踪" title="完整的访问维度追踪"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/002.webp"><img src="/.github/screenshot/002.webp" width="100%" alt="完整的访问维度追踪" title="完整的访问维度追踪"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/003.webp"><img src="/.github/screenshot/003.webp" width="100%" alt="完整的访问维度追踪" title="完整的访问维度追踪"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/004.webp"><img src="/.github/screenshot/004.webp" width="100%" alt="实时查看访客情况" title="实时查看访客情况"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/005.webp"><img src="/.github/screenshot/005.webp" width="100%" alt="实时查看访客情况" title="实时查看访客情况"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/006.webp"><img src="/.github/screenshot/006.webp" width="100%" alt="分页面查看访问情况" title="分页面查看访问情况"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/007.webp"><img src="/.github/screenshot/007.webp" width="100%" alt="追踪访客的真实访问性能" title="追踪访客的真实访问性能"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/008.webp"><img src="/.github/screenshot/008.webp" width="100%" alt="追踪访客的真实访问性能" title="追踪访客的真实访问性能"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/009.webp"><img src="/.github/screenshot/009.webp" width="100%" alt="追踪访客的真实访问性能" title="追踪访客的真实访问性能"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/010.webp"><img src="/.github/screenshot/010.webp" width="100%" alt="对比各个来源的访问质量" title="对比各个来源的访问质量"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/011.webp"><img src="/.github/screenshot/011.webp" width="100%" alt="对比各个来源的访问质量" title="对比各个来源的访问质量"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/012.webp"><img src="/.github/screenshot/012.webp" width="100%" alt="对比各个来源的访问质量" title="对比各个来源的访问质量"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/013.webp"><img src="/.github/screenshot/013.webp" width="100%" alt="追踪 UTM 活动效果" title="追踪 UTM 活动效果"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/014.webp"><img src="/.github/screenshot/014.webp" width="100%" alt="追踪 UTM 活动效果" title="追踪 UTM 活动效果"></a></td>
+    <td width="33%"></td>
+  </tr>
+</table>
+
+### 事件、会话与访客旅程
+
+<table>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/015.webp"><img src="/.github/screenshot/015.webp" width="100%" alt="记录并分析自定义事件" title="记录并分析自定义事件"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/016.webp"><img src="/.github/screenshot/016.webp" width="100%" alt="记录并分析自定义事件" title="记录并分析自定义事件"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/017.webp"><img src="/.github/screenshot/017.webp" width="100%" alt="记录并分析自定义事件" title="记录并分析自定义事件"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/018.webp"><img src="/.github/screenshot/018.webp" width="100%" alt="洞察每一次会话" title="洞察每一次会话"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/019.webp"><img src="/.github/screenshot/019.webp" width="100%" alt="洞察每一次会话" title="洞察每一次会话"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/020.webp"><img src="/.github/screenshot/020.webp" width="100%" alt="洞察每一次会话" title="洞察每一次会话"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/021.webp"><img src="/.github/screenshot/021.webp" width="100%" alt="洞察每一次会话" title="洞察每一次会话"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/022.webp"><img src="/.github/screenshot/022.webp" width="100%" alt="了解你的每一位访客" title="了解你的每一位访客"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/023.webp"><img src="/.github/screenshot/023.webp" width="100%" alt="了解你的每一位访客" title="了解你的每一位访客"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/024.webp"><img src="/.github/screenshot/024.webp" width="100%" alt="追踪站点的回访情况" title="追踪站点的回访情况"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/025.webp"><img src="/.github/screenshot/025.webp" width="100%" alt="追踪站点的回访情况" title="追踪站点的回访情况"></a></td>
+    <td width="33%"></td>
+  </tr>
+</table>
+
+### 受众、设备与地理分析
+
+<table>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/026.webp"><img src="/.github/screenshot/026.webp" width="100%" alt="了解访客的地理分布与市场情报" title="了解访客的地理分布与市场情报"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/027.webp"><img src="/.github/screenshot/027.webp" width="100%" alt="了解访客的地理分布与市场情报" title="了解访客的地理分布与市场情报"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/028.webp"><img src="/.github/screenshot/028.webp" width="100%" alt="了解访客的地理分布与市场情报" title="了解访客的地理分布与市场情报"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/029.webp"><img src="/.github/screenshot/029.webp" width="100%" alt="查看访客的设备情况" title="查看访客的设备情况"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/030.webp"><img src="/.github/screenshot/030.webp" width="100%" alt="查看访客的设备情况" title="查看访客的设备情况"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/031.webp"><img src="/.github/screenshot/031.webp" width="100%" alt="查看访客的设备情况" title="查看访客的设备情况"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/032.webp"><img src="/.github/screenshot/032.webp" width="100%" alt="了解用户的浏览器及其能力" title="了解用户的浏览器及其能力"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/033.webp"><img src="/.github/screenshot/033.webp" width="100%" alt="了解用户的浏览器及其能力" title="了解用户的浏览器及其能力"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/034.webp"><img src="/.github/screenshot/034.webp" width="100%" alt="了解用户的浏览器及其能力" title="了解用户的浏览器及其能力"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/035.webp"><img src="/.github/screenshot/035.webp" width="100%" alt="了解用户的浏览器及其能力" title="了解用户的浏览器及其能力"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/036.webp"><img src="/.github/screenshot/036.webp" width="100%" alt="了解用户的浏览器及其能力" title="了解用户的浏览器及其能力"></a></td>
+    <td width="33%"></td>
+  </tr>
+</table>
+
+### 设置、团队协作与分享
+
+<table>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/037.webp"><img src="/.github/screenshot/037.webp" width="100%" alt="随时调整你的追踪设置，无需修改前端 SDK" title="随时调整你的追踪设置，无需修改前端 SDK"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/038.webp"><img src="/.github/screenshot/038.webp" width="100%" alt="随时调整你的追踪设置，无需修改前端 SDK" title="随时调整你的追踪设置，无需修改前端 SDK"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/039.webp"><img src="/.github/screenshot/039.webp" width="100%" alt="为团队协作而设计" title="为团队协作而设计"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/040.webp"><img src="/.github/screenshot/040.webp" width="100%" alt="为团队协作而设计" title="为团队协作而设计"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/041.webp"><img src="/.github/screenshot/041.webp" width="100%" alt="轻松了解系统的运行状况" title="轻松了解系统的运行状况"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/042.webp"><img src="/.github/screenshot/042.webp" width="100%" alt="轻松了解系统的运行状况" title="轻松了解系统的运行状况"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/043.webp"><img src="/.github/screenshot/043.webp" width="100%" alt="完整的多语言翻译" title="完整的多语言翻译"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/044.webp"><img src="/.github/screenshot/044.webp" width="100%" alt="完整的多语言翻译" title="完整的多语言翻译"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/045.webp"><img src="/.github/screenshot/045.webp" width="100%" alt="公开分享系统" title="公开分享系统"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/046.webp"><img src="/.github/screenshot/046.webp" width="100%" alt="公开分享系统" title="公开分享系统"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/047.webp"><img src="/.github/screenshot/047.webp" width="100%" alt="作用域分明的 API 系统" title="作用域分明的 API 系统"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/048.webp"><img src="/.github/screenshot/048.webp" width="100%" alt="定时任务" title="定时任务"></a></td>
+  </tr>
+</table>
+
+### 深度事件分析与转化漏斗
+
+<table>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/049.webp"><img src="/.github/screenshot/049.webp" width="100%" alt="对 JSON 格式的自定义事件进行深度分析" title="对 JSON 格式的自定义事件进行深度分析"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/050.webp"><img src="/.github/screenshot/050.webp" width="100%" alt="对 JSON 格式的自定义事件进行深度分析" title="对 JSON 格式的自定义事件进行深度分析"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/051.webp"><img src="/.github/screenshot/051.webp" width="100%" alt="对 JSON 格式的自定义事件进行深度分析" title="对 JSON 格式的自定义事件进行深度分析"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/052.webp"><img src="/.github/screenshot/052.webp" width="100%" alt="对 JSON 格式的自定义事件进行深度分析" title="对 JSON 格式的自定义事件进行深度分析"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/053.webp"><img src="/.github/screenshot/053.webp" width="100%" alt="对 JSON 格式的自定义事件进行深度分析" title="对 JSON 格式的自定义事件进行深度分析"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/054.webp"><img src="/.github/screenshot/054.webp" width="100%" alt="使用漏斗来分析访问与事件" title="使用漏斗来分析访问与事件"></a></td>
+  </tr>
+</table>
+
+### 运行监控、通知与机器人防护
+
+<table>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/055.webp"><img src="/.github/screenshot/055.webp" width="100%" alt="定时 / 按条件接收通知邮件" title="定时 / 按条件接收通知邮件"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/056.webp"><img src="/.github/screenshot/056.webp" width="100%" alt="定时 / 按条件接收通知邮件" title="定时 / 按条件接收通知邮件"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/057.webp"><img src="/.github/screenshot/057.webp" width="100%" alt="定时 / 按条件接收通知邮件" title="定时 / 按条件接收通知邮件"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/058.webp"><img src="/.github/screenshot/058.webp" width="100%" alt="多维度的机器人防护与观测系统" title="多维度的机器人防护与观测系统"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/059.webp"><img src="/.github/screenshot/059.webp" width="100%" alt="多维度的机器人防护与观测系统" title="多维度的机器人防护与观测系统"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/060.webp"><img src="/.github/screenshot/060.webp" width="100%" alt="多维度的机器人防护与观测系统" title="多维度的机器人防护与观测系统"></a></td>
+  </tr>
+  <tr>
+    <td width="33%" align="center"><a href="/.github/screenshot/061.webp"><img src="/.github/screenshot/061.webp" width="100%" alt="多维度的机器人防护与观测系统" title="多维度的机器人防护与观测系统"></a></td>
+    <td width="33%" align="center"><a href="/.github/screenshot/062.webp"><img src="/.github/screenshot/062.webp" width="100%" alt="多维度的机器人防护与观测系统" title="多维度的机器人防护与观测系统"></a></td>
+    <td width="33%"></td>
+  </tr>
+</table>
 
 ---
 
@@ -41,154 +209,22 @@ Cloudflare 会自动 Clone 这个仓库、创建并绑定所需要的资源。�
 
 填写完毕后，等待 3 分钟让项目部署完毕，你就可以登录到仪表盘并开始追踪访问数据了。此外，你可以在项目的设置页面自定义其域名。默认的访问地址是 `https://insightflare.<your-cloudflare-username>.workers.dev`
 
-## 特性
-
-### 完整的访问维度追踪
-
-![001](/.github/screenshot/001.webp)
-![002](/.github/screenshot/002.webp)
-![003](/.github/screenshot/003.webp)
-
-### 实时查看访客情况
-
-![004](/.github/screenshot/004.webp)
-![005](/.github/screenshot/005.webp)
-
-### 分页面查看访问情况
-
-![006](/.github/screenshot/006.webp)
-
-### 追踪访客的真实访问性能
-
-![007](/.github/screenshot/007.webp)
-![008](/.github/screenshot/008.webp)
-![009](/.github/screenshot/009.webp)
-
-### 对比各个来源的访问质量
-
-![010](/.github/screenshot/010.webp)
-![011](/.github/screenshot/011.webp)
-![012](/.github/screenshot/012.webp)
-
-### 追踪 UTM 活动效果
-
-![013](/.github/screenshot/013.webp)
-![014](/.github/screenshot/014.webp)
-
-### 记录并分析自定义事件
-
-![015](/.github/screenshot/015.webp)
-![016](/.github/screenshot/016.webp)
-![017](/.github/screenshot/017.webp)
-
-### 洞察每一次会话
-
-![018](/.github/screenshot/018.webp)
-![019](/.github/screenshot/019.webp)
-![020](/.github/screenshot/020.webp)
-![021](/.github/screenshot/021.webp)
-
-### 了解你的每一位访客
-
-![022](/.github/screenshot/022.webp)
-![023](/.github/screenshot/023.webp)
-
-### 追踪站点的回访情况
-
-![024](/.github/screenshot/024.webp)
-![025](/.github/screenshot/025.webp)
-
-### 了解访客的地理分布与市场情报
-
-![026](/.github/screenshot/026.webp)
-![027](/.github/screenshot/027.webp)
-![028](/.github/screenshot/028.webp)
-
-### 查看访客的设备情况
-
-![029](/.github/screenshot/029.webp)
-![030](/.github/screenshot/030.webp)
-![031](/.github/screenshot/031.webp)
-
-### 了解用户的浏览器及其能力
-
-![032](/.github/screenshot/032.webp)
-![033](/.github/screenshot/033.webp)
-![034](/.github/screenshot/034.webp)
-![035](/.github/screenshot/035.webp)
-![036](/.github/screenshot/036.webp)
-
-### 随时调整你的追踪设置，无需修改前端 SDK
-
-![037](/.github/screenshot/037.webp)
-![038](/.github/screenshot/038.webp)
-
-### 为团队协作而设计
-
-![039](/.github/screenshot/039.webp)
-![040](/.github/screenshot/040.webp)
-
-### 轻松了解系统的运行状况
-
-![041](/.github/screenshot/041.webp)
-![042](/.github/screenshot/042.webp)
-
-### 完整的多语言翻译
-
-![043](/.github/screenshot/043.webp)
-![044](/.github/screenshot/044.webp)
-
-### 公开分享系统
-
-![045](/.github/screenshot/045.webp)
-![046](/.github/screenshot/046.webp)
-
-### 作用域分明的 API 系统
-
-![047](/.github/screenshot/047.webp)
-
-### 定时任务
-
-![048](/.github/screenshot/048.webp)
-
-### 对 JSON 格式的自定义事件进行深度分析
-
-![049](/.github/screenshot/049.webp)
-![050](/.github/screenshot/050.webp)
-![051](/.github/screenshot/051.webp)
-![052](/.github/screenshot/052.webp)
-![053](/.github/screenshot/053.webp)
-
-### 使用漏斗来分析访问与事件
-
-![054](/.github/screenshot/054.webp)
-
-### 定时 / 按条件接收通知邮件
-
-![055](/.github/screenshot/055.webp)
-![056](/.github/screenshot/056.webp)
-![057](/.github/screenshot/057.webp)
-
-### 多维度的机器人防护与观测系统
-
-![058](/.github/screenshot/058.webp)
-![059](/.github/screenshot/059.webp)
-![060](/.github/screenshot/060.webp)
-![061](/.github/screenshot/061.webp)
-![062](/.github/screenshot/062.webp)
-
 ---
 
 ## 进阶配置
 
 ### 启用分析引擎来进行深度分析
 
-InsightFlare 中包含的部分可选的附加功能，例如机器人流量检测等，将会使用 Cloudflare Analytics Engine 来进行额外的增强分析，以尽量避免影响主数据库。
+Analytics Engine 是 InsightFlare 可选的高吞吐分析层，用于将请求观测以及未来的流量、事件分析投影与主数据库解耦：
+
+- `REQUEST_ANALYTICS` → 请求观测和异常流量
+- `TRAFFIC_ANALYTICS` → 采样后的流量事实
+- `EVENT_ANALYTICS` → 采样后的自定义事件事实
 
 但是，这需要您手动开启 Analytics Engine。您只需要前往 [Cloudflare Dashboard](
 https://dash.cloudflare.com/?to=/:account/workers/analytics-engine) 并点击右侧的“启用”按钮即可。之后部署 InsightFlare 时，系统会自动将 Analytics Engine 与您的 Cloudflare 账户绑定。
 
-这样，InsightFlare 就可以向 Analytics Engine 写入数据。但是，Analytics Engine 需要一个 API Token 才能读取数据集。请在系统设置中填写 Cloudflare Account ID 和具备“账户分析”读取权限的 API Token，详见 InsightFlare 后台的设置页面的“教程”按钮。
+启用后，InsightFlare 会写入以上三个数据集。当前版本的“请求观测”页面已经使用新的 `REQUEST_ANALYTICS` 数据集查询；`TRAFFIC_ANALYTICS` 和 `EVENT_ANALYTICS` 会持续积累数据，供后续 Analytics Engine Provider 使用。读取数据集需要 API Token，请在系统设置中填写 Cloudflare Account ID 和具备“账户分析”读取权限的 API Token。Reader 配置仍保存在主数据库 D1 中，详见 InsightFlare 后台设置页面的“教程”按钮。
 
 ### 接入 AI Agents 进行分析
 
@@ -275,6 +311,25 @@ InsightFlare 的前端 SDK 支持以手动调用的方式上报自定义事件�
 - `setGlobalProperties(props)`：为后续事件追加公共字段。
 - `clearGlobalProperties()`：清除公共字段。
 
+#### 用户身份识别
+
+使用 `identify` 将当前访问与登录用户关联，同时保留原有的匿名访客边界：
+
+```html
+<script>
+  window.insightflare.identify("user-123", { name: "Alice" });
+</script>
+```
+
+用户登录后调用 `identify`，即可将当前及后续访问按用户统一分析。首次页面访问前调用也受支持。用户退出登录时调用 `reset()`，结束当前身份、创建新的匿名访客边界，并避免后续事件继承旧账号：
+
+```js
+window.insightflare.reset();
+window.insightflare.identify("user-456", { name: "Bob" });
+```
+
+切换账号前请先调用 `reset()`。单独调用 `identify("user-456")` 不会创建新的访客边界。
+
 #### DOM 属性自动上报
 
 ```html
@@ -310,14 +365,6 @@ InsightFlare 的前端 SDK 支持以手动调用的方式上报自定义事件�
   ...
 </form>
 
-<!-- 5. 元素进入视口时触发一次 -->
-<section
-  data-insightflare-event="pricing_viewed"
-  data-insightflare-event-trigger="enterviewport"
-  data-insightflare-event-plan="pro"
->
-  ...
-</section>
 ```
 
 ## 技术栈
@@ -346,38 +393,38 @@ InsightFlare 的前端 SDK 支持以手动调用的方式上报自定义事件�
 ### 本地开发
 
 1. 克隆这个仓库到本地 : `git clone https://github.com/RavelloH/InsightFlare`
-2. 安装依赖 : `npm install`
-3. 创建本地数据库 : `npm run db:migrate:local`
+2. 安装依赖 : `pnpm install`
+3. 创建本地数据库 : `pnpm run db:migrate:local`
 4. 设置环境变量：（参照 `.dev.vars.example`）
-5. 运行开发服务器 : `npm run dev`
+5. 运行开发服务器 : `pnpm run dev`
 
-`npm run dev:ui` 会以 Demo 模式启动 Vite 开发服务器，使用前端模拟数据进行 UI 测试。若通过 `npm run dev` 启动，可设置 `DEMO_MODE=1` 启用 Demo 模式。
+`pnpm run dev:ui` 会以 Demo 模式启动 Vite 开发服务器，使用前端模拟数据进行 UI 测试。若通过 `pnpm run dev` 启动，可设置 `DEMO_MODE=1` 启用 Demo 模式。
 
 ## 常用命令
 
 | 命令                                          | 用途                                                                    |
 | --------------------------------------------- | ----------------------------------------------------------------------- |
-| `npm run dev`                                 | Vite + Cloudflare Workers 本地开发（使用 `http://localhost:3000`）      |
-| `npm run dev:ui`                              | 以 Demo 模式启动 Vite 仪表板开发服务器                                  |
-| `npm run preview:local`                       | 使用本地资源构建并启动 Wrangler 预览                                    |
-| `npm run build`                               | Cloudflare 托管构建入口                                                 |
-| `npm run build:local`                         | 本地预检 + 本地 D1 迁移 + 构建                                          |
-| `npm run build:demo`                          | 无资源绑定的 Demo 构建                                                  |
-| `npm run deploy`                              | Cloudflare 托管部署入口                                                 |
-| `npm run publish`                             | 在允许的 Cloudflare 环境中构建并主动发布                                |
-| `npm run publish:demo`                        | 构建并发布 Demo Worker                                                  |
-| `npm run check`                               | 自动修复格式和 lint，并执行 build + typecheck + i18n + test + spec 检查 |
-| `npm run check:verify`                        | 严格执行完整检查，不自动修复                                            |
-| `npm run typecheck`                           | TypeScript 类型检查                                                     |
-| `npm run lint` / `lint:fix`                   | ESLint                                                                  |
-| `npm run format` / `format:check`             | Prettier                                                                |
-| `npm run check:i18n`                          | 校验翻译键的完整性                                                      |
-| `npm run db:migrate:local`                    | 本地 D1 迁移                                                            |
-| `npm run db:migrate:cf`                       | Cloudflare D1 迁移                                                      |
-| `npm run db:migration:create`                 | 新建迁移文件                                                            |
-| `npm run ops:secret:main`                     | 设置 `MAIN_SECRET` Worker Secret                                        |
-| `npm run ops:secret:bootstrap-admin-password` | 设置初始化管理员密码 Secret                                             |
-| `npm run ops:tail`                            | 查看线上 Worker 日志                                                    |
+| `pnpm run dev`                                 | Vite + Cloudflare Workers 本地开发（使用 `http://localhost:3000`）      |
+| `pnpm run dev:ui`                              | 以 Demo 模式启动 Vite 仪表板开发服务器                                  |
+| `pnpm run preview:local`                       | 使用本地资源构建并启动 Wrangler 预览                                    |
+| `pnpm run build`                               | Cloudflare 托管构建入口                                                 |
+| `pnpm run build:local`                         | 本地预检 + 本地 D1 迁移 + 构建                                          |
+| `pnpm run build:demo`                          | 无资源绑定的 Demo 构建                                                  |
+| `pnpm run deploy`                              | Cloudflare 托管部署入口                                                 |
+| `pnpm run publish`                             | 在允许的 Cloudflare 环境中构建并主动发布                                |
+| `pnpm run publish:demo`                        | 构建并发布 Demo Worker                                                  |
+| `pnpm run check`                               | 自动修复格式和 lint，并执行 build + typecheck + i18n + test + spec 检查 |
+| `pnpm run check:verify`                        | 严格执行完整检查，不自动修复                                            |
+| `pnpm run typecheck`                           | TypeScript 类型检查                                                     |
+| `pnpm run lint` / `lint:fix`                   | ESLint                                                                  |
+| `pnpm run format` / `format:check`             | Prettier                                                                |
+| `pnpm run check:i18n`                          | 校验翻译键的完整性                                                      |
+| `pnpm run db:migrate:local`                    | 本地 D1 迁移                                                            |
+| `pnpm run db:migrate:cf`                       | Cloudflare D1 迁移                                                      |
+| `pnpm run db:migration:create`                 | 新建迁移文件                                                            |
+| `pnpm run ops:secret:main`                     | 设置 `MAIN_SECRET` Worker Secret                                        |
+| `pnpm run ops:secret:bootstrap-admin-password` | 设置初始化管理员密码 Secret                                             |
+| `pnpm run ops:tail`                            | 查看线上 Worker 日志                                                    |
 
 ---
 

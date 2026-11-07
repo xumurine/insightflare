@@ -1,6 +1,6 @@
-import { execSync } from "node:child_process";
 import fs from "node:fs/promises";
 
+import * as prettier from "prettier";
 import YAML from "yaml";
 
 import { rlog } from "./logger";
@@ -50,8 +50,12 @@ function toTsInterface(
   return "string";
 }
 
+function localeVar(locale: string): string {
+  return locale.replace(/-([a-z])/g, (_, c) => c.toUpperCase()) + "Messages";
+}
+
 function formatMessagesConst(locale: string, value: unknown): string {
-  return `const ${locale}Messages = ${JSON.stringify(value, null, 2)} as AppMessages;`;
+  return `const ${localeVar(locale)} = ${JSON.stringify(value, null, 2)} as AppMessages;`;
 }
 
 function buildMessagesOutput(
@@ -65,7 +69,8 @@ function buildMessagesOutput(
     interfaceBody.push(`  ${tsKey(key)}: ${propType};`);
   }
 
-  return `import type { Locale } from "./config";
+  return `// @generated from src/i18n/*.yaml by scripts/i18n-check.
+import type { Locale } from "./config";
 
 export interface AppMessages {
 ${interfaceBody.join("\n")}
@@ -74,7 +79,7 @@ ${interfaceBody.join("\n")}
 ${LOCALES.map((locale) => formatMessagesConst(locale, parsedYamlByLocale[locale])).join("\n\n")}
 
 const DICTIONARIES: Record<Locale, AppMessages> = {
-${LOCALES.map((locale) => `  ${locale}: ${locale}Messages,`).join("\n")}
+${LOCALES.map((locale) => `  ${tsKey(locale)}: ${localeVar(locale)},`).join("\n")}
 };
 
 export function getMessages(locale: Locale): AppMessages {
@@ -83,10 +88,14 @@ export function getMessages(locale: Locale): AppMessages {
 `;
 }
 
-function formatMessagesFile(): void {
-  execSync(`npx prettier --write ${JSON.stringify(APP_MESSAGES_PATH)}`, {
-    stdio: "pipe",
+async function formatMessagesFile(): Promise<void> {
+  const source = await fs.readFile(APP_MESSAGES_PATH, "utf8");
+  const prettierOptions = await prettier.resolveConfig(APP_MESSAGES_PATH);
+  const formatted = await prettier.format(source, {
+    ...(prettierOptions ?? {}),
+    filepath: APP_MESSAGES_PATH,
   });
+  await fs.writeFile(APP_MESSAGES_PATH, formatted, "utf8");
 }
 
 export async function regenerateAppMessages(): Promise<void> {
@@ -104,7 +113,7 @@ export async function regenerateAppMessages(): Promise<void> {
     buildMessagesOutput(parsedYamlByLocale),
     "utf8",
   );
-  formatMessagesFile();
+  await formatMessagesFile();
   rlog.success("Successfully regenerated messages.ts schema!");
 }
 
