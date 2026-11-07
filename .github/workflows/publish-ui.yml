@@ -1,0 +1,50 @@
+name: Publish InsightFlare UI packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-ui.yml"
+      - "packages/ui/**"
+      - "packages/product-ui/**"
+      - "scripts/publish-ui-packages.mjs"
+      - "scripts/smoke-packages.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-insightflare-packages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck UI packages
+        run: pnpm run typecheck:packages
+      - name: Build UI packages
+        run: pnpm run build:packages
+      - name: Audit npm archives and published versions
+        run: node scripts/publish-ui-packages.mjs --check
+      - name: Enable modern npm OIDC support
+        run: npm install -g "npm@11.6.0"
+      - name: Publish unpublished UI package versions
+        run: node scripts/publish-ui-packages.mjs --publish

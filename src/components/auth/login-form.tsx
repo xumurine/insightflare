@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  RiLoginBoxLine,
-  RiRefreshLine,
-  RiShieldCrossLine,
-} from "@remixicon/react";
-import { toast } from "sonner";
-
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Button } from "@/components/ui/button";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
+import { Button } from "@insightflare/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -15,10 +8,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
+} from "@insightflare/ui/dialog";
+import { Input } from "@insightflare/ui/input";
+import { Label } from "@insightflare/ui/label";
+import { Spinner } from "@insightflare/ui/spinner";
+import {
+  RiLoginBoxLine,
+  RiRefreshLine,
+  RiShieldCrossLine,
+} from "@remixicon/react";
+import { toast } from "sonner";
+
 import type { Locale } from "@/lib/i18n/config";
 import { navigateWithTransition } from "@/lib/page-transition";
 import { useRouter } from "@/lib/router";
@@ -49,16 +49,10 @@ interface LoginResponse {
 }
 
 type LoginTurnstileClientConfig =
-  | { enabled: false }
-  | { enabled: true; siteKey: string; mode: "invisible" };
+  { enabled: false } | { enabled: true; siteKey: string; mode: "invisible" };
 
 type TurnstileStatus =
-  | "checking"
-  | "disabled"
-  | "loading"
-  | "running"
-  | "verified"
-  | "error";
+  "checking" | "disabled" | "loading" | "running" | "verified" | "error";
 
 interface TurnstilePublicResponse {
   ok?: boolean;
@@ -406,18 +400,21 @@ export function LoginForm({
           />
         </div>
         <Button type="submit" className="w-full" disabled={buttonDisabled}>
-          <AutoTransition className="inline-flex items-center gap-2">
+          <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
             {showButtonSpinner ? (
               <span
                 key={buttonLabel}
-                className="inline-flex items-center gap-2"
+                className="inline-flex items-center gap-[var(--button-content-gap)]"
               >
-                <Spinner className="size-4" />
+                <Spinner data-icon="inline-start" />
                 {buttonLabel}
               </span>
             ) : (
-              <span key="idle" className="inline-flex items-center gap-2">
-                <RiLoginBoxLine className="size-4" />
+              <span
+                key="idle"
+                className="inline-flex items-center gap-[var(--button-content-gap)]"
+              >
+                <RiLoginBoxLine data-icon="inline-start" />
                 {buttonLabel}
               </span>
             )}
@@ -448,7 +445,7 @@ export function LoginForm({
                 void retrySecurityVerification();
               }}
             >
-              <RiRefreshLine className="size-4" />
+              <RiRefreshLine data-icon="inline-start" />
               {retrySecurityLabel}
             </Button>
           </DialogFooter>

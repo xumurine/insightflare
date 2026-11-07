@@ -5,13 +5,12 @@ import { createTestProviderRegistry } from "@/lib/api-v1/__tests__/provider-regi
 import {
   handlePlannedTeamSites,
   type TeamSitesReader,
-} from "@/lib/api-v1/team-sites-handler";
+} from "@/lib/api-v1/analytics/team-sites";
 import {
   ApiV1ErrorEnvelopeSchema,
   TeamAnalyticsSitesResponseSchema,
-} from "@/lib/api-v1/wire";
-import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
-
+} from "@/lib/api-v1/contract/wire";
+import type { ApiKeyPrincipal } from "@/lib/edge/auth/api-key-auth";
 const principal: ApiKeyPrincipal = {
   keyId: "key-1",
   teamId: "team-1",
@@ -29,13 +28,12 @@ const input = {
   },
   interval: "hour" as const,
 };
-
 function reader() {
   return vi.fn<TeamSitesReader>().mockResolvedValue({
     source: "raw",
     approximateVisitors: false,
     data: {
-      sites: [
+      items: [
         {
           siteId: "site-1",
           name: "Example",
@@ -67,10 +65,15 @@ function reader() {
           lastEventAtMs: 0,
         },
       ],
+      pagination: {
+        limit: 20,
+        returned: 1,
+        hasMore: false,
+        nextCursor: null,
+      },
     },
   });
 }
-
 function request(
   body: BodyInit | null = JSON.stringify(input),
   init: RequestInit = {},
@@ -83,7 +86,6 @@ function request(
     ...(method === "GET" || method === "HEAD" ? {} : { body }),
   });
 }
-
 describe("planned team sites HTTP adapter", () => {
   it("returns an independent typed composite through a live Hono route", async () => {
     const provider = reader();
@@ -102,7 +104,7 @@ describe("planned team sites HTTP adapter", () => {
     expect(TeamAnalyticsSitesResponseSchema.safeParse(body).success).toBe(true);
     expect(body).toMatchObject({
       data: {
-        sites: [
+        items: [
           {
             siteId: "site-1",
             metrics: { avgDurationMs: 300, bounceRate: 0.25 },
@@ -194,7 +196,7 @@ describe("planned team sites HTTP adapter", () => {
       source: "mixed",
       approximateVisitors: true,
       data: {
-        sites: [
+        items: [
           {
             siteId: "site-1",
             name: "Example",
@@ -214,6 +216,12 @@ describe("planned team sites HTTP adapter", () => {
             lastEventAtMs: null,
           },
         ],
+        pagination: {
+          limit: 20,
+          returned: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
       },
     });
     const success = await handlePlannedTeamSites(
@@ -223,7 +231,7 @@ describe("planned team sites HTTP adapter", () => {
     );
     await expect(success.json()).resolves.toMatchObject({
       data: {
-        sites: [{ lastEventAt: null, metrics: { approximateVisitors: true } }],
+        items: [{ lastEventAt: null, metrics: { approximateVisitors: true } }],
       },
       meta: { source: "mixed", accuracy: "approximate" },
     });
@@ -255,7 +263,7 @@ describe("planned team sites HTTP adapter", () => {
       source: "raw",
       approximateVisitors: false,
       data: {
-        sites: [
+        items: [
           {
             siteId: "site-1",
             name: "Example",
@@ -275,6 +283,12 @@ describe("planned team sites HTTP adapter", () => {
             lastEventAtMs: 1,
           },
         ],
+        pagination: {
+          limit: 20,
+          returned: 1,
+          hasMore: false,
+          nextCursor: null,
+        },
       },
     });
     const response = await handlePlannedTeamSites(
@@ -284,7 +298,7 @@ describe("planned team sites HTTP adapter", () => {
     );
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        sites: [
+        items: [
           {
             metrics: { avgDurationMs: 0, bounceRate: 0 },
             lastEventAt: "1970-01-01T00:00:00.001Z",
@@ -297,7 +311,19 @@ describe("planned team sites HTTP adapter", () => {
     const cancelled = reader();
     cancelled.mockImplementationOnce(async () => {
       controller.abort();
-      return { source: "raw", approximateVisitors: false, data: { sites: [] } };
+      return {
+        source: "raw",
+        approximateVisitors: false,
+        data: {
+          items: [],
+          pagination: {
+            limit: 20,
+            returned: 0,
+            hasMore: false,
+            nextCursor: null,
+          },
+        },
+      };
     });
     expect(
       (

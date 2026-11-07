@@ -1,27 +1,23 @@
 import type { AnalyticsProviderRegistry } from "@/lib/edge/analytics/application/provider-registry";
 import type { QueryExecutionContext } from "@/lib/edge/analytics/application/service";
-import {
-  TypedQueryApplicationService,
-  type TypedQueryOperationInvocation,
-} from "@/lib/edge/analytics/application/service";
+import type { TypedQueryOperationInvocation } from "@/lib/edge/analytics/application/service";
 import type {
   AnalyticsResult,
-  BaseQuery,
+  CanonicalQuery,
+  CanonicalResult,
   QueryOperation,
 } from "@/lib/edge/analytics/contract";
 
-type CanonicalRuntimeQuery =
-  | BaseQuery
-  | (BaseQuery & Readonly<Record<string, unknown>>);
+import { createAnalyticsQueryApplicationService } from "./query-application-service";
 
-export interface AnalyticsQueryRuntime {
-  readonly providerRegistry: AnalyticsProviderRegistry;
-  execute<Result>(
-    operation: QueryOperation,
-    query: CanonicalRuntimeQuery,
+export interface AnalyticsQueryExecutor {
+  execute<Operation extends QueryOperation>(
+    operation: Operation,
+    query: CanonicalQuery<Operation>,
     execution?: QueryExecutionContext,
-  ): Promise<AnalyticsResult<Result>>;
+  ): Promise<AnalyticsResult<CanonicalResult<Operation>>>;
 }
+export type AnalyticsQueryRuntime = AnalyticsQueryExecutor;
 
 /**
  * Runtime boundary shared by HTTP, SSR, and test adapters.
@@ -31,22 +27,34 @@ export interface AnalyticsQueryRuntime {
  */
 export function createAnalyticsQueryRuntime(
   providerRegistry: AnalyticsProviderRegistry,
-  service = new TypedQueryApplicationService(),
-): AnalyticsQueryRuntime {
-  return {
-    providerRegistry,
-    execute<Result>(
-      operation: QueryOperation,
-      query: CanonicalRuntimeQuery,
+  service = createAnalyticsQueryApplicationService(),
+): AnalyticsQueryExecutor {
+  const executor = {
+    execute<Operation extends QueryOperation>(
+      operation: Operation,
+      query: CanonicalQuery<Operation>,
       execution: QueryExecutionContext = {},
-    ): Promise<AnalyticsResult<Result>> {
-      const invocation: TypedQueryOperationInvocation<Result> = {
+    ): Promise<AnalyticsResult<CanonicalResult<Operation>>> {
+      const invocation: TypedQueryOperationInvocation<Operation> = {
         kind: "typed-query",
         operation,
         query,
         providerRegistry,
+        ...(execution.cache
+          ? {
+              cache: {
+                ...execution.cache,
+                isCacheable: execution.cache.isCacheable as
+                  ((value: CanonicalResult<Operation>) => boolean) | undefined,
+              },
+            }
+          : {}),
       };
-      return service.execute(invocation, execution);
+      const requestService = execution.cacheStore
+        ? createAnalyticsQueryApplicationService(execution.cacheStore)
+        : service;
+      return requestService.execute(invocation, execution);
     },
   };
+  return executor as AnalyticsQueryExecutor;
 }
