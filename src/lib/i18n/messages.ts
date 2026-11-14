@@ -1,7 +1,41 @@
+// @generated from src/i18n/*.yaml by scripts/i18n-check.
 import type { Locale } from "./config";
 
 export interface AppMessages {
   appName: string;
+  uiGallery: {
+    searchLabel: string;
+    searchPlaceholder: string;
+    backToApp: string;
+    noSearchResults: string;
+    toggleNavigation: string;
+    library: string;
+    componentsCount: string;
+    statesCount: string;
+    designSystem: string;
+    pageTitle: string;
+    catalogSummary: string;
+    categories: {
+      inputs: string;
+      feedback: string;
+      foundations: string;
+      navigation: string;
+      "data-display": string;
+      overlays: string;
+      "product-analytics": string;
+      "product-management": string;
+      "product-realtime": string;
+    };
+    browseCategories: string;
+    featuredComponents: string;
+    backToCatalog: string;
+    canonicalStates: string;
+    browseAllComponents: string;
+    previewState: string;
+    resetPreview: string;
+    expandCode: string;
+    collapseCode: string;
+  };
   navigation: {
     overview: string;
     realtime: string;
@@ -10,6 +44,7 @@ export interface AppMessages {
     sessions: string;
     events: string;
     funnels: string;
+    goals: string;
     campaigns: string;
     visitors: string;
     retention: string;
@@ -39,7 +74,6 @@ export interface AppMessages {
     entryPage: string;
     exitPage: string;
     referrer: string;
-    startedAt: string;
     event: string;
     location: string;
     browser: string;
@@ -72,6 +106,10 @@ export interface AppMessages {
     admin: string;
     user: string;
     search: string;
+    open: string;
+    sortBy: string;
+    change: string;
+    new: string;
     tableExport: {
       action: string;
       title: string;
@@ -85,7 +123,6 @@ export interface AppMessages {
       fileNameLabel: string;
       download: string;
       empty: string;
-      allTabsUnavailable: string;
     };
     tableColumns: {
       action: string;
@@ -118,7 +155,6 @@ export interface AppMessages {
     last90d: string;
     last6m: string;
     last12m: string;
-    allTime: string;
     custom: string;
   };
   intervals: {
@@ -131,7 +167,26 @@ export interface AppMessages {
   dashboardHeader: {
     range: string;
     interval: string;
-    filters: string;
+    compareButton: string;
+    compareTitle: string;
+    compareSubtitle: string;
+    compareTimeLabel: string;
+    compareCurrentPeriod: string;
+    compareCurrentPeriodDescription: string;
+    comparePreviousPeriod: string;
+    comparePreviousPeriodDescription: string;
+    compareFilterLabel: string;
+    compareFollowCurrentFilter: string;
+    compareFollowCurrentFilterDescription: string;
+    compareCustomFilter: string;
+    compareCustomFilterDescription: string;
+    compareApply: string;
+    compareCancel: string;
+    compareDisabled: string;
+    filterButton: string;
+    filterButtonEvent: string;
+    filterButtonSession: string;
+    filterButtonVisitor: string;
     customRange: string;
     customHint: string;
     customPendingEnd: string;
@@ -152,10 +207,6 @@ export interface AppMessages {
     customSelectionSummary: string;
   };
   filters: {
-    country: string;
-    device: string;
-    browser: string;
-    all: string;
     clear: string;
   };
   conditionDescription: {
@@ -169,18 +220,40 @@ export interface AppMessages {
     filterAnyOf: string;
     filterNoneOf: string;
     filterBetween: string;
+    filterContains: string;
     filterStartsWith: string;
     filterEndsWith: string;
+    filterGreaterThan: string;
+    filterGreaterThanOrEqual: string;
+    filterLessThan: string;
+    filterLessThanOrEqual: string;
+    filterExists: string;
+    filterNotExists: string;
+    filterIsNull: string;
+    filterNotNull: string;
+    filterIsEmpty: string;
+    filterNotEmpty: string;
   };
   filterBuilder: {
     fieldGroups: {
+      advanced: string;
       page: string;
       session: string;
+      visitor: string;
       referrer: string;
       campaign: string;
       client: string;
       geography: string;
       event: string;
+      acquisition: string;
+      device: string;
+      geo: string;
+      performance: string;
+      user: string;
+      time: string;
+      aggregation: string;
+      calculation: string;
+      relation: string;
     };
     fieldLabels: Record<string, string>;
     operatorLabels: Record<string, string>;
@@ -200,8 +273,20 @@ export interface AppMessages {
     valueLoading: string;
     valueSearchPlaceholder: string;
     valueListPlaceholder: string;
+    removeValue: string;
     rangeStartPlaceholder: string;
     rangeEndPlaceholder: string;
+    unitAriaLabel: string;
+    durationUnit: string;
+    units: {
+      hours: string;
+      minutes: string;
+      seconds: string;
+      milliseconds: string;
+      percent: string;
+      perMille: string;
+      pixels: string;
+    };
     jsonPointer: string;
     jsonPointerPlaceholder: string;
     match: string;
@@ -221,9 +306,103 @@ export interface AppMessages {
     expressionHelpFieldType: string;
     expressionHelpFieldOperators: string;
     expressionHelpOtherFields: string;
+    expressionHelpContextTitle: string;
+    expressionHelpContextDescription: string;
+    expressionHelpContextExamples: string;
+    advancedEditor: {
+      not: string;
+      removeNot: string;
+      matchAll: string;
+      matchAny: string;
+      addCondition: string;
+      addGroup: string;
+      wrapInNot: string;
+      remove: string;
+      condition: string;
+      literalValue: string;
+      compareWithExpression: string;
+      valuesAsJson: string;
+      scalarArrayHelp: string;
+      chooseValue: string;
+      filterValue: string;
+      durationAmount: string;
+      jsonPointer: string;
+      jsonPointerPlaceholder: string;
+      entityMember: string;
+      nthIndex: string;
+      fromStep: string;
+      toStep: string;
+      occurrenceKind: string;
+      occurrenceEntity: string;
+      occurrenceIndex: string;
+      correlationTarget: string;
+      periodItemCount: string;
+      nestedTooDeep: string;
+      applyOffset: string;
+      removeStep: string;
+      addStep: string;
+      excludedActivity: string;
+      fixedTime: string;
+      toggleOffsetSign: string;
+      timeUnits: {
+        milliseconds: string;
+        seconds: string;
+        minutes: string;
+        hours: string;
+        days: string;
+        weeks: string;
+        months: string;
+        years: string;
+      };
+      coreRelation: string;
+      coreRelationExpression: string;
+      structuredEditor: string;
+      unavailableForObservation: string;
+      targetKinds: {
+        time: string;
+        field: string;
+        "event-payload": string;
+        "entity-root": string;
+        "context-root": string;
+        "context-intrinsic": string;
+        "occurrence-time": string;
+        member: string;
+        selector: string;
+        projection: string;
+        reducer: string;
+        arithmetic: string;
+        duration: string;
+        "time-anchor": string;
+        "sequence-span": string;
+        "sequence-gap": string;
+        "sequence-same": string;
+        "period-items": string;
+        bucket: string;
+        window: string;
+        periods: string;
+        sequence: string;
+        adjacent: string;
+        without: string;
+      };
+    };
     savedFiltersLoading: string;
     noSavedFilter: string;
     systemPresets: string;
+    systemPresetCategories: {
+      acquisition: string;
+      device: string;
+      visitBehavior: string;
+      sessionEngagement: string;
+      visitorBehavior: string;
+      performance: string;
+      dataQuality: string;
+    };
+    systemPresetScopes: {
+      preserve: string;
+      event: string;
+      session: string;
+      visitor: string;
+    };
     systemPresetItems: {
       directTraffic: {
         name: string;
@@ -285,6 +464,98 @@ export interface AppMessages {
         name: string;
         description: string;
       };
+      longPageViews: {
+        name: string;
+        description: string;
+      };
+      shortPageViews: {
+        name: string;
+        description: string;
+      };
+      identifiedActivity: {
+        name: string;
+        description: string;
+      };
+      customEventActivity: {
+        name: string;
+        description: string;
+      };
+      bouncedSessions: {
+        name: string;
+        description: string;
+      };
+      nonBouncedSessions: {
+        name: string;
+        description: string;
+      };
+      longSessions: {
+        name: string;
+        description: string;
+      };
+      shortSessions: {
+        name: string;
+        description: string;
+      };
+      deepSessions: {
+        name: string;
+        description: string;
+      };
+      eventfulSessions: {
+        name: string;
+        description: string;
+      };
+      highEngagementSessions: {
+        name: string;
+        description: string;
+      };
+      returningVisitors: {
+        name: string;
+        description: string;
+      };
+      frequentVisitors: {
+        name: string;
+        description: string;
+      };
+      deepVisitors: {
+        name: string;
+        description: string;
+      };
+      eventfulVisitors: {
+        name: string;
+        description: string;
+      };
+      identifiedVisitors: {
+        name: string;
+        description: string;
+      };
+      organicSearchVisitors: {
+        name: string;
+        description: string;
+      };
+      coreWebVitalsNeedsImprovement: {
+        name: string;
+        description: string;
+      };
+      slowLcp: {
+        name: string;
+        description: string;
+      };
+      slowInp: {
+        name: string;
+        description: string;
+      };
+      highCls: {
+        name: string;
+        description: string;
+      };
+      slowTtfb: {
+        name: string;
+        description: string;
+      };
+      slowFcp: {
+        name: string;
+        description: string;
+      };
     };
     savedFiltersPersonal: string;
     savedFiltersTeam: string;
@@ -299,6 +570,11 @@ export interface AppMessages {
     manageSavedFilter: string;
     savedFilterName: string;
     savedFilterDescription: string;
+    scopeLabel: string;
+    scopeAuto: string;
+    scopeEvent: string;
+    scopeSession: string;
+    scopeVisitor: string;
     savedFilterVisibility: string;
     savedFilterVisibilityPrivate: string;
     savedFilterVisibilityTeam: string;
@@ -340,7 +616,6 @@ export interface AppMessages {
     viewPage: string;
     customEvent: string;
     detailsTitle: string;
-    detailsSection: string;
     browsingSection: string;
     geographySection: string;
     sourceSection: string;
@@ -362,23 +637,17 @@ export interface AppMessages {
     visitorHistorySubtitle: string;
     visitorHistoryRange: string;
     visitorHistoryEmpty: string;
-    visitorMapSection: string;
-    visitorMapSubtitle: string;
     visitorMapUnavailable: string;
     visitorId: string;
     sessionId: string;
     visitId: string;
-    eventType: string;
     eventTime: string;
     eventKind: string;
     eventName: string;
-    eventId: string;
     siteId: string;
     traceId: string;
-    sequence: string;
     receivedAt: string;
     startedAt: string;
-    previousVisitId: string;
     previousVisitStartedAt: string;
     userId: string;
     userName: string;
@@ -392,20 +661,15 @@ export interface AppMessages {
     browserVersion: string;
     osVersion: string;
     userAgent: string;
-    screenWidth: string;
-    screenHeight: string;
     postalCode: string;
     metroCode: string;
     status: string;
     visibilityState: string;
-    hiddenAt: string;
     endedAt: string;
-    finalizedAt: string;
     duration: string;
     durationSource: string;
     exitReason: string;
     leaveAt: string;
-    performanceVisitId: string;
   };
   overview: {
     title: string;
@@ -437,6 +701,9 @@ export interface AppMessages {
     title: string;
     subtitle: string;
     pagesPerSession: string;
+    changePercentColumnLabel: string;
+    changePointsColumnLabel: string;
+    percentagePointSuffix: string;
     untitled: string;
     empty: string;
     loadError: string;
@@ -516,6 +783,8 @@ export interface AppMessages {
   };
   sessionDetail: {
     anonymous: string;
+    userId: string;
+    userName: string;
     back: string;
     missing: string;
     notFound: string;
@@ -632,6 +901,11 @@ export interface AppMessages {
     subtitle: string;
     listTitle: string;
     listSubtitle: string;
+    conversionRecords: string;
+    converted: string;
+    dropped: string;
+    open: string;
+    moreActions: string;
     create: string;
     createTitle: string;
     createDescription: string;
@@ -640,12 +914,28 @@ export interface AppMessages {
     stepsLabel: string;
     addStep: string;
     removeStep: string;
-    stepTypePageview: string;
-    stepTypeEvent: string;
-    stepValueLabel: string;
-    pageviewPlaceholder: string;
-    eventPlaceholder: string;
+    progression: string;
+    conversionWindow: string;
+    custom: string;
+    customWindowHours: string;
+    stepFilter: string;
+    filter: string;
+    apply: string;
+    condition: string;
+    conditions: string;
+    expression: string;
+    filterPlaceholder: string;
+    invalidFilter: string;
+    dragStep: string;
+    unnamed: string;
+    oneHour: string;
+    oneDay: string;
+    sevenDays: string;
+    thirtyDays: string;
     save: string;
+    saveEdit: string;
+    edit: string;
+    editTitle: string;
     creating: string;
     cancel: string;
     delete: string;
@@ -660,10 +950,13 @@ export interface AppMessages {
     invalidFunnel: string;
     created: string;
     createFailed: string;
+    updatedSuccess: string;
+    saveFailed: string;
     deleted: string;
     deleteFailed: string;
     overallConversion: string;
     startedSessions: string;
+    startedVisitors: string;
     convertedSessions: string;
     convertedVisitors: string;
     largestDropOff: string;
@@ -676,12 +969,52 @@ export interface AppMessages {
     dropOff: string;
     updated: string;
   };
+  goals: {
+    title: string;
+    subtitle: string;
+    listSubtitle: string;
+    conversionRecords: string;
+    open: string;
+    moreActions: string;
+    create: string;
+    createTitle: string;
+    nameLabel: string;
+    namePlaceholder: string;
+    filter: string;
+    apply: string;
+    cancel: string;
+    save: string;
+    saveEdit: string;
+    edit: string;
+    editTitle: string;
+    creating: string;
+    delete: string;
+    deleteTitle: string;
+    deleteDescription: string;
+    deleteConfirm: string;
+    empty: string;
+    emptyHint: string;
+    loadError: string;
+    detailLoadError: string;
+    invalidGoal: string;
+    created: string;
+    updatedSuccess: string;
+    saveFailed: string;
+    deleted: string;
+    deleteFailed: string;
+    sessions: string;
+    visitors: string;
+    total: string;
+    converted: string;
+    conversion: string;
+    timeseries: string;
+    updated: string;
+  };
   visitors: {
     title: string;
     subtitle: string;
     search: string;
     visitor: string;
-    sessionId: string;
     anonymous: string;
     referrer: string;
     location: string;
@@ -699,6 +1032,8 @@ export interface AppMessages {
   };
   visitorDetail: {
     anonymous: string;
+    userId: string;
+    userName: string;
     back: string;
     missing: string;
     notFound: string;
@@ -930,6 +1265,10 @@ export interface AppMessages {
         title: string;
         description: string;
       };
+      protection: {
+        title: string;
+        description: string;
+      };
       danger: {
         title: string;
         description: string;
@@ -958,6 +1297,10 @@ export interface AppMessages {
     trackingStrengthStrongDescription: string;
     trackingStrengthSmartDescription: string;
     trackingStrengthWeakDescription: string;
+    botProtectionEnabledLabel: string;
+    botProtectionEnabledHint: string;
+    hostingProxyBlockingEnabledLabel: string;
+    hostingProxyBlockingEnabledHint: string;
     queryHashGroupTitle: string;
     queryHashGroupDescription: string;
     trackQueryParamsLabel: string;
@@ -967,6 +1310,18 @@ export interface AppMessages {
     blockingRulesDialogs: {
       testButton: string;
       helpButton: string;
+      searchButton: string;
+      searchTitle: string;
+      searchDescription: string;
+      searchInputLabel: string;
+      searchInputPlaceholder: string;
+      searchCountryLabel: string;
+      searchRegionLabel: string;
+      searchBack: string;
+      searchLoading: string;
+      searchNoResults: string;
+      searchLoadError: string;
+      searchClose: string;
       helpTitle: string;
       helpDescription: string;
       syntaxTitle: string;
@@ -1189,6 +1544,7 @@ export interface AppMessages {
     preferredLanguageDefault: string;
     preferredLanguageEnglish: string;
     preferredLanguageChinese: string;
+    preferredLanguageTraditionalChinese: string;
     preferredLanguageJapanese: string;
     preferredLanguageSaved: string;
     preferredLanguageSaveFailed: string;
@@ -1464,8 +1820,6 @@ export interface AppMessages {
   };
   empty: {
     noTeams: string;
-    noSites: string;
-    siteNotFound: string;
   };
   errorPage: {
     notFoundEyebrow: string;
@@ -1491,6 +1845,7 @@ export interface AppMessages {
     logout: string;
     switchToEnglish: string;
     switchToChinese: string;
+    switchToTraditionalChinese: string;
     switchToJapanese: string;
     switchToLight: string;
     switchToDark: string;
@@ -1654,10 +2009,6 @@ export interface AppMessages {
       scheduleInterval: string;
       scheduleCustom: string;
       conditionReport: string;
-      conditionMilestone: string;
-      conditionThreshold: string;
-      conditionChange: string;
-      conditionHealth: string;
       summaryWhenConditions: string;
       summaryWhenSingleCondition: string;
       summaryConditionThreshold: string;
@@ -1904,6 +2255,8 @@ export interface AppMessages {
       title: string;
       subtitle: string;
       remove: string;
+      removeMemberAction: string;
+      removeMemberConfirm: string;
       noMembers: string;
       invitesTitle: string;
       invitesSubtitle: string;
@@ -1918,6 +2271,8 @@ export interface AppMessages {
       noInvites: string;
       anyEmail: string;
       revokeInvite: string;
+      revokeInviteAction: string;
+      revokeInviteConfirm: string;
       siteAccessLabel: string;
       siteAccessAll: string;
       siteAccessRestricted: string;
@@ -2001,6 +2356,7 @@ export interface AppMessages {
       empty: string;
       refresh: string;
       loadFailed: string;
+      loadMore: string;
       allStatuses: string;
       runs24h: string;
       successRate24h: string;
@@ -2020,11 +2376,14 @@ export interface AppMessages {
       enabled: string;
       enabledYes: string;
       enabledNo: string;
+      taskStateSaved: string;
+      taskStateSaveFailed: string;
       lastStatus: string;
       runs30d: string;
       successRate30d: string;
       avgDuration: string;
       runHistoryTitle: string;
+      nextRun: string;
       runHistoryDescription: string;
       noRuns: string;
       scheduledAt: string;
@@ -2063,6 +2422,11 @@ export interface AppMessages {
           schedule: string;
         };
         notification_tick: {
+          name: string;
+          description: string;
+          schedule: string;
+        };
+        database_maintenance: {
           name: string;
           description: string;
           schedule: string;
@@ -2169,12 +2533,42 @@ export interface AppMessages {
     };
   };
   requestObservation: {
+    uiLabels: {
+      pageSubtitle: string;
+      blocked: string;
+      included: string;
+      disposition: string;
+      normalRequests: string;
+      suspectedBotRequests: string;
+      botRequests: string;
+      customBlockedRequests: string;
+      includedRequests: string;
+      blockedRequests: string;
+      totalRequests: string;
+      botRequestRatio: string;
+      blockedRequestRatio: string;
+      normalRequestRatio: string;
+      normalTrafficShare: string;
+      suspectedBotTraffic: string;
+      botTraffic: string;
+      customBlockedTraffic: string;
+      requests: string;
+      blockedSubtitle: string;
+      includedSubtitle: string;
+      blockedTrendDescription: string;
+      includedTrendDescription: string;
+      recentBlockedTitle: string;
+      recentBlockedDescription: string;
+      recentIncludedTitle: string;
+      recentIncludedDescription: string;
+      detailTitle: string;
+      detailSubtitle: string;
+    };
     title: string;
-    subtitle: string;
     tabs: {
       overview: string;
-      abnormal: string;
-      normal: string;
+      blocked: string;
+      included: string;
     };
     refresh: string;
     loadFailed: string;
@@ -2184,17 +2578,10 @@ export interface AppMessages {
     analyticsEngineDisabledDescription: string;
     openAnalyticsEngine: string;
     openSettings: string;
-    highConfidenceBots: string;
     affectedSites: string;
     uniqueCountries: string;
     noData: string;
     trendTitle: string;
-    trendDescription: string;
-    recentTitle: string;
-    recentDescription: string;
-    recentLoadedAll: string;
-    detailTitle: string;
-    detailSubtitle: string;
     client: string;
     edge: string;
     identifiers: string;
@@ -2209,9 +2596,7 @@ export interface AppMessages {
     request: string;
     ip: string;
     userAgent: string;
-    confidence: string;
-    blocked: string;
-    highConfidenceRequests: string;
+    category: string;
     emptyValue: string;
     kind: string;
     botScore: string;
@@ -2242,7 +2627,16 @@ export interface AppMessages {
       access_asn: string;
       missing_browser_provenance: string;
       origin_hostname_mismatch: string;
-      blocked_pathname: string;
+      custom_block: string;
+      blocked_domains: string;
+      blocked_paths: string;
+      blocked_query_parameters: string;
+      blocked_referrers: string;
+      blocked_user_agents: string;
+      blocked_ips: string;
+      blocked_asns: string;
+      blocked_countries: string;
+      blocked_regions: string;
     };
     requestKindLabels: {
       pageview: string;
@@ -2250,77 +2644,71 @@ export interface AppMessages {
       request: string;
       visibility: string;
       leave: string;
+      identify: string;
     };
     overviewLabels: {
-      totalRequests: string;
-      normalRequests: string;
-      abnormalRequests: string;
-      abnormalRatio: string;
       p50Latency: string;
       p75Latency: string;
-      p95Latency: string;
       p99Latency: string;
+      p95Latency: string;
       avgLatency: string;
       pageviews: string;
       customEvents: string;
       overviewTrendTitle: string;
-      overviewTrendDescription: string;
       trafficCompositionTitle: string;
       trafficCompositionDescription: string;
-      confidenceShareTitle: string;
-      normalTrafficShare: string;
-      lowConfidenceTraffic: string;
-      mediumConfidenceTraffic: string;
-      highConfidenceTraffic: string;
+      categoryShareTitle: string;
       latencyTitle: string;
       latencyDescription: string;
-      abnormalSubtitle: string;
-      normalSubtitle: string;
       requests: string;
       windowDays: string;
       latencyMilliseconds: string;
     };
     normalDetail: {
-      title: string;
-      subtitle: string;
       requestMethod: string;
       edgeLatency: string;
       eventAt: string;
       receivedAt: string;
-      coordinates: string;
       continent: string;
-    };
-    recentNormal: {
-      title: string;
-      description: string;
     };
   };
   systemSettings: {
     title: string;
     subtitle: string;
     guide: string;
-    botAnalyticsTitle: string;
-    botAnalyticsDescription: string;
-    botAnalyticsAccountIdLabel: string;
-    botAnalyticsApiTokenLabel: string;
-    botAnalyticsApiTokenPlaceholder: string;
-    botAnalyticsSaved: string;
-    botAnalyticsSaveFailed: string;
-    botAnalyticsDeleted: string;
-    botAnalyticsDeleteFailed: string;
-    botAnalyticsDeleteConfirm: string;
-    botAnalyticsEngineDisabledTitle: string;
-    botAnalyticsEngineDisabledDescription: string;
-    botAnalyticsEngineDisabledHint: string;
-    botAnalyticsOpenCloudflare: string;
-    botAnalyticsGuideTitle: string;
-    botAnalyticsGuideDescription: string;
-    botAnalyticsGuideSteps: string[];
+    analyticsEngineTitle: string;
+    analyticsEngineDescription: string;
+    analyticsEngineAccountIdLabel: string;
+    analyticsEngineApiTokenLabel: string;
+    analyticsEngineApiTokenPlaceholder: string;
+    analyticsEngineSaved: string;
+    analyticsEngineSaveFailed: string;
+    analyticsEngineDeleted: string;
+    analyticsEngineDeleteFailed: string;
+    analyticsEngineDeleteConfirm: string;
+    analyticsEngineDisabledTitle: string;
+    analyticsEngineDisabledDescription: string;
+    analyticsEngineDisabledHint: string;
+    analyticsEngineOpenCloudflare: string;
+    analyticsEngineGuideTitle: string;
+    analyticsEngineGuideDescription: string;
+    analyticsEngineGuideSteps: string[];
     notificationEmailTitle: string;
     notificationEmailDescription: string;
     notificationEmailGuideTitle: string;
     notificationEmailGuideDescription: string;
     notificationEmailGuideSteps: string[];
+    retentionTitle: string;
+    retentionDescription: string;
+    scheduledTaskLogsDaysLabel: string;
+    notificationTestDaysLabel: string;
+    notificationAttentionDaysLabel: string;
+    notificationDefaultDaysLabel: string;
+    retentionRangeHint: string;
+    retentionSave: string;
+    retentionSaving: string;
+    retentionSaved: string;
+    retentionSaveFailed: string;
     loginTurnstileTitle: string;
     loginTurnstileDescription: string;
     loginTurnstileEnabledLabel: string;
@@ -2452,6 +2840,10 @@ export interface AppMessages {
     doDiagnosticSiteAlarm: string;
     doDiagnosticSiteAlarmNone: string;
     doDiagnosticSiteAlarmDue: string;
+    doDiagnosticSiteNextDue: string;
+    doDiagnosticSiteNextDueFlush: string;
+    doDiagnosticSiteNextDueHidden: string;
+    doDiagnosticSiteNextDueTimeout: string;
     doDiagnosticSiteResponseMs: string;
     doDiagnosticThresholdsHint: string;
     doDiagnosticHealthy: string;
@@ -2483,6 +2875,39 @@ export interface AppMessages {
 
 const enMessages = {
   appName: "InsightFlare",
+  uiGallery: {
+    searchLabel: "Search UI components",
+    searchPlaceholder: "Search components",
+    backToApp: "Back to InsightFlare",
+    noSearchResults: "No components match this search.",
+    toggleNavigation: "Toggle gallery navigation",
+    library: "UI Library",
+    componentsCount: "{count} components",
+    statesCount: "{count} states",
+    designSystem: "InsightFlare design system",
+    pageTitle: "UI Components",
+    catalogSummary: "{components} components · {states} prop values",
+    categories: {
+      inputs: "Inputs",
+      feedback: "Feedback",
+      foundations: "Foundations",
+      navigation: "Navigation",
+      "data-display": "Data display",
+      overlays: "Overlays",
+      "product-analytics": "Product UI / Analytics",
+      "product-management": "Product UI / Management",
+      "product-realtime": "Product UI / Realtime",
+    },
+    browseCategories: "Browse by category",
+    featuredComponents: "Featured components",
+    backToCatalog: "UI Components",
+    canonicalStates: "Props and values",
+    browseAllComponents: "Browse all components",
+    previewState: "Open preview",
+    resetPreview: "Reset preview",
+    expandCode: "Expand code",
+    collapseCode: "Collapse code",
+  },
   navigation: {
     overview: "Overview",
     realtime: "Real-time",
@@ -2491,6 +2916,7 @@ const enMessages = {
     sessions: "Sessions",
     events: "Events",
     funnels: "Funnels",
+    goals: "Goals",
     campaigns: "Campaigns",
     visitors: "Visitors",
     retention: "Retention",
@@ -2520,7 +2946,6 @@ const enMessages = {
     entryPage: "Entry Page",
     exitPage: "Exit Page",
     referrer: "Referrer",
-    startedAt: "Started",
     event: "Event",
     location: "Location",
     browser: "Browser",
@@ -2568,6 +2993,10 @@ const enMessages = {
     admin: "Admin",
     user: "User",
     search: "Search",
+    open: "Open",
+    sortBy: "Sort by {label}",
+    change: "Change",
+    new: "New",
     tableExport: {
       action: "Export",
       title: "Export CSV",
@@ -2581,8 +3010,6 @@ const enMessages = {
       fileNameLabel: "File name",
       download: "Export CSV",
       empty: "No rows available to export.",
-      allTabsUnavailable:
-        "All tabs can be exported after their data finishes loading.",
     },
     tableColumns: {
       action: "Columns",
@@ -2615,7 +3042,6 @@ const enMessages = {
     last90d: "Last 90 days",
     last6m: "Last 6 months",
     last12m: "Last 12 months",
-    allTime: "All Time",
     custom: "Custom Range",
   },
   intervals: {
@@ -2628,11 +3054,33 @@ const enMessages = {
   dashboardHeader: {
     range: "Time Range",
     interval: "Interval",
-    filters: "Filters",
+    compareButton: "Compare",
+    compareTitle: "Comparison settings",
+    compareSubtitle: "Choose a comparison period and filter conditions.",
+    compareTimeLabel: "Comparison period",
+    compareCurrentPeriod: "Current period",
+    compareCurrentPeriodDescription: "Use the currently selected time range.",
+    comparePreviousPeriod: "Previous period",
+    comparePreviousPeriodDescription:
+      "Use the same-length range before the current period.",
+    compareFilterLabel: "Comparison filter",
+    compareFollowCurrentFilter: "Follow current filter",
+    compareFollowCurrentFilterDescription:
+      "Use the filters currently applied to this page.",
+    compareCustomFilter: "Custom filter",
+    compareCustomFilterDescription:
+      "Set separate filter conditions for the comparison.",
+    compareApply: "Apply comparison",
+    compareCancel: "Cancel",
+    compareDisabled: "Comparison is unavailable on this page.",
+    filterButton: "Filter",
+    filterButtonEvent: "Filter (Event)",
+    filterButtonSession: "Filter (Session)",
+    filterButtonVisitor: "Filter (Visitor)",
     customRange: "Select Custom Range",
     customHint: "Please select a start and end date.",
     customPendingEnd: "Start date selected. Please pick an end date.",
-    customApply: "Apply",
+    customApply: "Apply date range",
     rangeGroupQuick: "Quick Ranges",
     rangeGroupCalendar: "Calendar Periods",
     rangeGroupRolling: "Rolling Windows",
@@ -2652,10 +3100,6 @@ const enMessages = {
     customSelectionSummary: "Selected range: {from} to {to} ({days} days)",
   },
   filters: {
-    country: "Country",
-    device: "Device",
-    browser: "Browser",
-    all: "All",
     clear: "Clear",
   },
   conditionDescription: {
@@ -2669,35 +3113,58 @@ const enMessages = {
     filterAnyOf: "{field} is one of {values}",
     filterNoneOf: "{field} is none of {values}",
     filterBetween: "{field} is between {from} and {to}",
+    filterContains: "{field} contains {value}",
     filterStartsWith: "{field} starts with {value}",
     filterEndsWith: "{field} ends with {value}",
+    filterGreaterThan: "{field} is greater than {value}",
+    filterGreaterThanOrEqual: "{field} is greater than or equal to {value}",
+    filterLessThan: "{field} is less than {value}",
+    filterLessThanOrEqual: "{field} is less than or equal to {value}",
+    filterExists: "{field} exists",
+    filterNotExists: "{field} does not exist",
+    filterIsNull: "{field} is null",
+    filterNotNull: "{field} is not null",
+    filterIsEmpty: "{field} is empty",
+    filterNotEmpty: "{field} is not empty",
   },
   filterBuilder: {
     fieldGroups: {
+      advanced: "Advanced",
       page: "Page",
       session: "Session",
+      visitor: "Visitor",
       referrer: "Sources & channels",
       campaign: "Campaign",
       client: "Client",
       geography: "Geography",
       event: "Event",
+      acquisition: "Acquisition",
+      device: "Device",
+      geo: "Geography",
+      performance: "Performance",
+      user: "User",
+      time: "Time",
+      aggregation: "Aggregation",
+      calculation: "Calculation",
+      relation: "Behavior relations",
     },
     fieldLabels: {
       "page.path": "Page path",
       "page.title": "Page title",
-      "page.hostname": "Page hostname",
-      "page.query": "Query string",
-      "page.hash": "Hash fragment",
+      "page.collection": "Page collection",
+      "page.hostname": "Page domain",
+      "page.query": "Query parameters",
+      "page.hash": "URL hash",
       "session.entryPath": "Entry page",
       "session.exitPath": "Exit page",
       "referrer.domain": "Referrer domain",
       "referrer.url": "Referrer URL",
       "traffic.channel": "Traffic channel",
-      "utm.source": "Campaign source",
-      "utm.medium": "Campaign medium",
-      "utm.campaign": "Campaign name",
-      "utm.term": "Campaign term",
-      "utm.content": "Campaign content",
+      "utm.source": "UTM source",
+      "utm.medium": "UTM medium",
+      "utm.campaign": "UTM campaign",
+      "utm.term": "UTM term",
+      "utm.content": "UTM content",
       "client.browser": "Browser",
       "client.browserVersion": "Browser version",
       "client.browserEngine": "Browser engine",
@@ -2706,14 +3173,60 @@ const enMessages = {
       "client.deviceType": "Device type",
       "client.language": "Language",
       "client.screenSize": "Screen size",
-      "geo.country": "Country",
-      "geo.region": "Region",
+      "geo.country": "Country / Region",
+      "geo.region": "Province / State / Region",
       "geo.city": "City",
       "geo.continent": "Continent",
       "geo.timeZone": "Time zone",
-      "geo.organization": "Organization",
+      "geo.organization": "Network organization",
+      "event.collection": "Event collection",
       "event.name": "Event name",
-      "event.payload": "Event payload",
+      "event.payload": "Event properties",
+      "page.durationMs": "Time on page",
+      "session.collection": "Session collection",
+      "session.durationMs": "Session duration",
+      "session.views": "Page views",
+      "session.events": "Event count",
+      "session.bounce": "Bounced",
+      "visitor.collection": "Visitor collection",
+      "visitor.sessions": "Session count",
+      "visitor.views": "Page views",
+      "visitor.events": "Event count",
+      "performance.ttfbMs": "TTFB",
+      "performance.fcpMs": "FCP",
+      "performance.lcpMs": "LCP",
+      "performance.cls": "CLS",
+      "performance.inpMs": "INP",
+      "user.id": "User ID",
+      "user.name": "User name",
+      "client.screenWidth": "Screen width",
+      "client.screenHeight": "Screen height",
+      "geo.isEU": "EU region",
+      time: "Time",
+      "time(...)": "Occurrence time",
+      $items: "Items in period",
+      $span: "Sequence span",
+      "$gap(...)": "Gap between steps",
+      "$same(...)": "Same value across steps",
+      "bucket(...)": "Time bucket",
+      "window(...)": "Relative time window",
+      "periods(...)": "Period groups",
+      "count(...)": "Count",
+      "first(...)": "First",
+      "last(...)": "Last",
+      "nth(...)": "Nth",
+      "countDistinct(...)": "Distinct count",
+      "sum(...)": "Sum",
+      "avg(...)": "Average",
+      "min(...)": "Minimum",
+      "max(...)": "Maximum",
+      "add(...)": "Add",
+      "sub(...)": "Subtract",
+      "mul(...)": "Multiply",
+      "div(...)": "Divide",
+      "sequence(...)": "Behavior sequence",
+      "adjacent(...)": "Adjacent sequence",
+      "without(...)": "Exclude intermediate behavior",
     },
     operatorLabels: {
       eq: "Equals",
@@ -2751,8 +3264,20 @@ const enMessages = {
     valueLoading: "Loading values",
     valueSearchPlaceholder: "Search or enter a value",
     valueListPlaceholder: "Search or enter a value, then press Enter",
+    removeValue: 'Remove filter value "{value}"',
     rangeStartPlaceholder: "Lower bound",
     rangeEndPlaceholder: "Upper bound",
+    unitAriaLabel: "Display unit",
+    durationUnit: "Duration unit",
+    units: {
+      hours: "Hours",
+      minutes: "Minutes",
+      seconds: "Seconds",
+      milliseconds: "Milliseconds",
+      percent: "%",
+      perMille: "‰",
+      pixels: "Pixels",
+    },
     jsonPointer: "JSON Pointer",
     jsonPointerPlaceholder: "Search or enter a JSON pointer",
     match: "Match",
@@ -2775,9 +3300,106 @@ const enMessages = {
     expressionHelpFieldType: "Type",
     expressionHelpFieldOperators: "Operators",
     expressionHelpOtherFields: "Other",
+    expressionHelpContextTitle: "Occurrence time and context intrinsics",
+    expressionHelpContextDescription:
+      "Lowercase dotted names are registered fields; uppercase PAGE, EVENT, SESSION, and VISITOR are entity collections. Inside an entity selector, $.member refers to its current entity, and -> explicitly projects a collection member. @ names a temporal anchor; Sequence and Period predicates also provide $span, $gap, and $items.",
+    expressionHelpContextExamples:
+      'time(last(PAGE)) gte @now-14d\nsequence([EVENT { $.name eq "signup" }, EVENT { $.name eq "purchase" }]) {\n  $span lte 14d AND $gap(1, 2) lte 7d AND $same($.payload("/productId"))\n} exists\nperiods(EVENT, 1w) { count($items) gte 3 } exists',
+    advancedEditor: {
+      not: "NOT",
+      removeNot: "Remove NOT",
+      matchAll: "Match all",
+      matchAny: "Match any",
+      addCondition: "Add condition",
+      addGroup: "Add group",
+      wrapInNot: "Wrap in NOT",
+      remove: "Remove",
+      condition: "Condition",
+      literalValue: "Literal value",
+      compareWithExpression: "Compare with expression",
+      valuesAsJson: "Filter values as JSON",
+      scalarArrayHelp: "Enter an array of JSON scalar values.",
+      chooseValue: "Choose a value",
+      filterValue: "Filter value",
+      durationAmount: "Duration amount",
+      jsonPointer: "Payload JSON pointer",
+      jsonPointerPlaceholder: "/property/path",
+      entityMember: "Entity member",
+      nthIndex: "Nth item index",
+      fromStep: "From step",
+      toStep: "To step",
+      occurrenceKind: "Occurrence selector",
+      occurrenceEntity: "Occurrence type",
+      occurrenceIndex: "Occurrence index",
+      correlationTarget: "Value shared by each step",
+      periodItemCount: "Items per period",
+      nestedTooDeep: "Expression is nested too deeply.",
+      applyOffset: "Apply offset",
+      removeStep: "Remove step",
+      addStep: "Add sequence step",
+      excludedActivity: "Excluded activity",
+      fixedTime: "Fixed time",
+      toggleOffsetSign: "Toggle time offset sign",
+      timeUnits: {
+        milliseconds: "milliseconds",
+        seconds: "seconds",
+        minutes: "minutes",
+        hours: "hours",
+        days: "days",
+        weeks: "weeks",
+        months: "months",
+        years: "years",
+      },
+      coreRelation: "Advanced filter",
+      coreRelationExpression: "Advanced filter expression",
+      structuredEditor: "Advanced filter controls",
+      unavailableForObservation:
+        "Advanced filters are unavailable for Goal and Funnel steps.",
+      targetKinds: {
+        time: "Time",
+        field: "Field",
+        "event-payload": "Event payload",
+        "entity-root": "Entity collection",
+        "context-root": "Context",
+        "context-intrinsic": "Context intrinsic",
+        "occurrence-time": "Occurrence time",
+        member: "Member",
+        selector: "Selector",
+        projection: "Projection",
+        reducer: "Reducer",
+        arithmetic: "Arithmetic",
+        duration: "Duration",
+        "time-anchor": "Relative time",
+        "sequence-span": "Sequence span",
+        "sequence-gap": "Sequence gap",
+        "sequence-same": "Sequence shared value",
+        "period-items": "Period items",
+        bucket: "Time bucket",
+        window: "Window",
+        periods: "Periods",
+        sequence: "Sequence",
+        adjacent: "Adjacent sequence",
+        without: "Sequence without",
+      },
+    },
     savedFiltersLoading: "Loading saved filters...",
     noSavedFilter: "Do not use a saved filter",
     systemPresets: "System presets",
+    systemPresetCategories: {
+      acquisition: "Acquisition",
+      device: "Device",
+      visitBehavior: "Visit behavior",
+      sessionEngagement: "Session engagement",
+      visitorBehavior: "Visitor behavior",
+      performance: "Performance",
+      dataQuality: "Data quality",
+    },
+    systemPresetScopes: {
+      preserve: "Keep current scope",
+      event: "Event scope",
+      session: "Session scope",
+      visitor: "Visitor scope",
+    },
     systemPresetItems: {
       directTraffic: {
         name: "Direct traffic",
@@ -2841,6 +3463,99 @@ const enMessages = {
         name: "Tablet traffic",
         description: "Visits from tablet devices.",
       },
+      longPageViews: {
+        name: "Long page views",
+        description: "Page views lasting at least 30 seconds.",
+      },
+      shortPageViews: {
+        name: "Short page views",
+        description: "Page views lasting less than 10 seconds.",
+      },
+      identifiedActivity: {
+        name: "Identified activity",
+        description: "Events associated with an identified user.",
+      },
+      customEventActivity: {
+        name: "Custom event activity",
+        description: "Events with a recorded custom event name.",
+      },
+      bouncedSessions: {
+        name: "Bounced sessions",
+        description: "Sessions containing a single page view.",
+      },
+      nonBouncedSessions: {
+        name: "Non-bounced sessions",
+        description: "Sessions containing more than one page view.",
+      },
+      longSessions: {
+        name: "Long sessions",
+        description: "Sessions lasting at least five minutes.",
+      },
+      shortSessions: {
+        name: "Short sessions",
+        description: "Sessions lasting less than one minute.",
+      },
+      deepSessions: {
+        name: "Deep sessions",
+        description: "Sessions with at least three page views.",
+      },
+      eventfulSessions: {
+        name: "Eventful sessions",
+        description: "Sessions with at least one custom event.",
+      },
+      highEngagementSessions: {
+        name: "Highly engaged sessions",
+        description:
+          "Sessions with at least three views and two custom events.",
+      },
+      returningVisitors: {
+        name: "Returning visitors",
+        description: "Visitors with at least two sessions.",
+      },
+      frequentVisitors: {
+        name: "Frequent visitors",
+        description: "Visitors with at least five sessions.",
+      },
+      deepVisitors: {
+        name: "Deep visitors",
+        description: "Visitors with at least five page views.",
+      },
+      eventfulVisitors: {
+        name: "Eventful visitors",
+        description: "Visitors with at least two custom events.",
+      },
+      identifiedVisitors: {
+        name: "Identified visitors",
+        description: "Visitors associated with an identified user.",
+      },
+      organicSearchVisitors: {
+        name: "Organic search visitors",
+        description: "Visitors with an untagged search referral.",
+      },
+      coreWebVitalsNeedsImprovement: {
+        name: "Core Web Vitals need improvement",
+        description: "Visits exceeding a Core Web Vitals threshold.",
+      },
+      slowLcp: {
+        name: "Slow LCP",
+        description: "Visits with LCP above 2.5 seconds.",
+      },
+      slowInp: {
+        name: "Slow INP",
+        description: "Visits with INP above 200 milliseconds.",
+      },
+      highCls: {
+        name: "High CLS",
+        description: "Visits with CLS above 0.1.",
+      },
+      slowTtfb: {
+        name: "Slow TTFB",
+        description: "Visits with TTFB above 800 milliseconds.",
+      },
+      slowFcp: {
+        name: "Slow FCP",
+        description: "Visits with FCP above 1.8 seconds.",
+      },
     },
     savedFiltersPersonal: "Personal filters",
     savedFiltersTeam: "Team filters",
@@ -2855,6 +3570,11 @@ const enMessages = {
     manageSavedFilter: "Manage filter",
     savedFilterName: "Name",
     savedFilterDescription: "Notes",
+    scopeLabel: "Filter scope",
+    scopeAuto: "Automatically choose based on the current page",
+    scopeEvent: "Filter events matching these conditions",
+    scopeSession: "Filter sessions meeting these conditions",
+    scopeVisitor: "Filter visitors meeting these conditions",
     savedFilterVisibility: "Visibility",
     savedFilterVisibilityPrivate: "Only me",
     savedFilterVisibilityTeam: "Share with team",
@@ -2899,7 +3619,6 @@ const enMessages = {
     viewPage: "View page",
     customEvent: "Custom event",
     detailsTitle: "Event details",
-    detailsSection: "Information",
     browsingSection: "Browsing",
     geographySection: "Geography",
     sourceSection: "Source",
@@ -2923,24 +3642,17 @@ const enMessages = {
     visitorHistoryRange: "Activity range",
     visitorHistoryEmpty:
       "No additional records are available for this visitor yet.",
-    visitorMapSection: "Visitor location",
-    visitorMapSubtitle:
-      "Approximate location inferred from this event's coordinates.",
     visitorMapUnavailable: "This event does not include usable coordinates.",
     visitorId: "Visitor ID",
     sessionId: "Session ID",
     visitId: "Visit ID",
-    eventType: "Event type",
     eventTime: "Event time",
     eventKind: "Event kind",
     eventName: "Event name",
-    eventId: "Event ID",
     siteId: "Site ID",
     traceId: "Trace ID",
-    sequence: "Sequence",
     receivedAt: "Received at",
     startedAt: "Started at",
-    previousVisitId: "Previous visit ID",
     previousVisitStartedAt: "Previous visit started at",
     userId: "User ID",
     userName: "User name",
@@ -2954,24 +3666,19 @@ const enMessages = {
     browserVersion: "Browser version",
     osVersion: "OS version",
     userAgent: "User agent",
-    screenWidth: "Screen width",
-    screenHeight: "Screen height",
     postalCode: "Postal code",
     metroCode: "Metro code",
     status: "Status",
     visibilityState: "Visibility state",
-    hiddenAt: "Hidden at",
     endedAt: "Ended at",
-    finalizedAt: "Finalized at",
     duration: "Duration",
     durationSource: "Duration source",
     exitReason: "Exit reason",
     leaveAt: "Left at",
-    performanceVisitId: "Performance visit ID",
   },
   overview: {
     title: "Traffic Overview",
-    subtitle: "Monitor high-level performance and audience behavior.",
+    subtitle: "View core metrics and traffic trends.",
     trendTitle: "Traffic Trend",
     sourceTab: "Source",
     sourceDomainColumn: "Source (Domain)",
@@ -2999,6 +3706,9 @@ const enMessages = {
     title: "Pages",
     subtitle: "Most visited paths in the selected range.",
     pagesPerSession: "Pages / Session",
+    changePercentColumnLabel: "{metric} change (%)",
+    changePointsColumnLabel: "{metric} change (pp)",
+    percentagePointSuffix: "pp",
     untitled: "Untitled Page",
     empty: "No page data matches the current filters.",
     loadError: "Failed to load page data. Please try again later.",
@@ -3079,6 +3789,8 @@ const enMessages = {
   },
   sessionDetail: {
     anonymous: "Anonymous",
+    userId: "User ID",
+    userName: "User name",
     back: "Back to sessions",
     missing: "Missing sessionId.",
     notFound: "Session not found.",
@@ -3202,21 +3914,41 @@ const enMessages = {
     listTitle: "Funnel definitions",
     listSubtitle:
       "Build a reusable sequence, then inspect conversion for the current dashboard window.",
+    conversionRecords: "Conversion records",
+    converted: "Converted",
+    dropped: "Dropped off",
+    open: "Open funnel",
+    moreActions: "More actions",
     create: "New funnel",
     createTitle: "Create funnel",
-    createDescription:
-      "Define at least two ordered pageview or custom event steps.",
+    createDescription: "Define at least two ordered observation filters.",
     nameLabel: "Name",
     namePlaceholder: "Signup activation",
     stepsLabel: "Steps",
     addStep: "Add step",
     removeStep: "Remove step",
-    stepTypePageview: "Pageview",
-    stepTypeEvent: "Event",
-    stepValueLabel: "Value",
-    pageviewPlaceholder: "/pricing",
-    eventPlaceholder: "signup_started",
+    progression: "Progression identity",
+    conversionWindow: "Conversion window",
+    custom: "Custom",
+    customWindowHours: "Custom window in hours",
+    stepFilter: "Step filter",
+    filter: "Filter",
+    apply: "Apply",
+    condition: "condition",
+    conditions: "conditions",
+    expression: "Filter expression",
+    filterPlaceholder: 'e.g. page.path eq "/pricing"',
+    invalidFilter: "Invalid filter",
+    dragStep: "Drag step",
+    unnamed: "(unnamed)",
+    oneHour: "1 hour",
+    oneDay: "24 hours",
+    sevenDays: "7 days",
+    thirtyDays: "30 days",
     save: "Create",
+    saveEdit: "Save changes",
+    edit: "Edit",
+    editTitle: "Edit funnel",
     creating: "Creating...",
     cancel: "Cancel",
     delete: "Delete",
@@ -3230,13 +3962,16 @@ const enMessages = {
       "Create a funnel from pageviews and custom events to track conversion.",
     loadError: "Unable to load funnels.",
     detailLoadError: "Unable to load funnel analysis.",
-    invalidFunnel: "Add a name and at least two complete steps.",
+    invalidFunnel: "Add a name and at least two complete filters.",
     created: "Funnel created.",
     createFailed: "Unable to create funnel.",
+    updatedSuccess: "Funnel updated.",
+    saveFailed: "Unable to save funnel.",
     deleted: "Funnel deleted.",
     deleteFailed: "Unable to delete funnel.",
     overallConversion: "Overall conversion",
     startedSessions: "Started sessions",
+    startedVisitors: "Started visitors",
     convertedSessions: "Converted sessions",
     convertedVisitors: "Converted visitors",
     largestDropOff: "Largest drop-off",
@@ -3249,12 +3984,55 @@ const enMessages = {
     dropOff: "Drop-off",
     updated: "Updated",
   },
+  goals: {
+    title: "Goals",
+    subtitle:
+      "Measure conversion from a single reusable event or page condition.",
+    listSubtitle: "View conversion rate changes across this time range.",
+    conversionRecords: "Conversion records",
+    open: "Open goal",
+    moreActions: "More actions",
+    create: "New goal",
+    createTitle: "Create goal",
+    nameLabel: "Name",
+    namePlaceholder: "Purchase completed",
+    filter: "Conversion condition",
+    apply: "Apply",
+    cancel: "Cancel",
+    save: "Create",
+    saveEdit: "Save changes",
+    edit: "Edit",
+    editTitle: "Edit goal",
+    creating: "Creating...",
+    delete: "Delete",
+    deleteTitle: "Delete goal",
+    deleteDescription:
+      "This removes the saved goal definition. Historical analytics data is not deleted.",
+    deleteConfirm: "Delete goal",
+    empty: "No goals yet.",
+    emptyHint:
+      "Create a goal from a page condition or custom event to track conversion.",
+    loadError: "Unable to load goals.",
+    detailLoadError: "Unable to load goal analysis.",
+    invalidGoal: "Add a name and a complete conversion condition.",
+    created: "Goal created.",
+    updatedSuccess: "Goal updated.",
+    saveFailed: "Unable to save goal.",
+    deleted: "Goal deleted.",
+    deleteFailed: "Unable to delete goal.",
+    sessions: "Sessions",
+    visitors: "Visitors",
+    total: "Total",
+    converted: "Converted",
+    conversion: "Conversion rate",
+    timeseries: "Conversion rate",
+    updated: "Updated",
+  },
   visitors: {
     title: "Visitors",
     subtitle: "Visitor-level breakdown and recency.",
     search: "Search visitors...",
     visitor: "Visitor",
-    sessionId: "Session ID",
     anonymous: "Anonymous",
     referrer: "Referrer",
     location: "Location",
@@ -3272,6 +4050,8 @@ const enMessages = {
   },
   visitorDetail: {
     anonymous: "Anonymous",
+    userId: "User ID",
+    userName: "User name",
     back: "Back to visitors",
     missing: "Missing visitorId.",
     notFound: "Visitor not found.",
@@ -3357,7 +4137,7 @@ const enMessages = {
     title: "Location Analysis",
     subtitle: "Analyze traffic performance by location.",
     mapTitle: "Request Geo Distribution",
-    countryLabel: "Country",
+    countryLabel: "Country / Region",
     regionLabel: "Region",
     cityLabel: "City",
     back: "Back",
@@ -3368,7 +4148,7 @@ const enMessages = {
     ipNotice:
       "Estimated location via IP. Coordinates are approximate and do not pinpoint a precise address.",
     multipleNotice:
-      "Estimated locations via IP. Multi-session journeys may span multiple cities.",
+      "This visitor's journey across different sessions may span multiple cities.",
     investigation: {
       countryScopedLabel: "Country's {label}",
       capital: "Capital",
@@ -3515,7 +4295,7 @@ const enMessages = {
       "Great: {good} or lower; needs improvement: {good} to {poor}; poor: above {poor}.",
     scoreThresholdText:
       "Great: above 90; needs improvement: 50 to 90; poor: below 50.",
-    countryHealthTitle: "Country Health",
+    countryHealthTitle: "Country and Region Health",
     countryHealthSubtitle:
       "Boundary fill shows {metric} health by country or region.",
     pathsTitle: "Path Performance",
@@ -3541,6 +4321,11 @@ const enMessages = {
         title: "Blocking Rules",
         description:
           "Filter collection by request context before events reach storage.",
+      },
+      protection: {
+        title: "Request Protection",
+        description:
+          "Control how detected bots and hosting or proxy traffic are handled before requests enter analytics.",
       },
       danger: {
         title: "Danger Zone",
@@ -3579,6 +4364,12 @@ const enMessages = {
       "Automatically switch tracking strength based on the visitor's country.",
     trackingStrengthWeakDescription:
       "Always reduce tracking precision. This can count the same visitor multiple times across visits and make retention impossible.",
+    botProtectionEnabledLabel: "Block detected bots",
+    botProtectionEnabledHint:
+      "High-confidence bot requests are blocked when this is enabled; otherwise they remain included in statistics.",
+    hostingProxyBlockingEnabledLabel: "Block hosting and proxy traffic",
+    hostingProxyBlockingEnabledHint:
+      "Block suspected bot requests from hosting or proxy networks. This is disabled by default.",
     queryHashGroupTitle: "Query and Hash Tracking",
     queryHashGroupDescription:
       "Control how query strings, URL hashes, and Do Not Track are handled.",
@@ -3589,6 +4380,19 @@ const enMessages = {
     blockingRulesDialogs: {
       testButton: "Test",
       helpButton: "Help",
+      searchButton: "Search",
+      searchTitle: "Search locations",
+      searchDescription:
+        "Search by name or code, then select a result to add it to this card.",
+      searchInputLabel: "Search",
+      searchInputPlaceholder: "Search by name or code",
+      searchCountryLabel: "Country / region",
+      searchRegionLabel: "State / province",
+      searchBack: "Change country / region",
+      searchLoading: "Loading locations...",
+      searchNoResults: "No matching locations.",
+      searchLoadError: "Locations could not be loaded. Try again later.",
+      searchClose: "Close",
       helpTitle: "Rule Syntax",
       helpDescription:
         "Review the syntax, examples, and precedence for this field.",
@@ -3852,7 +4656,8 @@ const enMessages = {
     preferredLanguageLabel: "Email language",
     preferredLanguageDefault: "Default",
     preferredLanguageEnglish: "English",
-    preferredLanguageChinese: "Chinese",
+    preferredLanguageChinese: "Simplified Chinese",
+    preferredLanguageTraditionalChinese: "Traditional Chinese",
     preferredLanguageJapanese: "Japanese",
     preferredLanguageSaved: "Notification language saved.",
     preferredLanguageSaveFailed: "Failed to save notification language.",
@@ -4142,8 +4947,6 @@ const enMessages = {
   },
   empty: {
     noTeams: "No team available yet.",
-    noSites: "No site is available under this team.",
-    siteNotFound: "Team or site not found.",
   },
   errorPage: {
     notFoundEyebrow: "Page not found",
@@ -4171,7 +4974,8 @@ const enMessages = {
   actions: {
     logout: "Logout",
     switchToEnglish: "English",
-    switchToChinese: "中文",
+    switchToChinese: "Simplified Chinese",
+    switchToTraditionalChinese: "Traditional Chinese",
     switchToJapanese: "日本語",
     switchToLight: "Light",
     switchToDark: "Dark",
@@ -4341,10 +5145,6 @@ const enMessages = {
       scheduleInterval: "Every {minutes} min",
       scheduleCustom: "Custom",
       conditionReport: "{period} report",
-      conditionMilestone: "{metric} every {step}",
-      conditionThreshold: "{window} {metric} {operator} {value}",
-      conditionChange: "{window} {metric} change {operator} {value}",
-      conditionHealth: "No data for {hours}h",
       summaryWhenConditions:
         "When {combinator} of the following conditions match, send a {type} notification:",
       summaryWhenSingleCondition:
@@ -4606,7 +5406,10 @@ const enMessages = {
     members: {
       title: "Members",
       subtitle: "Invite members or remove existing members.",
-      remove: "Remove",
+      remove: "Remove member",
+      removeMemberAction: 'Remove member "{target}"',
+      removeMemberConfirm:
+        'Remove "{target}" from this team? They will lose access immediately.',
       noMembers: "No members found for this team.",
       invitesTitle: "Create invite link",
       invitesSubtitle: "Users join this team only after accepting an invite.",
@@ -4615,12 +5418,15 @@ const enMessages = {
       inviteExpiresLabel: "Expires in hours",
       createInvite: "Create invite link",
       creatingInvite: "Creating...",
-      copyInvite: "Copy link",
+      copyInvite: "Copy invite link",
       inviteLinksTitle: "Invite links",
       inviteLinksSubtitle: "Review invite status and revoke active links.",
       noInvites: "This team has no invite links yet.",
       anyEmail: "Any email",
       revokeInvite: "Revoke invite",
+      revokeInviteAction: 'Revoke invite for "{target}"',
+      revokeInviteConfirm:
+        'Revoke the invite for "{target}"? The link will stop working.',
       siteAccessLabel: "Site access",
       siteAccessAll: "All sites",
       siteAccessRestricted: "Restricted",
@@ -4697,7 +5503,7 @@ const enMessages = {
       openCommit: "Open commit",
       commitCount: "Commits",
       source: "Data source",
-      loadFailed: "Failed to load GitHub Releases.",
+      loadFailed: "Failed to load the release index.",
       unknown: "Unknown",
     },
     scheduledTasks: {
@@ -4705,6 +5511,7 @@ const enMessages = {
       empty: "No scheduled tasks yet.",
       refresh: "Refresh",
       loadFailed: "Failed to load scheduled tasks.",
+      loadMore: "Load more",
       allStatuses: "All statuses",
       runs24h: "Runs in 24h",
       successRate24h: "Success rate in 24h",
@@ -4725,11 +5532,14 @@ const enMessages = {
       enabled: "State",
       enabledYes: "Enabled",
       enabledNo: "Disabled",
+      taskStateSaved: "Task state updated.",
+      taskStateSaveFailed: "Failed to update task state.",
       lastStatus: "Last status",
       runs30d: "30d runs",
       successRate30d: "30d success rate",
       avgDuration: "Avg duration",
       runHistoryTitle: "Run history",
+      nextRun: "Next run",
       runHistoryDescription: "Task runs retained over the last 30 days.",
       noRuns: "No runs yet.",
       scheduledAt: "Scheduled",
@@ -4771,7 +5581,13 @@ const enMessages = {
         notification_tick: {
           name: "Notification dispatch",
           description: "Evaluates notification rules and dispatches messages.",
-          schedule: "Every hour",
+          schedule: "Every 30 minutes",
+        },
+        database_maintenance: {
+          name: "Database maintenance",
+          description:
+            "Removes expired run data and notifications, and optimizes D1 query statistics.",
+          schedule: "Every day",
         },
       },
     },
@@ -4876,13 +5692,49 @@ const enMessages = {
     },
   },
   requestObservation: {
+    uiLabels: {
+      pageSubtitle:
+        "Monitor request categories, dispositions, and the statistics pipeline from Analytics Engine.",
+      blocked: "Blocked requests",
+      included: "Included requests",
+      disposition: "Disposition",
+      normalRequests: "Normal requests",
+      suspectedBotRequests: "Suspected bots",
+      botRequests: "Bot requests",
+      customBlockedRequests: "Custom blocks",
+      includedRequests: "Included requests",
+      blockedRequests: "Blocked requests",
+      totalRequests: "Total requests",
+      botRequestRatio: "Bot request ratio",
+      blockedRequestRatio: "Blocked request ratio",
+      normalRequestRatio: "Normal request ratio",
+      normalTrafficShare: "Normal requests",
+      suspectedBotTraffic: "Suspected bots",
+      botTraffic: "Bot requests",
+      customBlockedTraffic: "Custom blocks",
+      requests: "Requests",
+      blockedSubtitle:
+        "Requests that were actually blocked; category remains the detection result.",
+      includedSubtitle:
+        "Requests included in statistics, including requests with signals that were not blocked.",
+      blockedTrendDescription:
+        "Actual blocked requests and blocked ratio by interval.",
+      includedTrendDescription: "Requests included in statistics by interval.",
+      recentBlockedTitle: "Recent blocked requests",
+      recentBlockedDescription:
+        "Records read from the unified Request Analytics Engine dataset.",
+      recentIncludedTitle: "Recent included requests",
+      recentIncludedDescription:
+        "Records read from the unified Request Analytics Engine dataset.",
+      detailTitle: "Request details",
+      detailSubtitle:
+        "Inspect the request category, disposition, network, and client context.",
+    },
     title: "Request Observability",
-    subtitle:
-      "Monitor total requests, anomaly routing, and the normal collection pipeline from Analytics Engine.",
     tabs: {
       overview: "Overview",
-      abnormal: "Abnormal Requests",
-      normal: "Normal Requests",
+      blocked: "Blocked Requests",
+      included: "Included Requests",
     },
     refresh: "Refresh",
     loadFailed: "Failed to load request observability data.",
@@ -4894,20 +5746,10 @@ const enMessages = {
       "This deployment was published without the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable it in Cloudflare, then redeploy to collect request-observation data.",
     openAnalyticsEngine: "Open Analytics Engine",
     openSettings: "Open settings",
-    highConfidenceBots: "High-confidence Bots",
     affectedSites: "Affected Sites",
-    uniqueCountries: "Countries",
+    uniqueCountries: "Countries / Regions",
     noData: "No request data in this window.",
     trendTitle: "Routing Trend",
-    trendDescription:
-      "Normal requests, abnormal requests, and diversion ratio by interval.",
-    recentTitle: "Recent Bot Requests",
-    recentDescription:
-      "Detailed records written only to the bot Analytics Engine dataset.",
-    recentLoadedAll: "All records loaded",
-    detailTitle: "Bot Request Detail",
-    detailSubtitle:
-      "Inspect detection signals, network context, and client data for this diverted request.",
     client: "Client",
     edge: "Edge",
     identifiers: "Identifiers",
@@ -4922,9 +5764,7 @@ const enMessages = {
     request: "Request",
     ip: "IP",
     userAgent: "User agent",
-    confidence: "Confidence",
-    blocked: "Blocked",
-    highConfidenceRequests: "High-confidence Requests",
+    category: "Category",
     emptyValue: "Unknown",
     kind: "Type",
     botScore: "Bot Score",
@@ -4935,7 +5775,7 @@ const enMessages = {
     origin: "Origin",
     asOrganization: "ASN Organization",
     asn: "ASN",
-    country: "Country",
+    country: "Country / Region",
     region: "Region",
     city: "City",
     colo: "Colo",
@@ -4955,7 +5795,16 @@ const enMessages = {
       access_asn: "Access ASN",
       missing_browser_provenance: "Missing browser provenance",
       origin_hostname_mismatch: "Origin and hostname mismatch",
-      blocked_pathname: "Blocked pathname",
+      custom_block: "Custom block rule matched",
+      blocked_domains: "Blocked domains",
+      blocked_paths: "Blocked paths",
+      blocked_query_parameters: "Blocked query parameters",
+      blocked_referrers: "Blocked referrers",
+      blocked_user_agents: "Blocked User-Agents",
+      blocked_ips: "Blocked IPs",
+      blocked_asns: "Blocked ASNs",
+      blocked_countries: "Blocked countries",
+      blocked_regions: "Blocked regions",
     },
     requestKindLabels: {
       pageview: "Pageview",
@@ -4963,56 +5812,34 @@ const enMessages = {
       request: "Request",
       visibility: "Visibility",
       leave: "Leave",
+      identify: "Identify",
     },
     overviewLabels: {
-      totalRequests: "Total requests",
-      normalRequests: "Normal requests",
-      abnormalRequests: "Abnormal requests",
-      abnormalRatio: "Abnormal request ratio",
-      p50Latency: "P50 edge latency",
-      p75Latency: "P75 edge latency",
-      p95Latency: "P95 edge latency",
-      p99Latency: "P99 edge latency",
-      avgLatency: "Average edge latency",
+      p50Latency: "P50 Worker processing time",
+      p75Latency: "P75 Worker processing time",
+      p99Latency: "P99 Worker processing time",
+      p95Latency: "P95 Worker processing time",
+      avgLatency: "Average Worker processing time",
       pageviews: "Pageviews",
       customEvents: "Custom events",
       overviewTrendTitle: "Request routing trend",
-      overviewTrendDescription:
-        "Normal requests, abnormal requests, and abnormal ratio bucketed by the top-bar interval.",
-      trafficCompositionTitle: "Request composition",
+      trafficCompositionTitle: "Business request composition",
       trafficCompositionDescription:
-        "Normal requests, abnormal requests, and page events on the same timeline.",
-      confidenceShareTitle: "Request confidence breakdown",
-      normalTrafficShare: "Normal traffic",
-      lowConfidenceTraffic: "Low-confidence traffic",
-      mediumConfidenceTraffic: "Medium-confidence traffic",
-      highConfidenceTraffic: "High-confidence traffic",
-      latencyTitle: "Edge latency trend",
+        "Counts normal collection events by type over time, including pageviews, leaves, visibility changes, custom events, and identifications.",
+      categoryShareTitle: "Request category breakdown",
+      latencyTitle: "Worker processing time trend",
       latencyDescription:
-        "P50 / P75 / P95 / P99 edge latency recorded when normal requests are written to AE.",
-      abnormalSubtitle:
-        "Focus on diverted abnormal requests. Maps and tables show only red abnormal traffic.",
-      normalSubtitle:
-        "Focus on requests that entered the normal collection pipeline. Maps and tables show only normal traffic.",
+        "P50 / P75 / P95 / P99 Worker processing time recorded when normal requests are written to AE.",
       requests: "Requests",
       windowDays: "Last {days} days",
       latencyMilliseconds: "{value} ms",
     },
     normalDetail: {
-      title: "Normal Request Detail",
-      subtitle:
-        "Inspect pipeline, location, and latency fields recorded for a normal request in AE.",
       requestMethod: "Request method",
-      edgeLatency: "Edge latency",
+      edgeLatency: "Worker processing time",
       eventAt: "Event time",
       receivedAt: "Received at",
-      coordinates: "Coordinates",
       continent: "Continent",
-    },
-    recentNormal: {
-      title: "Recent Normal Requests",
-      description:
-        "Detailed records written only to the normal request Analytics Engine dataset.",
     },
   },
   systemSettings: {
@@ -5020,32 +5847,32 @@ const enMessages = {
     subtitle:
       "Manage instance-wide configuration for this InsightFlare deployment.",
     guide: "Guide",
-    botAnalyticsTitle: "Analytics Engine",
-    botAnalyticsDescription:
-      "Configure the Cloudflare credentials used to read Analytics Engine data for Bot Protection and other analysis features.",
-    botAnalyticsAccountIdLabel: "Cloudflare Account ID",
-    botAnalyticsApiTokenLabel: "Cloudflare API token",
-    botAnalyticsApiTokenPlaceholder:
+    analyticsEngineTitle: "Analytics Engine",
+    analyticsEngineDescription:
+      "Configure the Cloudflare credentials used to read Analytics Engine data for request observation and future traffic and event analytics.",
+    analyticsEngineAccountIdLabel: "Cloudflare Account ID",
+    analyticsEngineApiTokenLabel: "Cloudflare API token",
+    analyticsEngineApiTokenPlaceholder:
       "View the guide to get a Cloudflare API token",
-    botAnalyticsSaved: "Analytics Engine configuration saved.",
-    botAnalyticsSaveFailed: "Failed to save Analytics Engine configuration.",
-    botAnalyticsDeleted: "Analytics Engine configuration deleted.",
-    botAnalyticsDeleteFailed:
+    analyticsEngineSaved: "Analytics Engine configuration saved.",
+    analyticsEngineSaveFailed: "Failed to save Analytics Engine configuration.",
+    analyticsEngineDeleted: "Analytics Engine configuration deleted.",
+    analyticsEngineDeleteFailed:
       "Failed to delete Analytics Engine configuration.",
-    botAnalyticsDeleteConfirm:
+    analyticsEngineDeleteConfirm:
       "Delete the Analytics Engine read credentials? Features that depend on Analytics Engine will show configuration required until the credentials are restored.",
-    botAnalyticsEngineDisabledTitle: "Analytics Engine is not enabled",
-    botAnalyticsEngineDisabledDescription:
+    analyticsEngineDisabledTitle: "Analytics Engine is not enabled",
+    analyticsEngineDisabledDescription:
       "This deployment automatically disabled the Analytics Engine binding because the Cloudflare account has not enabled Analytics Engine. Enable Analytics Engine in Cloudflare, then redeploy InsightFlare to activate related analysis features.",
-    botAnalyticsEngineDisabledHint:
+    analyticsEngineDisabledHint:
       "Analytics Engine settings are locked until Analytics Engine is enabled and the Worker is redeployed.",
-    botAnalyticsOpenCloudflare: "Open Cloudflare Analytics Engine",
-    botAnalyticsGuideTitle: "Get Analytics Engine credentials",
-    botAnalyticsGuideDescription:
+    analyticsEngineOpenCloudflare: "Open Cloudflare Analytics Engine",
+    analyticsEngineGuideTitle: "Get Analytics Engine credentials",
+    analyticsEngineGuideDescription:
       "Analytics Engine needs Cloudflare account details and an API token that can read Analytics Engine data.",
-    botAnalyticsGuideSteps: [
+    analyticsEngineGuideSteps: [
       "Open the Cloudflare Dashboard, enter the target account, and copy the Account ID.",
-      "Enable Analytics Engine under Workers & Pages; the bot and normal request datasets are created and bound automatically during deployment.",
+      "Enable Analytics Engine under Workers & Pages; the Request, Traffic, and Event datasets are created and bound automatically during deployment.",
       "Go to My Profile → API Tokens and create a Custom token.",
       "Grant the token Account Analytics read access and scope it to the current account.",
       "Copy the token, then enter the Account ID and API token here.",
@@ -5063,6 +5890,18 @@ const enMessages = {
       "Enter the sender name, sender email, Reply-To, and Resend API key here.",
       "Save the configuration, then send a test email to confirm delivery works.",
     ],
+    retentionTitle: "Operational data retention",
+    retentionDescription:
+      "Configure how long task runs, task logs, and notification messages remain available. Changes affect new records only.",
+    scheduledTaskLogsDaysLabel: "Scheduled task logs and runs (days)",
+    notificationTestDaysLabel: "Test notifications (days)",
+    notificationAttentionDaysLabel: "Warning and critical notifications (days)",
+    notificationDefaultDaysLabel: "Other notifications (days)",
+    retentionRangeHint: "Enter an integer from 1 to 3650 days.",
+    retentionSave: "Save retention settings",
+    retentionSaving: "Saving...",
+    retentionSaved: "Retention settings saved.",
+    retentionSaveFailed: "Failed to save retention settings.",
     loginTurnstileTitle: "Login Turnstile Protection",
     loginTurnstileDescription:
       "When enabled, the login page runs Cloudflare Turnstile Invisible verification in the background and the server enforces it during sign-in.",
@@ -5214,6 +6053,10 @@ const enMessages = {
     doDiagnosticSiteAlarm: "Alarm",
     doDiagnosticSiteAlarmNone: "None",
     doDiagnosticSiteAlarmDue: "Due",
+    doDiagnosticSiteNextDue: "Next due",
+    doDiagnosticSiteNextDueFlush: "Flush",
+    doDiagnosticSiteNextDueHidden: "Hidden fallback",
+    doDiagnosticSiteNextDueTimeout: "Visit timeout",
     doDiagnosticSiteResponseMs: "Response time",
     doDiagnosticThresholdsHint:
       "Thresholds — stale {stale}, timeout {timeout}, hardAged {hardAged}, stuck flush_attempts ≥ {stuck}",
@@ -5247,6 +6090,39 @@ const enMessages = {
 
 const zhMessages = {
   appName: "InsightFlare",
+  uiGallery: {
+    searchLabel: "搜索 UI 组件",
+    searchPlaceholder: "搜索组件",
+    backToApp: "返回 InsightFlare",
+    noSearchResults: "没有符合搜索条件的组件。",
+    toggleNavigation: "切换组件库导航",
+    library: "UI 组件库",
+    componentsCount: "{count} 个组件",
+    statesCount: "{count} 个状态",
+    designSystem: "InsightFlare 设计系统",
+    pageTitle: "UI 组件",
+    catalogSummary: "{components} 个组件 · {states} 个属性取值",
+    categories: {
+      inputs: "输入控件",
+      feedback: "反馈",
+      foundations: "基础",
+      navigation: "导航",
+      "data-display": "数据展示",
+      overlays: "浮层",
+      "product-analytics": "产品 UI / 分析",
+      "product-management": "产品 UI / 管理",
+      "product-realtime": "产品 UI / 实时",
+    },
+    browseCategories: "按分类浏览",
+    featuredComponents: "精选组件",
+    backToCatalog: "UI 组件",
+    canonicalStates: "Props 与取值",
+    browseAllComponents: "浏览全部组件",
+    previewState: "打开预览",
+    resetPreview: "重置预览",
+    expandCode: "展开代码",
+    collapseCode: "收起代码",
+  },
   navigation: {
     overview: "总览",
     realtime: "实时",
@@ -5255,6 +6131,7 @@ const zhMessages = {
     sessions: "会话",
     events: "事件",
     funnels: "漏斗",
+    goals: "目标",
     campaigns: "推广",
     visitors: "访客",
     retention: "留存",
@@ -5284,7 +6161,6 @@ const zhMessages = {
     entryPage: "入口页面",
     exitPage: "出口页面",
     referrer: "来源",
-    startedAt: "开始时间",
     event: "事件",
     location: "地区",
     browser: "浏览器",
@@ -5332,6 +6208,10 @@ const zhMessages = {
     admin: "管理员",
     user: "普通用户",
     search: "搜索",
+    open: "打开",
+    sortBy: "按 {label} 排序",
+    change: "变化",
+    new: "新增",
     tableExport: {
       action: "导出",
       title: "导出 CSV",
@@ -5345,7 +6225,6 @@ const zhMessages = {
       fileNameLabel: "文件名",
       download: "导出 CSV",
       empty: "当前没有可导出的行。",
-      allTabsUnavailable: "全部标签页需要在数据加载后才可导出。",
     },
     tableColumns: {
       action: "列设置",
@@ -5378,7 +6257,6 @@ const zhMessages = {
     last90d: "最近 90 天",
     last6m: "最近 6 个月",
     last12m: "最近 12 个月",
-    allTime: "所有时间",
     custom: "自定义时间段",
   },
   intervals: {
@@ -5391,11 +6269,30 @@ const zhMessages = {
   dashboardHeader: {
     range: "时间范围",
     interval: "时间间隔",
-    filters: "筛选",
+    compareButton: "对比",
+    compareTitle: "对比设置",
+    compareSubtitle: "选择对比周期和筛选条件。",
+    compareTimeLabel: "对比时间",
+    compareCurrentPeriod: "当前周期",
+    compareCurrentPeriodDescription: "使用当前选定的时间范围。",
+    comparePreviousPeriod: "上一周期",
+    comparePreviousPeriodDescription: "使用当前周期之前的同等长度时间范围。",
+    compareFilterLabel: "对比筛选",
+    compareFollowCurrentFilter: "跟随当前筛选",
+    compareFollowCurrentFilterDescription: "使用当前页面的筛选条件。",
+    compareCustomFilter: "自定义筛选",
+    compareCustomFilterDescription: "为对比单独设置筛选条件。",
+    compareApply: "应用对比",
+    compareCancel: "取消",
+    compareDisabled: "当前页面中对比不可用。",
+    filterButton: "筛选",
+    filterButtonEvent: "筛选 (事件)",
+    filterButtonSession: "筛选 (会话)",
+    filterButtonVisitor: "筛选 (访客)",
     customRange: "选择自定义区间",
     customHint: "请选择开始和结束日期。",
     customPendingEnd: "已选择开始日期，请继续选择结束日期。",
-    customApply: "确定",
+    customApply: "应用日期范围",
     rangeGroupQuick: "快速范围",
     rangeGroupCalendar: "自然周期",
     rangeGroupRolling: "滚动窗口",
@@ -5412,10 +6309,6 @@ const zhMessages = {
     customSelectionSummary: "当前选择：{from} 至 {to}（共 {days} 天）",
   },
   filters: {
-    country: "国家",
-    device: "设备",
-    browser: "浏览器",
-    all: "全部",
     clear: "清除",
   },
   conditionDescription: {
@@ -5429,35 +6322,58 @@ const zhMessages = {
     filterAnyOf: "{field} 是以下任一值：{values}",
     filterNoneOf: "{field} 不属于以下任一值：{values}",
     filterBetween: "{field} 介于 {from} 与 {to} 之间",
+    filterContains: "{field} 包含 {value}",
     filterStartsWith: "{field} 以 {value} 开头",
     filterEndsWith: "{field} 以 {value} 结尾",
+    filterGreaterThan: "{field} 大于 {value}",
+    filterGreaterThanOrEqual: "{field} 大于或等于 {value}",
+    filterLessThan: "{field} 小于 {value}",
+    filterLessThanOrEqual: "{field} 小于或等于 {value}",
+    filterExists: "{field} 存在",
+    filterNotExists: "{field} 不存在",
+    filterIsNull: "{field} 为 NULL",
+    filterNotNull: "{field} 不为 NULL",
+    filterIsEmpty: "{field} 为空",
+    filterNotEmpty: "{field} 不为空",
   },
   filterBuilder: {
     fieldGroups: {
+      advanced: "高级",
       page: "页面",
       session: "会话",
+      visitor: "访客",
       referrer: "来源与渠道",
       campaign: "营销活动",
       client: "客户端",
       geography: "地理位置",
       event: "事件",
+      acquisition: "获客",
+      device: "设备",
+      geo: "地理",
+      performance: "性能",
+      user: "用户",
+      time: "时间",
+      aggregation: "聚合",
+      calculation: "计算",
+      relation: "行为关系",
     },
     fieldLabels: {
       "page.path": "页面路径",
       "page.title": "页面标题",
-      "page.hostname": "页面主机名",
-      "page.query": "查询字符串",
-      "page.hash": "Hash 片段",
+      "page.collection": "页面集合",
+      "page.hostname": "页面域名",
+      "page.query": "查询参数",
+      "page.hash": "URL Hash",
       "session.entryPath": "入口页面",
       "session.exitPath": "出口页面",
       "referrer.domain": "来源域名",
       "referrer.url": "来源 URL",
       "traffic.channel": "流量渠道",
-      "utm.source": "活动来源",
-      "utm.medium": "活动媒介",
-      "utm.campaign": "活动名称",
-      "utm.term": "活动关键词",
-      "utm.content": "活动内容",
+      "utm.source": "UTM 来源",
+      "utm.medium": "UTM 媒介",
+      "utm.campaign": "UTM 活动",
+      "utm.term": "UTM 关键词",
+      "utm.content": "UTM 内容",
       "client.browser": "浏览器",
       "client.browserVersion": "浏览器版本",
       "client.browserEngine": "浏览器引擎",
@@ -5466,14 +6382,60 @@ const zhMessages = {
       "client.deviceType": "设备类型",
       "client.language": "语言",
       "client.screenSize": "屏幕尺寸",
-      "geo.country": "国家/地区",
-      "geo.region": "地区",
+      "geo.country": "国家 / 地区",
+      "geo.region": "省 / 州 / 地区",
       "geo.city": "城市",
       "geo.continent": "大洲",
       "geo.timeZone": "时区",
-      "geo.organization": "组织",
+      "geo.organization": "网络组织",
+      "event.collection": "事件集合",
       "event.name": "事件名称",
-      "event.payload": "事件载荷",
+      "event.payload": "事件属性",
+      "page.durationMs": "页面停留时长",
+      "session.collection": "会话集合",
+      "session.durationMs": "会话时长",
+      "session.views": "页面浏览数",
+      "session.events": "事件数",
+      "session.bounce": "是否跳出",
+      "visitor.collection": "访客集合",
+      "visitor.sessions": "会话数",
+      "visitor.views": "页面浏览数",
+      "visitor.events": "事件数",
+      "performance.ttfbMs": "TTFB",
+      "performance.fcpMs": "FCP",
+      "performance.lcpMs": "LCP",
+      "performance.cls": "CLS",
+      "performance.inpMs": "INP",
+      "user.id": "用户 ID",
+      "user.name": "用户名称",
+      "client.screenWidth": "屏幕宽度",
+      "client.screenHeight": "屏幕高度",
+      "geo.isEU": "是否欧盟地区",
+      time: "时间",
+      "time(...)": "活动时间",
+      $items: "周期中的项目",
+      $span: "序列跨度",
+      "$gap(...)": "步骤间隔",
+      "$same(...)": "步骤共有值",
+      "bucket(...)": "时间分桶",
+      "window(...)": "相对时间窗口",
+      "periods(...)": "周期分组",
+      "count(...)": "计数",
+      "first(...)": "第一个",
+      "last(...)": "最后一个",
+      "nth(...)": "第 N 个",
+      "countDistinct(...)": "去重计数",
+      "sum(...)": "求和",
+      "avg(...)": "平均值",
+      "min(...)": "最小值",
+      "max(...)": "最大值",
+      "add(...)": "相加",
+      "sub(...)": "相减",
+      "mul(...)": "相乘",
+      "div(...)": "相除",
+      "sequence(...)": "行为序列",
+      "adjacent(...)": "连续序列",
+      "without(...)": "排除中间行为",
     },
     operatorLabels: {
       eq: "等于",
@@ -5511,8 +6473,20 @@ const zhMessages = {
     valueLoading: "正在加载值",
     valueSearchPlaceholder: "搜索或输入值",
     valueListPlaceholder: "搜索或输入值后按 Enter 添加",
+    removeValue: "移除筛选值「{value}」",
     rangeStartPlaceholder: "下限",
     rangeEndPlaceholder: "上限",
+    unitAriaLabel: "显示单位",
+    durationUnit: "时间单位",
+    units: {
+      hours: "小时",
+      minutes: "分钟",
+      seconds: "秒",
+      milliseconds: "毫秒",
+      percent: "%",
+      perMille: "‰",
+      pixels: "像素",
+    },
     jsonPointer: "JSON 指针",
     jsonPointerPlaceholder: "搜索或输入 JSON 指针",
     match: "匹配方式",
@@ -5534,9 +6508,105 @@ const zhMessages = {
     expressionHelpFieldType: "类型",
     expressionHelpFieldOperators: "操作符",
     expressionHelpOtherFields: "其他",
+    expressionHelpContextTitle: "活动时间与上下文内建值",
+    expressionHelpContextDescription:
+      "小写点分名称表示已注册字段；大写 PAGE、EVENT、SESSION 和 VISITOR 表示实体集合。在实体筛选器内，$.member 表示当前实体，-> 显式投影集合成员。@ 表示时间锚点；序列和周期筛选器还提供 $span、$gap 和 $items。",
+    expressionHelpContextExamples:
+      'time(last(PAGE)) gte @now-14d\nsequence([EVENT { $.name eq "signup" }, EVENT { $.name eq "purchase" }]) {\n  $span lte 14d AND $gap(1, 2) lte 7d AND $same($.payload("/productId"))\n} exists\nperiods(EVENT, 1w) { count($items) gte 3 } exists',
+    advancedEditor: {
+      not: "非",
+      removeNot: "移除“非”",
+      matchAll: "全部匹配",
+      matchAny: "任意匹配",
+      addCondition: "添加条件",
+      addGroup: "添加分组",
+      wrapInNot: "添加“非”",
+      remove: "移除",
+      condition: "条件",
+      literalValue: "字面值",
+      compareWithExpression: "与表达式比较",
+      valuesAsJson: "筛选值（JSON）",
+      scalarArrayHelp: "输入由 JSON 标量值组成的数组。",
+      chooseValue: "选择一个值",
+      filterValue: "筛选值",
+      durationAmount: "时间长度",
+      jsonPointer: "事件载荷 JSON 指针",
+      jsonPointerPlaceholder: "/属性/路径",
+      entityMember: "实体成员",
+      nthIndex: "第 N 项索引",
+      fromStep: "起始步骤",
+      toStep: "结束步骤",
+      occurrenceKind: "活动选择方式",
+      occurrenceEntity: "活动类型",
+      occurrenceIndex: "活动序号",
+      correlationTarget: "每个步骤共有的值",
+      periodItemCount: "每个周期的项目数",
+      nestedTooDeep: "表达式嵌套过深。",
+      applyOffset: "应用偏移量",
+      removeStep: "移除步骤",
+      addStep: "添加序列步骤",
+      excludedActivity: "排除的活动",
+      fixedTime: "固定时间",
+      toggleOffsetSign: "切换时间偏移正负",
+      timeUnits: {
+        milliseconds: "毫秒",
+        seconds: "秒",
+        minutes: "分钟",
+        hours: "小时",
+        days: "天",
+        weeks: "周",
+        months: "月",
+        years: "年",
+      },
+      coreRelation: "高级筛选",
+      coreRelationExpression: "高级筛选表达式",
+      structuredEditor: "高级筛选控件",
+      unavailableForObservation: "Goal 和 Funnel 步骤不支持高级筛选。",
+      targetKinds: {
+        time: "时间",
+        field: "字段",
+        "event-payload": "事件载荷",
+        "entity-root": "实体集合",
+        "context-root": "上下文",
+        "context-intrinsic": "上下文内建值",
+        "occurrence-time": "活动时间",
+        member: "成员",
+        selector: "选择器",
+        projection: "投影",
+        reducer: "归约器",
+        arithmetic: "算术表达式",
+        duration: "时间长度",
+        "time-anchor": "相对时间",
+        "sequence-span": "序列跨度",
+        "sequence-gap": "步骤间隔",
+        "sequence-same": "序列共有值",
+        "period-items": "周期项目",
+        bucket: "时间桶",
+        window: "时间窗口",
+        periods: "周期集合",
+        sequence: "序列",
+        adjacent: "相邻序列",
+        without: "排除活动的序列",
+      },
+    },
     savedFiltersLoading: "正在获取已保存的筛选...",
     noSavedFilter: "不使用已保存的筛选",
     systemPresets: "系统预设",
+    systemPresetCategories: {
+      acquisition: "获客",
+      device: "设备",
+      visitBehavior: "访问行为",
+      sessionEngagement: "会话参与度",
+      visitorBehavior: "访客行为",
+      performance: "性能",
+      dataQuality: "数据质量",
+    },
+    systemPresetScopes: {
+      preserve: "保留当前范围",
+      event: "事件范围",
+      session: "会话范围",
+      visitor: "访客范围",
+    },
     systemPresetItems: {
       directTraffic: {
         name: "直接访问",
@@ -5598,6 +6668,98 @@ const zhMessages = {
         name: "平板端流量",
         description: "来自平板设备的访问。",
       },
+      longPageViews: {
+        name: "长时页面浏览",
+        description: "持续至少 30 秒的页面浏览。",
+      },
+      shortPageViews: {
+        name: "短时页面浏览",
+        description: "持续少于 10 秒的页面浏览。",
+      },
+      identifiedActivity: {
+        name: "已识别活动",
+        description: "与已识别用户关联的事件。",
+      },
+      customEventActivity: {
+        name: "自定义事件活动",
+        description: "记录了自定义事件名称的事件。",
+      },
+      bouncedSessions: {
+        name: "跳出会话",
+        description: "只包含一次页面浏览的会话。",
+      },
+      nonBouncedSessions: {
+        name: "非跳出会话",
+        description: "包含多次页面浏览的会话。",
+      },
+      longSessions: {
+        name: "长会话",
+        description: "持续至少五分钟的会话。",
+      },
+      shortSessions: {
+        name: "短会话",
+        description: "持续少于一分钟的会话。",
+      },
+      deepSessions: {
+        name: "深度会话",
+        description: "至少浏览三个页面的会话。",
+      },
+      eventfulSessions: {
+        name: "活跃会话",
+        description: "至少包含一个自定义事件的会话。",
+      },
+      highEngagementSessions: {
+        name: "高参与度会话",
+        description: "至少三次浏览且包含两个自定义事件的会话。",
+      },
+      returningVisitors: {
+        name: "回访访客",
+        description: "至少拥有两个会话的访客。",
+      },
+      frequentVisitors: {
+        name: "高频访客",
+        description: "至少拥有五个会话的访客。",
+      },
+      deepVisitors: {
+        name: "深度访客",
+        description: "至少浏览五个页面的访客。",
+      },
+      eventfulVisitors: {
+        name: "活跃访客",
+        description: "至少产生两个自定义事件的访客。",
+      },
+      identifiedVisitors: {
+        name: "已识别访客",
+        description: "与已识别用户关联的访客。",
+      },
+      organicSearchVisitors: {
+        name: "自然搜索访客",
+        description: "拥有未标记搜索来源的访客。",
+      },
+      coreWebVitalsNeedsImprovement: {
+        name: "Core Web Vitals 需改进",
+        description: "超过 Core Web Vitals 阈值的访问。",
+      },
+      slowLcp: {
+        name: "LCP 较慢",
+        description: "LCP 超过 2.5 秒的访问。",
+      },
+      slowInp: {
+        name: "INP 较慢",
+        description: "INP 超过 200 毫秒的访问。",
+      },
+      highCls: {
+        name: "CLS 较高",
+        description: "CLS 超过 0.1 的访问。",
+      },
+      slowTtfb: {
+        name: "TTFB 较慢",
+        description: "TTFB 超过 800 毫秒的访问。",
+      },
+      slowFcp: {
+        name: "FCP 较慢",
+        description: "FCP 超过 1.8 秒的访问。",
+      },
     },
     savedFiltersPersonal: "个人筛选",
     savedFiltersTeam: "团队筛选",
@@ -5612,6 +6774,11 @@ const zhMessages = {
     manageSavedFilter: "管理筛选",
     savedFilterName: "名称",
     savedFilterDescription: "备注",
+    scopeLabel: "筛选范围",
+    scopeAuto: "根据当前页面自动选择",
+    scopeEvent: "筛选符合当前条件的事件",
+    scopeSession: "筛选满足这些条件的会话",
+    scopeVisitor: "筛选满足这些条件的访客",
     savedFilterVisibility: "可见性",
     savedFilterVisibilityPrivate: "仅自己可见",
     savedFilterVisibilityTeam: "与团队共享",
@@ -5653,7 +6820,6 @@ const zhMessages = {
     viewPage: "访问页面",
     customEvent: "自定义事件",
     detailsTitle: "事件详情",
-    detailsSection: "信息",
     browsingSection: "浏览",
     geographySection: "地理位置",
     sourceSection: "来源",
@@ -5675,23 +6841,17 @@ const zhMessages = {
     visitorHistorySubtitle: "查看该访客在当前实时窗口内的全部访问记录。",
     visitorHistoryRange: "浏览时间",
     visitorHistoryEmpty: "当前还没有更多该访客的访问记录。",
-    visitorMapSection: "访客位置",
-    visitorMapSubtitle: "根据当前事件里的经纬度展示该访客的大致位置。",
     visitorMapUnavailable: "当前事件没有可用的定位坐标。",
     visitorId: "访客 ID",
     sessionId: "会话 ID",
     visitId: "访问 ID",
-    eventType: "事件类型",
     eventTime: "事件时间",
     eventKind: "事件种类",
     eventName: "事件名称",
-    eventId: "事件 ID",
     siteId: "站点 ID",
     traceId: "追踪 ID",
-    sequence: "序号",
     receivedAt: "接收时间",
     startedAt: "开始时间",
-    previousVisitId: "上一次访问 ID",
     previousVisitStartedAt: "上一次访问开始时间",
     userId: "用户 ID",
     userName: "用户名",
@@ -5705,20 +6865,15 @@ const zhMessages = {
     browserVersion: "浏览器版本",
     osVersion: "操作系统版本",
     userAgent: "User-Agent",
-    screenWidth: "屏幕宽度",
-    screenHeight: "屏幕高度",
     postalCode: "邮政编码",
     metroCode: "都会区编码",
     status: "状态",
     visibilityState: "可见性状态",
-    hiddenAt: "隐藏时间",
     endedAt: "结束时间",
-    finalizedAt: "最终确定时间",
     duration: "持续时间",
     durationSource: "持续时间来源",
     exitReason: "退出原因",
     leaveAt: "离开时间",
-    performanceVisitId: "性能访问 ID",
   },
   overview: {
     title: "访问总览",
@@ -5750,6 +6905,9 @@ const zhMessages = {
     title: "页面分析",
     subtitle: "选定时间范围内访问最多的路径。",
     pagesPerSession: "每会话页面数",
+    changePercentColumnLabel: "{metric}变化（%）",
+    changePointsColumnLabel: "{metric}变化（百分点）",
+    percentagePointSuffix: "个百分点",
     untitled: "未命名页面",
     empty: "当前筛选条件下暂无页面数据。",
     loadError: "页面数据加载失败，请稍后重试。",
@@ -5829,6 +6987,8 @@ const zhMessages = {
   },
   sessionDetail: {
     anonymous: "匿名访客",
+    userId: "用户 ID",
+    userName: "用户名",
     back: "返回会话",
     missing: "缺少 sessionId。",
     notFound: "没有找到这个会话。",
@@ -5947,20 +7107,41 @@ const zhMessages = {
     subtitle: "衡量多步骤用户旅程的转化情况。",
     listTitle: "漏斗定义",
     listSubtitle: "构建可复用的步骤序列，并按当前看板时间窗查看转化。",
+    conversionRecords: "转化记录",
+    converted: "已转化",
+    dropped: "已流失",
+    open: "打开漏斗",
+    moreActions: "更多操作",
     create: "新建漏斗",
     createTitle: "创建漏斗",
-    createDescription: "至少定义两个有顺序的页面浏览或自定义事件步骤。",
+    createDescription: "至少定义两个有顺序的观察筛选步骤。",
     nameLabel: "名称",
     namePlaceholder: "注册激活",
     stepsLabel: "步骤",
     addStep: "添加步骤",
     removeStep: "移除步骤",
-    stepTypePageview: "页面浏览",
-    stepTypeEvent: "事件",
-    stepValueLabel: "值",
-    pageviewPlaceholder: "/pricing",
-    eventPlaceholder: "signup_started",
+    progression: "转化主体",
+    conversionWindow: "转化窗口",
+    custom: "自定义",
+    customWindowHours: "自定义窗口（小时）",
+    stepFilter: "步骤筛选",
+    filter: "筛选",
+    apply: "应用",
+    condition: "个条件",
+    conditions: "个条件",
+    expression: "筛选表达式",
+    filterPlaceholder: '例如 page.path eq "/pricing"',
+    invalidFilter: "筛选无效",
+    dragStep: "拖动步骤",
+    unnamed: "（未命名）",
+    oneHour: "1 小时",
+    oneDay: "24 小时",
+    sevenDays: "7 天",
+    thirtyDays: "30 天",
     save: "创建",
+    saveEdit: "保存修改",
+    edit: "编辑",
+    editTitle: "编辑漏斗",
     creating: "创建中...",
     cancel: "取消",
     delete: "删除",
@@ -5972,13 +7153,16 @@ const zhMessages = {
     emptyHint: "使用页面浏览和自定义事件创建漏斗来跟踪转化。",
     loadError: "无法加载漏斗。",
     detailLoadError: "无法加载漏斗分析。",
-    invalidFunnel: "请填写名称，并至少补全两个步骤。",
+    invalidFunnel: "请填写名称，并至少补全两个筛选步骤。",
     created: "漏斗已创建。",
     createFailed: "创建漏斗失败。",
+    updatedSuccess: "漏斗已更新。",
+    saveFailed: "保存漏斗失败。",
     deleted: "漏斗已删除。",
     deleteFailed: "删除漏斗失败。",
     overallConversion: "总转化率",
     startedSessions: "起始会话数",
+    startedVisitors: "起始访客数",
     convertedSessions: "转化会话数",
     convertedVisitors: "转化访客数",
     largestDropOff: "最大流失",
@@ -5991,12 +7175,52 @@ const zhMessages = {
     dropOff: "流失",
     updated: "更新于",
   },
+  goals: {
+    title: "目标分析",
+    subtitle: "使用一个可复用的事件或页面条件衡量转化。",
+    listSubtitle: "查看这段时间范围内的转化率变化情况",
+    conversionRecords: "转化记录",
+    open: "打开目标",
+    moreActions: "更多操作",
+    create: "新建目标",
+    createTitle: "创建目标",
+    nameLabel: "名称",
+    namePlaceholder: "完成购买",
+    filter: "转化条件",
+    apply: "应用",
+    cancel: "取消",
+    save: "创建",
+    saveEdit: "保存修改",
+    edit: "编辑",
+    editTitle: "编辑目标",
+    creating: "创建中...",
+    delete: "删除",
+    deleteTitle: "删除目标",
+    deleteDescription: "这会移除已保存的目标定义，不会删除历史分析数据。",
+    deleteConfirm: "删除目标",
+    empty: "暂无目标。",
+    emptyHint: "使用页面条件或自定义事件创建目标来跟踪转化。",
+    loadError: "无法加载目标。",
+    detailLoadError: "无法加载目标分析。",
+    invalidGoal: "请填写名称，并补全转化条件。",
+    created: "目标已创建。",
+    updatedSuccess: "目标已更新。",
+    saveFailed: "保存目标失败。",
+    deleted: "目标已删除。",
+    deleteFailed: "删除目标失败。",
+    sessions: "会话",
+    visitors: "访客",
+    total: "总数",
+    converted: "已转化",
+    conversion: "转化率",
+    timeseries: "转化率",
+    updated: "更新于",
+  },
   visitors: {
     title: "访客分析",
     subtitle: "访客级别明细与最近活跃情况。",
     search: "搜索访客...",
     visitor: "访客",
-    sessionId: "会话 ID",
     anonymous: "匿名访客",
     referrer: "来源",
     location: "地区",
@@ -6014,6 +7238,8 @@ const zhMessages = {
   },
   visitorDetail: {
     anonymous: "匿名访客",
+    userId: "用户 ID",
+    userName: "用户名",
     back: "返回访客",
     missing: "缺少 visitorId。",
     notFound: "没有找到这个访客。",
@@ -6274,6 +7500,11 @@ const zhMessages = {
         title: "屏蔽规则",
         description: "在事件写入存储前，按请求上下文过滤采集数据。",
       },
+      protection: {
+        title: "请求防护",
+        description:
+          "控制检测到的机器人以及托管或代理网络请求在进入分析数据前的处理方式。",
+      },
       danger: {
         title: "危险区域",
         description: "包含破坏性操作和需要谨慎处理的设置。",
@@ -6305,6 +7536,12 @@ const zhMessages = {
     trackingStrengthSmartDescription: "自动根据访客所处国家切换跟踪强度。",
     trackingStrengthWeakDescription:
       "始终降低对访客的跟踪精度。这可能导致同一访客在不同时间访问时被计数多次、且无法计算留存率。",
+    botProtectionEnabledLabel: "机器人拦截",
+    botProtectionEnabledHint:
+      "开启后拦截高置信度机器人请求；关闭后这类请求仍会计入统计。",
+    hostingProxyBlockingEnabledLabel: "拦截托管/代理网络请求",
+    hostingProxyBlockingEnabledHint:
+      "开启后拦截来自托管或代理网络的疑似机器人请求，默认关闭。",
     queryHashGroupTitle: "查询参数与 Hash 跟踪",
     queryHashGroupDescription:
       "控制 URL 查询参数、Hash 与 Do Not Track 的处理方式。",
@@ -6315,6 +7552,18 @@ const zhMessages = {
     blockingRulesDialogs: {
       testButton: "测试",
       helpButton: "帮助",
+      searchButton: "搜索",
+      searchTitle: "搜索地区",
+      searchDescription: "按名称或代码搜索，选择结果后将其添加到此卡片。",
+      searchInputLabel: "搜索",
+      searchInputPlaceholder: "按名称或代码搜索",
+      searchCountryLabel: "国家 / 地区",
+      searchRegionLabel: "州 / 省",
+      searchBack: "更换国家 / 地区",
+      searchLoading: "正在加载地区...",
+      searchNoResults: "没有匹配的地区。",
+      searchLoadError: "无法加载地区，请稍后重试。",
+      searchClose: "关闭",
       helpTitle: "规则语法",
       helpDescription: "查看此字段的语法、示例和优先级规则。",
       syntaxTitle: "语法",
@@ -6335,7 +7584,7 @@ const zhMessages = {
       errorInvalidPattern: "第 {line} 行的规则格式无效。",
       testTitle: "测试规则",
       testDescription:
-        "输入请求值以测试当前 Card 中的规则，未保存的编辑内容也会参与测试。",
+        "输入请求值以测试当前卡片中的规则，未保存的编辑内容也会参与测试。",
       testRun: "执行测试",
       testClose: "关闭",
       testInvalidRules: "请先修复无效规则，然后再进行测试。",
@@ -6359,7 +7608,7 @@ const zhMessages = {
         examples: ["*", "-example.com", "-*.example.com", "admin.example.com"],
         exampleDescription:
           "这段配置先屏蔽所有域名，再允许 example.com 及其子域名，最后重新屏蔽精确匹配的 admin.example.com。",
-        testLabel: "Hostname",
+        testLabel: "主机名",
         testPlaceholder: "www.example.com",
         testHint: "输入页面 hostname，不要包含协议或路径。",
       },
@@ -6570,9 +7819,10 @@ const zhMessages = {
     preferredLanguageDescription: "选择定时通知邮件使用的语言。",
     preferredLanguageLabel: "邮件语言",
     preferredLanguageDefault: "默认",
-    preferredLanguageEnglish: "English",
-    preferredLanguageChinese: "中文",
-    preferredLanguageJapanese: "日本語",
+    preferredLanguageEnglish: "英语",
+    preferredLanguageChinese: "简体中文",
+    preferredLanguageTraditionalChinese: "繁体中文",
+    preferredLanguageJapanese: "日语",
     preferredLanguageSaved: "通知语言已保存。",
     preferredLanguageSaveFailed: "保存通知语言失败。",
     timeZoneTitle: "报表时区",
@@ -6851,8 +8101,6 @@ const zhMessages = {
   },
   empty: {
     noTeams: "当前账号还没有可访问的团队。",
-    noSites: "该团队下暂无可访问站点。",
-    siteNotFound: "未找到对应团队或站点。",
   },
   errorPage: {
     notFoundEyebrow: "页面未找到",
@@ -6878,7 +8126,8 @@ const zhMessages = {
   actions: {
     logout: "退出登录",
     switchToEnglish: "English",
-    switchToChinese: "中文",
+    switchToChinese: "简体中文",
+    switchToTraditionalChinese: "繁體中文",
     switchToJapanese: "日本語",
     switchToLight: "浅色",
     switchToDark: "深色",
@@ -6935,7 +8184,7 @@ const zhMessages = {
       invalidTransferTarget: "请选择新的所有者。",
     },
     sites: {
-      title: "仪表盘",
+      title: "站点仪表盘",
       subtitle: "聚合查看该团队下所有站点的访问表现。",
       aggregateTitle: "总访问量",
       pagesPerSession: "每会话页面数",
@@ -7046,10 +8295,6 @@ const zhMessages = {
       scheduleInterval: "每 {minutes} 分钟",
       scheduleCustom: "自定义",
       conditionReport: "{period}报告",
-      conditionMilestone: "{metric} 每 {step} 触发",
-      conditionThreshold: "{window} {metric} {operator} {value}",
-      conditionChange: "{window} {metric} 变化 {operator} {value}",
-      conditionHealth: "{hours} 小时无数据",
       summaryWhenConditions: "当满足下列{combinator}条件时，发送{type}通知：",
       summaryWhenSingleCondition: "当满足此条件时，发送{type}通知：",
       summaryConditionThreshold: "{window}{metric}{operator}{value}",
@@ -7297,7 +8542,10 @@ const zhMessages = {
     members: {
       title: "成员管理",
       subtitle: "创建邀请链接或移除现有成员。",
-      remove: "移除",
+      remove: "移除成员",
+      removeMemberAction: "移除成员「{target}」",
+      removeMemberConfirm:
+        "确认将「{target}」从该团队移除吗？移除后将立即失去访问权限。",
       noMembers: "当前团队暂无成员。",
       invitesTitle: "创建邀请链接",
       invitesSubtitle: "用户接受邀请后才会加入此团队。",
@@ -7306,12 +8554,15 @@ const zhMessages = {
       inviteExpiresLabel: "有效期（小时）",
       createInvite: "创建邀请链接",
       creatingInvite: "创建中...",
-      copyInvite: "复制链接",
+      copyInvite: "复制邀请链接",
       inviteLinksTitle: "邀请链接",
       inviteLinksSubtitle: "查看邀请状态并撤销有效链接。",
       noInvites: "当前团队暂无邀请链接。",
       anyEmail: "任意邮箱",
       revokeInvite: "撤销邀请",
+      revokeInviteAction: "撤销「{target}」的邀请",
+      revokeInviteConfirm:
+        "确认撤销「{target}」的邀请吗？该邀请链接将立即失效。",
       siteAccessLabel: "站点权限",
       siteAccessAll: "全部站点",
       siteAccessRestricted: "限定站点",
@@ -7387,7 +8638,7 @@ const zhMessages = {
       openCommit: "打开提交",
       commitCount: "提交数",
       source: "数据来源",
-      loadFailed: "加载 GitHub Releases 失败。",
+      loadFailed: "加载版本索引失败。",
       unknown: "未知",
     },
     scheduledTasks: {
@@ -7395,6 +8646,7 @@ const zhMessages = {
       empty: "暂无定时任务。",
       refresh: "刷新",
       loadFailed: "加载定时任务失败。",
+      loadMore: "加载更多",
       allStatuses: "全部状态",
       runs24h: "24 小时内运行次数",
       successRate24h: "24 小时成功率",
@@ -7414,11 +8666,14 @@ const zhMessages = {
       enabled: "状态",
       enabledYes: "已启用",
       enabledNo: "未启用",
+      taskStateSaved: "任务状态已更新。",
+      taskStateSaveFailed: "更新任务状态失败。",
       lastStatus: "最近状态",
       runs30d: "30 天运行",
       successRate30d: "30 天成功率",
       avgDuration: "平均耗时",
       runHistoryTitle: "运行历史",
+      nextRun: "下次运行",
       runHistoryDescription: "最近 30 天内的任务运行记录。",
       noRuns: "暂无运行记录。",
       scheduledAt: "计划时间",
@@ -7460,7 +8715,12 @@ const zhMessages = {
         notification_tick: {
           name: "通知分发",
           description: "检查通知规则并分发消息。",
-          schedule: "每小时",
+          schedule: "每 30 分钟",
+        },
+        database_maintenance: {
+          name: "数据库优化",
+          description: "分批清理过期运行数据和通知，并优化 D1 查询统计信息。",
+          schedule: "每天",
         },
       },
     },
@@ -7565,12 +8825,45 @@ const zhMessages = {
     },
   },
   requestObservation: {
+    uiLabels: {
+      pageSubtitle: "基于 Analytics Engine 观察请求分类、实际处置与统计链路。",
+      blocked: "拦截请求",
+      included: "统计请求",
+      disposition: "处置",
+      normalRequests: "正常请求",
+      suspectedBotRequests: "疑似机器人",
+      botRequests: "机器人请求",
+      customBlockedRequests: "自定义拦截",
+      includedRequests: "统计请求数",
+      blockedRequests: "拦截请求数",
+      totalRequests: "总请求数",
+      botRequestRatio: "机器人请求比例",
+      blockedRequestRatio: "拦截请求比例",
+      normalRequestRatio: "正常请求比例",
+      normalTrafficShare: "正常请求",
+      suspectedBotTraffic: "疑似机器人",
+      botTraffic: "机器人请求",
+      customBlockedTraffic: "自定义拦截",
+      requests: "请求数",
+      blockedSubtitle: "聚焦实际被拦截的请求；分类仍表示请求的检测结果。",
+      includedSubtitle:
+        "聚焦进入统计链路的请求，包括正常请求和未被拦截的机器人信号。",
+      blockedTrendDescription: "按时间显示实际拦截请求数与拦截比例。",
+      includedTrendDescription: "按时间显示进入统计链路的请求数。",
+      recentBlockedTitle: "最近拦截请求",
+      recentBlockedDescription:
+        "这些记录来自统一的 Request Analytics Engine 数据集。",
+      recentIncludedTitle: "最近统计请求",
+      recentIncludedDescription:
+        "这些记录来自统一的 Request Analytics Engine 数据集。",
+      detailTitle: "请求详情",
+      detailSubtitle: "查看请求的分类、处置结果、网络和客户端上下文。",
+    },
     title: "请求观测",
-    subtitle: "基于 Analytics Engine 观察整体请求、异常分流与正常采集链路。",
     tabs: {
       overview: "总览",
-      abnormal: "异常请求",
-      normal: "正常请求",
+      blocked: "拦截请求",
+      included: "统计请求",
     },
     refresh: "刷新",
     loadFailed: "加载请求观测数据失败。",
@@ -7582,17 +8875,10 @@ const zhMessages = {
       "当前部署未绑定 Analytics Engine，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用，然后重新部署以采集请求观测数据。",
     openAnalyticsEngine: "打开 Analytics Engine",
     openSettings: "打开设置",
-    highConfidenceBots: "高置信机器人",
     affectedSites: "受影响站点",
     uniqueCountries: "国家/地区",
     noData: "当前时间窗口内没有请求数据。",
     trendTitle: "分流趋势",
-    trendDescription: "按时间间隔显示正常请求、异常请求与分流比例。",
-    recentTitle: "最近机器人请求",
-    recentDescription: "这些详细记录只写入机器人 Analytics Engine 数据集。",
-    recentLoadedAll: "已加载全部记录",
-    detailTitle: "机器人请求详情",
-    detailSubtitle: "查看这次分流请求的检测信号、网络和客户端上下文。",
     client: "客户端",
     edge: "边缘",
     identifiers: "标识符",
@@ -7607,9 +8893,7 @@ const zhMessages = {
     request: "请求",
     ip: "IP",
     userAgent: "User-Agent",
-    confidence: "置信度",
-    blocked: "拦截",
-    highConfidenceRequests: "高置信请求",
+    category: "分类",
     emptyValue: "未知",
     kind: "类型",
     botScore: "Bot 分数",
@@ -7640,7 +8924,16 @@ const zhMessages = {
       access_asn: "接入网络 ASN",
       missing_browser_provenance: "缺少浏览器来源信号",
       origin_hostname_mismatch: "Origin 与主机名不匹配",
-      blocked_pathname: "命中路径黑名单",
+      custom_block: "命中自定义屏蔽规则",
+      blocked_domains: "命中域名屏蔽规则",
+      blocked_paths: "命中路径屏蔽规则",
+      blocked_query_parameters: "命中查询参数屏蔽规则",
+      blocked_referrers: "命中引荐来源屏蔽规则",
+      blocked_user_agents: "命中 User-Agent 屏蔽规则",
+      blocked_ips: "命中 IP 屏蔽规则",
+      blocked_asns: "命中 ASN 屏蔽规则",
+      blocked_countries: "命中国家/地区屏蔽规则",
+      blocked_regions: "命中区域屏蔽规则",
     },
     requestKindLabels: {
       pageview: "页面浏览",
@@ -7648,84 +8941,64 @@ const zhMessages = {
       request: "请求",
       visibility: "可见性",
       leave: "离开",
+      identify: "用户识别",
     },
     overviewLabels: {
-      totalRequests: "总请求数",
-      normalRequests: "正常请求",
-      abnormalRequests: "异常请求",
-      abnormalRatio: "异常请求比例",
-      p50Latency: "P50 边缘耗时",
-      p75Latency: "P75 边缘耗时",
-      p95Latency: "P95 边缘耗时",
-      p99Latency: "P99 边缘耗时",
-      avgLatency: "平均边缘耗时",
+      p50Latency: "P50 Worker 处理耗时",
+      p75Latency: "P75 Worker 处理耗时",
+      p99Latency: "P99 Worker 处理耗时",
+      p95Latency: "P95 Worker 处理耗时",
+      avgLatency: "平均 Worker 处理耗时",
       pageviews: "页面浏览",
       customEvents: "自定义事件",
       overviewTrendTitle: "请求分流趋势",
-      overviewTrendDescription:
-        "按顶栏时间间隔分桶显示正常与异常请求，以及异常请求比例。",
-      trafficCompositionTitle: "请求构成",
+      trafficCompositionTitle: "业务请求构成",
       trafficCompositionDescription:
-        "正常请求、异常请求和页面事件在同一时间轴上的变化。",
-      confidenceShareTitle: "请求置信度占比",
-      normalTrafficShare: "正常流量",
-      lowConfidenceTraffic: "低置信度流量",
-      mediumConfidenceTraffic: "中置信度流量",
-      highConfidenceTraffic: "高置信度流量",
-      latencyTitle: "边缘耗时趋势",
+        "按时间显示正常采集链路中页面浏览、离开、可见性、自定义事件和用户识别的数量。",
+      categoryShareTitle: "请求分类占比",
+      latencyTitle: "Worker 处理耗时趋势",
       latencyDescription:
-        "正常请求写入 AE 时记录的 P50 / P75 / P95 / P99 边缘耗时。",
-      abnormalSubtitle:
-        "聚焦已分流的异常请求，地图和统计表只显示红色异常流量。",
-      normalSubtitle:
-        "聚焦进入正常采集链路的请求，地图和统计表只显示绿色正常流量。",
+        "正常请求写入 AE 时记录的 P50 / P75 / P95 / P99 Worker 处理耗时。",
       requests: "请求数",
       windowDays: "最近 {days} 天",
       latencyMilliseconds: "{value} 毫秒",
     },
     normalDetail: {
-      title: "正常请求详情",
-      subtitle: "查看正常请求 AE 记录的链路、位置和耗时字段。",
       requestMethod: "请求方法",
-      edgeLatency: "边缘耗时",
+      edgeLatency: "Worker 处理耗时",
       eventAt: "事件时间",
       receivedAt: "接收时间",
-      coordinates: "坐标",
       continent: "大洲",
-    },
-    recentNormal: {
-      title: "最近正常请求",
-      description: "这些详细记录只写入正常请求 Analytics Engine 数据集。",
     },
   },
   systemSettings: {
     title: "系统设置",
     subtitle: "管理当前 InsightFlare 实例的全站配置。",
     guide: "教程",
-    botAnalyticsTitle: "分析引擎",
-    botAnalyticsDescription:
-      "配置用于读取 Analytics Engine 数据的 Cloudflare 凭据，供机器人防护等分析功能使用。",
-    botAnalyticsAccountIdLabel: "Cloudflare Account ID",
-    botAnalyticsApiTokenLabel: "Cloudflare API Token",
-    botAnalyticsApiTokenPlaceholder: "查看教程以获取 Cloudflare API Token",
-    botAnalyticsSaved: "分析引擎配置已保存。",
-    botAnalyticsSaveFailed: "保存分析引擎配置失败。",
-    botAnalyticsDeleted: "分析引擎配置已删除。",
-    botAnalyticsDeleteFailed: "删除分析引擎配置失败。",
-    botAnalyticsDeleteConfirm:
+    analyticsEngineTitle: "分析引擎",
+    analyticsEngineDescription:
+      "配置用于读取请求观测以及未来流量和事件分析数据的 Cloudflare 凭据。",
+    analyticsEngineAccountIdLabel: "Cloudflare Account ID",
+    analyticsEngineApiTokenLabel: "Cloudflare API Token",
+    analyticsEngineApiTokenPlaceholder: "查看教程以获取 Cloudflare API Token",
+    analyticsEngineSaved: "分析引擎配置已保存。",
+    analyticsEngineSaveFailed: "保存分析引擎配置失败。",
+    analyticsEngineDeleted: "分析引擎配置已删除。",
+    analyticsEngineDeleteFailed: "删除分析引擎配置失败。",
+    analyticsEngineDeleteConfirm:
       "确认删除分析引擎读取凭据吗？删除后，依赖 Analytics Engine 的功能将显示为未配置。",
-    botAnalyticsEngineDisabledTitle: "Analytics Engine 尚未启用",
-    botAnalyticsEngineDisabledDescription:
+    analyticsEngineDisabledTitle: "Analytics Engine 尚未启用",
+    analyticsEngineDisabledDescription:
       "当前部署已自动禁用 Analytics Engine 绑定，因为 Cloudflare 账户尚未启用 Analytics Engine。请先在 Cloudflare 中启用 Analytics Engine，然后重新部署 InsightFlare 以激活相关分析功能。",
-    botAnalyticsEngineDisabledHint:
+    analyticsEngineDisabledHint:
       "在启用 Analytics Engine 并重新部署 Worker 前，分析引擎设置不可修改。",
-    botAnalyticsOpenCloudflare: "打开 Cloudflare Analytics Engine",
-    botAnalyticsGuideTitle: "获取分析引擎配置",
-    botAnalyticsGuideDescription:
+    analyticsEngineOpenCloudflare: "打开 Cloudflare Analytics Engine",
+    analyticsEngineGuideTitle: "获取分析引擎配置",
+    analyticsEngineGuideDescription:
       "分析引擎需要 Cloudflare 账号信息和一个可读取 Analytics Engine 的 API Token。",
-    botAnalyticsGuideSteps: [
+    analyticsEngineGuideSteps: [
       "打开 Cloudflare Dashboard，进入目标账号并复制 Account ID。",
-      "在 Workers & Pages 中启用 Analytics Engine；机器人和普通请求数据集会随部署自动创建并绑定。",
+      "在 Workers & Pages 中启用 Analytics Engine；Request、Traffic 和 Event 三个数据集会随部署自动创建并绑定。",
       "前往 My Profile → API Tokens，创建 Custom token。",
       "为 Token 添加 Account Analytics 读取权限，并限制到当前账号。",
       "保存后复制 Token，回到这里填写 Account ID 和 API Token。",
@@ -7743,6 +9016,18 @@ const zhMessages = {
       "回到这里填写发件人名称、发件邮箱、Reply-To 和 Resend API Key。",
       "保存后使用测试收件人发送一封测试邮件，确认投递链路正常。",
     ],
+    retentionTitle: "运行数据保留期",
+    retentionDescription:
+      "配置任务运行记录、任务日志和通知消息的保留时间。修改只影响新建记录。",
+    scheduledTaskLogsDaysLabel: "计划任务运行记录和日志（天）",
+    notificationTestDaysLabel: "测试通知（天）",
+    notificationAttentionDaysLabel: "警告和严重通知（天）",
+    notificationDefaultDaysLabel: "其他通知（天）",
+    retentionRangeHint: "请输入 1 到 3650 之间的整数天数。",
+    retentionSave: "保存保留期配置",
+    retentionSaving: "保存中...",
+    retentionSaved: "保留期配置已保存。",
+    retentionSaveFailed: "保存保留期配置失败。",
     loginTurnstileTitle: "登录 Turnstile 防护",
     loginTurnstileDescription:
       "启用后，登录页会在后台执行 Cloudflare Turnstile Invisible 验证，并在服务端登录流程中强制校验。",
@@ -7890,6 +9175,10 @@ const zhMessages = {
     doDiagnosticSiteAlarm: "Alarm 状态",
     doDiagnosticSiteAlarmNone: "无",
     doDiagnosticSiteAlarmDue: "到期",
+    doDiagnosticSiteNextDue: "下一次到期",
+    doDiagnosticSiteNextDueFlush: "Flush",
+    doDiagnosticSiteNextDueHidden: "隐藏回退",
+    doDiagnosticSiteNextDueTimeout: "访问超时",
     doDiagnosticSiteResponseMs: "响应耗时",
     doDiagnosticThresholdsHint:
       "阈值：stale {stale}，timeout {timeout}，hardAged {hardAged}，stuck flush_attempts ≥ {stuck}",
@@ -7920,8 +9209,3162 @@ const zhMessages = {
   },
 } as AppMessages;
 
+const zhTwMessages = {
+  appName: "InsightFlare",
+  uiGallery: {
+    searchLabel: "搜尋 UI 元件",
+    searchPlaceholder: "搜尋元件",
+    backToApp: "返回 InsightFlare",
+    noSearchResults: "沒有符合搜尋條件的元件。",
+    toggleNavigation: "切換元件庫導航",
+    library: "UI 元件庫",
+    componentsCount: "{count} 個元件",
+    statesCount: "{count} 個狀態",
+    designSystem: "InsightFlare 設計系統",
+    pageTitle: "UI 元件",
+    catalogSummary: "{components} 個元件 · {states} 個屬性取值",
+    categories: {
+      inputs: "輸入控制元件",
+      feedback: "反饋",
+      foundations: "基礎",
+      navigation: "導航",
+      "data-display": "資料展示",
+      overlays: "浮層",
+      "product-analytics": "產品 UI / 分析",
+      "product-management": "產品 UI / 管理",
+      "product-realtime": "產品 UI / 即時",
+    },
+    browseCategories: "按分類瀏覽",
+    featuredComponents: "精選元件",
+    backToCatalog: "UI 元件",
+    canonicalStates: "Props 與取值",
+    browseAllComponents: "瀏覽全部元件",
+    previewState: "開啟預覽",
+    resetPreview: "重設預覽",
+    expandCode: "展開程式碼",
+    collapseCode: "收起程式碼",
+  },
+  navigation: {
+    overview: "總覽",
+    realtime: "即時",
+    pages: "頁面",
+    referrers: "來源",
+    sessions: "工作階段",
+    events: "事件",
+    funnels: "漏斗",
+    goals: "目標",
+    campaigns: "推廣",
+    visitors: "訪客",
+    retention: "留存",
+    geo: "位置",
+    devices: "裝置",
+    browsers: "瀏覽器",
+    performance: "效能",
+    settings: "設定",
+  },
+  common: {
+    deviceLabels: {
+      desktop: "電腦端",
+      mobile: "行動裝置",
+      tablet: "平板電腦",
+    },
+    timeRelativePair: "{absolute}（{relative}）",
+    id: "ID",
+    views: "瀏覽量",
+    sessions: "工作階段數",
+    visitors: "訪客數",
+    bounceRate: "跳出率",
+    avgDuration: "平均停留時長",
+    path: "路徑",
+    title: "標題",
+    hostname: "主機名稱",
+    referrerHost: "來源主機",
+    entryPage: "入口頁面",
+    exitPage: "出口頁面",
+    referrer: "來源",
+    event: "事件",
+    location: "地區",
+    browser: "瀏覽器",
+    operatingSystem: "作業系統",
+    deviceType: "裝置型別",
+    country: "國家",
+    region: "地區",
+    regionCode: "地區程式碼",
+    city: "城市",
+    continent: "大洲",
+    latitude: "緯度",
+    longitude: "經度",
+    continentLabels: {
+      AF: "非洲",
+      AN: "南極洲",
+      AS: "亞洲",
+      EU: "歐洲",
+      NA: "北美洲",
+      OC: "大洋洲",
+      SA: "南美洲",
+      AFRICA: "非洲",
+      ANTARCTICA: "南極洲",
+      ASIA: "亞洲",
+      EUROPE: "歐洲",
+      "NORTH AMERICA": "北美洲",
+      OCEANIA: "大洋洲",
+      "SOUTH AMERICA": "南美洲",
+    },
+    timezone: "時區",
+    organization: "運營商組織",
+    screenSize: "螢幕大小",
+    loading: "載入中",
+    noData: "暫無資料",
+    unknown: "未知",
+    lastUpdated: "更新時間",
+    site: "站點",
+    team: "團隊",
+    management: "管理",
+    backToTeam: "返回團隊",
+    system: "系統",
+    account: "帳戶",
+    theme: "主題",
+    language: "語言",
+    role: "角色",
+    admin: "管理員",
+    user: "普通使用者",
+    search: "搜尋",
+    open: "開啟",
+    sortBy: "按 {label} 排序",
+    change: "變化",
+    new: "新增",
+    tableExport: {
+      action: "匯出",
+      title: "匯出 CSV",
+      description: "將表格資料下載為 CSV 檔案。",
+      scopeLabel: "匯出範圍",
+      currentTab: "目前標籤頁",
+      allTabs: "全部標籤頁",
+      rowsLabel: "資料",
+      currentView: "目前顯示資料",
+      rawRows: "原始資料",
+      fileNameLabel: "檔名",
+      download: "匯出 CSV",
+      empty: "目前沒有可匯出的行。",
+    },
+    tableColumns: {
+      action: "列設定",
+      title: "設定表格列",
+      description: "選擇要顯示的列，並拖動調整順序。",
+      visible: "顯示的列",
+      required: "必需",
+      reset: "恢復預設",
+      dragHint: "拖動調整順序",
+      close: "關閉",
+    },
+    time: "時間",
+    cycle: "週期",
+    close: "關閉",
+    sitesFiltered: "已篩選 {active} / {total} 個站點",
+    cumulativeTraffic: "全部週期累計流量",
+    cumulativeEvents: "全部週期累計事件",
+  },
+  ranges: {
+    last30m: "30分鐘",
+    last1h: "1小時",
+    today: "今天",
+    yesterday: "昨天",
+    thisWeek: "本週",
+    thisMonth: "本月",
+    thisYear: "今年",
+    last24h: "最近 24 小時",
+    last7d: "最近 7 天",
+    last30d: "最近 30 天",
+    last90d: "最近 90 天",
+    last6m: "最近 6 個月",
+    last12m: "最近 12 個月",
+    custom: "自訂時間段",
+  },
+  intervals: {
+    minute: "分鐘",
+    hour: "小時",
+    day: "日",
+    week: "周",
+    month: "月",
+  },
+  dashboardHeader: {
+    range: "時間範圍",
+    interval: "時間間隔",
+    compareButton: "對比",
+    compareTitle: "對比設定",
+    compareSubtitle: "選擇對比周期和篩選條件。",
+    compareTimeLabel: "對比時間",
+    compareCurrentPeriod: "目前週期",
+    compareCurrentPeriodDescription: "使用目前選定的時間範圍。",
+    comparePreviousPeriod: "上一週期",
+    comparePreviousPeriodDescription: "使用目前週期之前的同等長度時間範圍。",
+    compareFilterLabel: "對比篩選",
+    compareFollowCurrentFilter: "跟隨目前篩選",
+    compareFollowCurrentFilterDescription: "使用目前頁面的篩選條件。",
+    compareCustomFilter: "自訂篩選",
+    compareCustomFilterDescription: "為對比單獨設定篩選條件。",
+    compareApply: "應用對比",
+    compareCancel: "取消",
+    compareDisabled: "目前頁面中對比不可用。",
+    filterButton: "篩選",
+    filterButtonEvent: "篩選 (事件)",
+    filterButtonSession: "篩選 (工作階段)",
+    filterButtonVisitor: "篩選 (訪客)",
+    customRange: "選擇自訂區間",
+    customHint: "請選擇開始和結束日期。",
+    customPendingEnd: "已選擇開始日期，請繼續選擇結束日期。",
+    customApply: "應用日期範圍",
+    rangeGroupQuick: "快速範圍",
+    rangeGroupCalendar: "自然週期",
+    rangeGroupRolling: "滾動視窗",
+    rangeGroupAdvanced: "高階",
+    intervalDisabledMinute: "僅在 1 小時內可選分鐘間隔。",
+    intervalDisabledHour: "僅在 7 天內可選小時間隔。",
+    intervalDisabledDay: "僅在最近 90 天內可選日間隔。",
+    intervalDisabledWeek: "僅在最近 12 個月內可選周間隔。",
+    filterTitle: "篩選條件",
+    filterSubtitle: "新建、儲存篩選條件，或者使用個人/團隊儲存的篩選條件。",
+    filterDisabledRealtime: "即時頁面中篩選不可用。",
+    previousPeriod: "上個週期",
+    nextPeriod: "下個週期",
+    customSelectionSummary: "目前選擇：{from} 至 {to}（共 {days} 天）",
+  },
+  filters: {
+    clear: "清除",
+  },
+  conditionDescription: {
+    and: "且",
+    or: "或",
+    not: "不滿足（{description}）",
+    emptyConditions: "尚未設定條件",
+    emptyFilter: "尚未設定篩選條件",
+    filterEquals: "{field} 為 {value}",
+    filterNotEquals: "{field} 不為 {value}",
+    filterAnyOf: "{field} 是以下任一值：{values}",
+    filterNoneOf: "{field} 不屬於以下任一值：{values}",
+    filterBetween: "{field} 介於 {from} 與 {to} 之間",
+    filterContains: "{field} 包含 {value}",
+    filterStartsWith: "{field} 以 {value} 開頭",
+    filterEndsWith: "{field} 以 {value} 結尾",
+    filterGreaterThan: "{field} 大於 {value}",
+    filterGreaterThanOrEqual: "{field} 大於或等於 {value}",
+    filterLessThan: "{field} 小於 {value}",
+    filterLessThanOrEqual: "{field} 小於或等於 {value}",
+    filterExists: "{field} 存在",
+    filterNotExists: "{field} 不存在",
+    filterIsNull: "{field} 為 NULL",
+    filterNotNull: "{field} 不為 NULL",
+    filterIsEmpty: "{field} 為空",
+    filterNotEmpty: "{field} 不為空",
+  },
+  filterBuilder: {
+    fieldGroups: {
+      advanced: "高階",
+      page: "頁面",
+      session: "工作階段",
+      visitor: "訪客",
+      referrer: "來源與管道",
+      campaign: "行銷活動",
+      client: "客戶端",
+      geography: "地理位置",
+      event: "事件",
+      acquisition: "獲客",
+      device: "裝置",
+      geo: "地理",
+      performance: "效能",
+      user: "使用者",
+      time: "時間",
+      aggregation: "聚合",
+      calculation: "計算",
+      relation: "行為關係",
+    },
+    fieldLabels: {
+      "page.path": "頁面路徑",
+      "page.title": "頁面標題",
+      "page.collection": "頁面集合",
+      "page.hostname": "頁面網域",
+      "page.query": "查詢參數",
+      "page.hash": "URL Hash",
+      "session.entryPath": "入口頁面",
+      "session.exitPath": "出口頁面",
+      "referrer.domain": "來源網域",
+      "referrer.url": "來源 URL",
+      "traffic.channel": "流量管道",
+      "utm.source": "UTM 來源",
+      "utm.medium": "UTM 媒介",
+      "utm.campaign": "UTM 活動",
+      "utm.term": "UTM 關鍵詞",
+      "utm.content": "UTM 內容",
+      "client.browser": "瀏覽器",
+      "client.browserVersion": "瀏覽器版本",
+      "client.browserEngine": "瀏覽器引擎",
+      "client.os": "作業系統",
+      "client.osVersion": "作業系統版本",
+      "client.deviceType": "裝置型別",
+      "client.language": "語言",
+      "client.screenSize": "螢幕尺寸",
+      "geo.country": "國家 / 地區",
+      "geo.region": "省 / 州 / 地區",
+      "geo.city": "城市",
+      "geo.continent": "大洲",
+      "geo.timeZone": "時區",
+      "geo.organization": "網路組織",
+      "event.collection": "事件集合",
+      "event.name": "事件名稱",
+      "event.payload": "事件屬性",
+      "page.durationMs": "頁面停留時長",
+      "session.collection": "工作階段集合",
+      "session.durationMs": "工作階段時長",
+      "session.views": "頁面瀏覽數",
+      "session.events": "事件數",
+      "session.bounce": "是否跳出",
+      "visitor.collection": "訪客集合",
+      "visitor.sessions": "工作階段數",
+      "visitor.views": "頁面瀏覽數",
+      "visitor.events": "事件數",
+      "performance.ttfbMs": "TTFB",
+      "performance.fcpMs": "FCP",
+      "performance.lcpMs": "LCP",
+      "performance.cls": "CLS",
+      "performance.inpMs": "INP",
+      "user.id": "使用者 ID",
+      "user.name": "使用者名稱",
+      "client.screenWidth": "螢幕寬度",
+      "client.screenHeight": "螢幕高度",
+      "geo.isEU": "是否歐盟地區",
+      time: "時間",
+      "time(...)": "活動時間",
+      $items: "週期中的專案",
+      $span: "序列跨度",
+      "$gap(...)": "步驟間隔",
+      "$same(...)": "步驟共有值",
+      "bucket(...)": "時間分桶",
+      "window(...)": "相對時間視窗",
+      "periods(...)": "週期分組",
+      "count(...)": "計數",
+      "first(...)": "第一個",
+      "last(...)": "最後一個",
+      "nth(...)": "第 N 個",
+      "countDistinct(...)": "去重計數",
+      "sum(...)": "求和",
+      "avg(...)": "平均值",
+      "min(...)": "最小值",
+      "max(...)": "最大值",
+      "add(...)": "相加",
+      "sub(...)": "相減",
+      "mul(...)": "相乘",
+      "div(...)": "相除",
+      "sequence(...)": "行為序列",
+      "adjacent(...)": "連續序列",
+      "without(...)": "排除中間行為",
+    },
+    operatorLabels: {
+      eq: "等於",
+      neq: "不等於",
+      in: "屬於任一值",
+      notIn: "不屬於任一值",
+      contains: "包含",
+      startsWith: "以此開頭",
+      endsWith: "以此結尾",
+      gt: "大於",
+      gte: "大於或等於",
+      lt: "小於",
+      lte: "小於或等於",
+      between: "介於兩者之間",
+      exists: "存在",
+      notExists: "不存在",
+      isNull: "為 NULL",
+      notNull: "不為 NULL",
+      isEmpty: "為空字串",
+      notEmpty: "不為空字串",
+    },
+    valueType: "值型別",
+    valueKinds: {
+      string: "文字",
+      enum: "列舉",
+      number: "數字",
+      boolean: "布林值",
+      date: "日期",
+      datetime: "日期和時間",
+      "json-scalar": "JSON 標量",
+    },
+    booleanTrue: "是",
+    booleanFalse: "否",
+    valueUnset: "(未設定)",
+    valueLoading: "正在載入值",
+    valueSearchPlaceholder: "搜尋或輸入值",
+    valueListPlaceholder: "搜尋或輸入值後按 Enter 新增",
+    removeValue: "移除篩選值「{value}」",
+    rangeStartPlaceholder: "下限",
+    rangeEndPlaceholder: "上限",
+    unitAriaLabel: "顯示單位",
+    durationUnit: "時間單位",
+    units: {
+      hours: "小時",
+      minutes: "分鐘",
+      seconds: "秒",
+      milliseconds: "毫秒",
+      percent: "%",
+      perMille: "‰",
+      pixels: "畫素",
+    },
+    jsonPointer: "JSON 指標",
+    jsonPointerPlaceholder: "搜尋或輸入 JSON 指標",
+    match: "比對方式",
+    expression: "篩選表示式",
+    expressionPlaceholder: "篩選表示式...",
+    naturalLanguageDescription: "自然語言描述",
+    expressionInvalid: "表示式無效，點選檢視語法幫助",
+    expressionHelpTitle: "篩選表示式語法",
+    expressionHelpDescription: "可用欄位和運算子由目前篩選契約動態產生。",
+    expressionHelpSyntax: "語法",
+    expressionHelpLogicDescription:
+      "AND 的優先順序高於 OR。使用括號表達巢狀；AND(...) 和 OR(...) 可保留明確的單條件分組。",
+    expressionHelpValues: "值",
+    expressionHelpValuesDescription:
+      "字串使用 JSON 雙引號；數字和布林值不加引號。集合使用 [值, 值]，between 必須使用兩個有序的值。",
+    expressionHelpOperators: "可用運算子",
+    expressionHelpUnaryOperators: "無需值的運算子",
+    expressionHelpFields: "可用欄位",
+    expressionHelpFieldType: "型別",
+    expressionHelpFieldOperators: "運算子",
+    expressionHelpOtherFields: "其他",
+    expressionHelpContextTitle: "活動時間與上下文內建值",
+    expressionHelpContextDescription:
+      "小寫點分名稱表示已註冊欄位；大寫 PAGE、EVENT、SESSION 和 VISITOR 表示實體集合。在實體篩選器內，$.member 表示目前實體，-> 明確投影集合成員。@ 表示時間錨點；序列和週期篩選器還提供 $span、$gap 和 $items。",
+    expressionHelpContextExamples:
+      'time(last(PAGE)) gte @now-14d\nsequence([EVENT { $.name eq "signup" }, EVENT { $.name eq "purchase" }]) {\n  $span lte 14d AND $gap(1, 2) lte 7d AND $same($.payload("/productId"))\n} exists\nperiods(EVENT, 1w) { count($items) gte 3 } exists',
+    advancedEditor: {
+      not: "非",
+      removeNot: "移除“非”",
+      matchAll: "全部符合",
+      matchAny: "任一符合",
+      addCondition: "新增條件",
+      addGroup: "新增分組",
+      wrapInNot: "新增“非”",
+      remove: "移除",
+      condition: "條件",
+      literalValue: "字面值",
+      compareWithExpression: "與表示式比較",
+      valuesAsJson: "篩選值（JSON）",
+      scalarArrayHelp: "輸入由 JSON 標量值組成的陣列。",
+      chooseValue: "選擇一個值",
+      filterValue: "篩選值",
+      durationAmount: "時間長度",
+      jsonPointer: "事件載荷 JSON 指標",
+      jsonPointerPlaceholder: "/屬性/路徑",
+      entityMember: "實體成員",
+      nthIndex: "第 N 項索引",
+      fromStep: "起始步驟",
+      toStep: "結束步驟",
+      occurrenceKind: "活動選擇方式",
+      occurrenceEntity: "活動型別",
+      occurrenceIndex: "活動序號",
+      correlationTarget: "每個步驟共有的值",
+      periodItemCount: "每個週期的專案數",
+      nestedTooDeep: "表示式巢狀過深。",
+      applyOffset: "應用偏移量",
+      removeStep: "移除步驟",
+      addStep: "新增序列步驟",
+      excludedActivity: "排除的活動",
+      fixedTime: "固定時間",
+      toggleOffsetSign: "切換時間偏移正負",
+      timeUnits: {
+        milliseconds: "毫秒",
+        seconds: "秒",
+        minutes: "分鐘",
+        hours: "小時",
+        days: "天",
+        weeks: "周",
+        months: "月",
+        years: "年",
+      },
+      coreRelation: "高階篩選",
+      coreRelationExpression: "高階篩選表示式",
+      structuredEditor: "高階篩選控制元件",
+      unavailableForObservation: "Goal 和 Funnel 步驟不支援高階篩選。",
+      targetKinds: {
+        time: "時間",
+        field: "欄位",
+        "event-payload": "事件載荷",
+        "entity-root": "實體集合",
+        "context-root": "上下文",
+        "context-intrinsic": "上下文內建值",
+        "occurrence-time": "活動時間",
+        member: "成員",
+        selector: "選擇器",
+        projection: "投影",
+        reducer: "歸約器",
+        arithmetic: "算術表示式",
+        duration: "時間長度",
+        "time-anchor": "相對時間",
+        "sequence-span": "序列跨度",
+        "sequence-gap": "步驟間隔",
+        "sequence-same": "序列共有值",
+        "period-items": "週期專案",
+        bucket: "時間桶",
+        window: "時間視窗",
+        periods: "週期集合",
+        sequence: "序列",
+        adjacent: "相鄰序列",
+        without: "排除活動的序列",
+      },
+    },
+    savedFiltersLoading: "正在取得已儲存的篩選...",
+    noSavedFilter: "不使用已儲存的篩選",
+    systemPresets: "系統預設",
+    systemPresetCategories: {
+      acquisition: "獲客",
+      device: "裝置",
+      visitBehavior: "造訪行為",
+      sessionEngagement: "工作階段參與度",
+      visitorBehavior: "訪客行為",
+      performance: "效能",
+      dataQuality: "資料品質",
+    },
+    systemPresetScopes: {
+      preserve: "保留目前範圍",
+      event: "事件範圍",
+      session: "工作階段範圍",
+      visitor: "訪客範圍",
+    },
+    systemPresetItems: {
+      directTraffic: {
+        name: "直接造訪",
+        description: "沒有外部來源的造訪。",
+      },
+      externalReferrals: {
+        name: "外部來源造訪",
+        description: "透過外部來源進入的造訪。",
+      },
+      organicSearchDiscovery: {
+        name: "自然搜尋發現",
+        description: "沒有行銷活動標記的搜尋引擎來源造訪。",
+      },
+      organicSocialDiscovery: {
+        name: "自然社交發現",
+        description: "沒有行銷活動標記的社交網路來源造訪。",
+      },
+      campaignTaggedTraffic: {
+        name: "帶活動標記的流量",
+        description: "帶有活動來源、媒介或名稱的造訪。",
+      },
+      mobileTraffic: {
+        name: "行動裝置流量",
+        description: "來自行動裝置的造訪。",
+      },
+      desktopTraffic: {
+        name: "電腦端流量",
+        description: "來自桌上型裝置的造訪。",
+      },
+      campaignTaggedExternalAcquisition: {
+        name: "帶標記的外部獲客",
+        description: "帶有行銷活動標記的外部來源造訪。",
+      },
+      campaignTaggedDirectEntry: {
+        name: "帶標記的直接造訪",
+        description: "帶有行銷活動標記的直接造訪。",
+      },
+      untaggedExternalReferrals: {
+        name: "未標記的外部來源",
+        description: "沒有行銷活動標記的外部來源造訪。",
+      },
+      mobileAcquiredTraffic: {
+        name: "行動裝置活動獲客",
+        description: "來自外部且帶有行銷活動標記的行動裝置造訪。",
+      },
+      mobileOrganicDiscovery: {
+        name: "行動裝置自然發現",
+        description: "透過搜尋或社群發現、且沒有活動標記的行動裝置造訪。",
+      },
+      desktopDirectAudience: {
+        name: "電腦端直接受眾",
+        description: "來自桌上型裝置、且沒有活動標記的直接造訪。",
+      },
+      geographicAttributionGap: {
+        name: "地理歸因缺口",
+        description: "有外部來源但未記錄國家的造訪。",
+      },
+      tabletTraffic: {
+        name: "平板電腦流量",
+        description: "來自平板裝置的造訪。",
+      },
+      longPageViews: {
+        name: "長時頁面瀏覽",
+        description: "持續至少 30 秒的頁面瀏覽。",
+      },
+      shortPageViews: {
+        name: "短時頁面瀏覽",
+        description: "持續少於 10 秒的頁面瀏覽。",
+      },
+      identifiedActivity: {
+        name: "已識別活動",
+        description: "與已識別使用者關聯的事件。",
+      },
+      customEventActivity: {
+        name: "自訂事件活動",
+        description: "記錄了自訂事件名稱的事件。",
+      },
+      bouncedSessions: {
+        name: "跳出工作階段",
+        description: "只包含一次頁面瀏覽的工作階段。",
+      },
+      nonBouncedSessions: {
+        name: "非跳出工作階段",
+        description: "包含多次頁面瀏覽的工作階段。",
+      },
+      longSessions: {
+        name: "長工作階段",
+        description: "持續至少五分鐘的工作階段。",
+      },
+      shortSessions: {
+        name: "短工作階段",
+        description: "持續少於一分鐘的工作階段。",
+      },
+      deepSessions: {
+        name: "深度工作階段",
+        description: "至少瀏覽三個頁面的工作階段。",
+      },
+      eventfulSessions: {
+        name: "活躍工作階段",
+        description: "至少包含一個自訂事件的工作階段。",
+      },
+      highEngagementSessions: {
+        name: "高參與度工作階段",
+        description: "至少三次瀏覽且包含兩個自訂事件的工作階段。",
+      },
+      returningVisitors: {
+        name: "回訪訪客",
+        description: "至少擁有兩個工作階段的訪客。",
+      },
+      frequentVisitors: {
+        name: "高頻訪客",
+        description: "至少擁有五個工作階段的訪客。",
+      },
+      deepVisitors: {
+        name: "深度訪客",
+        description: "至少瀏覽五個頁面的訪客。",
+      },
+      eventfulVisitors: {
+        name: "活躍訪客",
+        description: "至少產生兩個自訂事件的訪客。",
+      },
+      identifiedVisitors: {
+        name: "已識別訪客",
+        description: "與已識別使用者關聯的訪客。",
+      },
+      organicSearchVisitors: {
+        name: "自然搜尋訪客",
+        description: "擁有未標記搜尋來源的訪客。",
+      },
+      coreWebVitalsNeedsImprovement: {
+        name: "Core Web Vitals 需改進",
+        description: "超過 Core Web Vitals 閾值的造訪。",
+      },
+      slowLcp: {
+        name: "LCP 較慢",
+        description: "LCP 超過 2.5 秒的造訪。",
+      },
+      slowInp: {
+        name: "INP 較慢",
+        description: "INP 超過 200 毫秒的造訪。",
+      },
+      highCls: {
+        name: "CLS 較高",
+        description: "CLS 超過 0.1 的造訪。",
+      },
+      slowTtfb: {
+        name: "TTFB 較慢",
+        description: "TTFB 超過 800 毫秒的造訪。",
+      },
+      slowFcp: {
+        name: "FCP 較慢",
+        description: "FCP 超過 1.8 秒的造訪。",
+      },
+    },
+    savedFiltersPersonal: "個人篩選",
+    savedFiltersTeam: "團隊篩選",
+    savedFiltersAuthor: "作者：{name}",
+    savedFiltersPrivate: "個人",
+    savedFiltersTeamShared: "已共享給團隊",
+    saveThisFilter: "儲存此篩選",
+    saveAsThisFilter: "另存此篩選",
+    manageThisFilter: "管理此篩選",
+    finishEditingFilter: "完成編輯",
+    createSavedFilter: "儲存篩選",
+    manageSavedFilter: "管理篩選",
+    savedFilterName: "名稱",
+    savedFilterDescription: "備註",
+    scopeLabel: "篩選範圍",
+    scopeAuto: "根據目前頁面自動選擇",
+    scopeEvent: "篩選符合目前條件的事件",
+    scopeSession: "篩選滿足這些條件的工作階段",
+    scopeVisitor: "篩選滿足這些條件的訪客",
+    savedFilterVisibility: "可見性",
+    savedFilterVisibilityPrivate: "僅自己可見",
+    savedFilterVisibilityTeam: "與團隊共享",
+    savedFilterCreateDescription: "儲存目前的篩選表示式，以便之後再次套用。",
+    savedFilterManageDescription: "更新此篩選的基本資訊，或開始編輯篩選條件。",
+    editSavedFilter: "修改此篩選",
+    deleteSavedFilter: "刪除此篩選",
+    deleteSavedFilterTitle: "刪除此篩選？",
+    deleteSavedFilterDescription: "刪除後無法恢復，團隊成員也將無法再使用它。",
+    savedFilterCancel: "取消",
+    savedFilterSave: "儲存",
+    savedFilterSaving: "正在儲存...",
+    savedFilterDelete: "刪除",
+    savedFilterDeleting: "正在刪除...",
+    savedFilterOperationFailed: "操作失敗，請稍後重試。",
+    apply: "應用篩選",
+    allConditions: "全部條件均滿足",
+    anyCondition: "滿足任一條件",
+    condition: "條件 {index}",
+    group: "組 {index}",
+    invertCondition: "反轉此條件",
+    exclude: "排除",
+    addGroup: "新增分組",
+    invalid: "請先完成每一條篩選條件。",
+  },
+  realtime: {
+    title: "即時",
+    subtitle: "檢視最近 30 分鐘的造訪情況",
+    logTitleSeparator: "：",
+    activeNow: "目前線上",
+    liveMetrics: "目前線上 / 近 30 分鐘訪客 / 近 30 分鐘瀏覽量",
+    connected: "已連線",
+    connecting: "連線中",
+    reconnecting: "重連中",
+    failed: "連線失敗",
+    recentEvents: "即時事件",
+    enterPage: "進入頁面",
+    leavePage: "退出頁面",
+    viewPage: "瀏覽頁面",
+    customEvent: "自訂事件",
+    detailsTitle: "事件詳情",
+    browsingSection: "瀏覽",
+    geographySection: "地理位置",
+    sourceSection: "來源",
+    statusLabels: {
+      active: "活躍",
+      completed: "已完成",
+      open: "進行中",
+      complete: "已完成",
+      hidden_pending: "等待隱藏確認",
+    },
+    visibilityStateLabels: {
+      visible: "可見",
+      hidden: "隱藏",
+    },
+    visibilityVisible: "頁面變為可見",
+    visibilityHidden: "頁面變為不可見",
+    visibilityChange: "頁面可見性變化",
+    visitorHistorySection: "訪客記錄",
+    visitorHistorySubtitle: "檢視該訪客在目前即時視窗內的全部造訪記錄。",
+    visitorHistoryRange: "瀏覽時間",
+    visitorHistoryEmpty: "目前還沒有更多該訪客的造訪記錄。",
+    visitorMapUnavailable: "目前事件沒有可用的定位座標。",
+    visitorId: "訪客 ID",
+    sessionId: "工作階段 ID",
+    visitId: "造訪 ID",
+    eventTime: "事件時間",
+    eventKind: "事件種類",
+    eventName: "事件名稱",
+    siteId: "站點 ID",
+    traceId: "追蹤 ID",
+    receivedAt: "接收時間",
+    startedAt: "開始時間",
+    previousVisitStartedAt: "上一次造訪開始時間",
+    userId: "使用者 ID",
+    userName: "使用者名稱",
+    isEU: "歐盟訪客",
+    queryString: "查詢字串",
+    utmSource: "UTM 來源",
+    utmMedium: "UTM 媒介",
+    utmCampaign: "UTM 活動",
+    utmTerm: "UTM 關鍵詞",
+    utmContent: "UTM 內容",
+    browserVersion: "瀏覽器版本",
+    osVersion: "作業系統版本",
+    userAgent: "User-Agent",
+    postalCode: "郵政編碼",
+    metroCode: "都會區編碼",
+    status: "狀態",
+    visibilityState: "可見性狀態",
+    endedAt: "結束時間",
+    duration: "持續時間",
+    durationSource: "持續時間來源",
+    exitReason: "退出原因",
+    leaveAt: "離開時間",
+  },
+  overview: {
+    title: "造訪總覽",
+    subtitle: "檢視核心指標與造訪趨勢。",
+    trendTitle: "造訪趨勢",
+    sourceTab: "來源",
+    sourceDomainColumn: "來源（網域）",
+    sourceLinkTab: "來源連結",
+    sourceLinkColumn: "來源連結",
+    channelTab: "管道",
+    channelColumn: "管道",
+    direct: "直接造訪",
+    channelLabels: {
+      direct: "直接造訪",
+      organic_search: "自然搜尋",
+      social: "社交媒體",
+      paid_search: "付費搜尋",
+      paid_social: "付費社交",
+      display: "展示廣告",
+      email: "郵件",
+      affiliate: "聯盟/合作",
+      referral: "外部引薦",
+      campaign: "行銷活動",
+      other: "其他",
+    },
+    searchInTab: "搜尋{tab}",
+  },
+  pages: {
+    title: "頁面分析",
+    subtitle: "選定時間範圍內造訪最多的路徑。",
+    pagesPerSession: "每工作階段頁面數",
+    changePercentColumnLabel: "{metric}變化（%）",
+    changePointsColumnLabel: "{metric}變化（百分點）",
+    percentagePointSuffix: "個百分點",
+    untitled: "未命名頁面",
+    empty: "目前篩選條件下暫無頁面資料。",
+    loadError: "頁面資料載入失敗，請稍後重試。",
+    loadMoreError: "載入更多頁面失敗。",
+    retry: "重試",
+    trendTitle: "頁面造訪趨勢",
+    otherPages: "其他頁面",
+    hashTab: "錨點",
+    noHash: "無錨點",
+    queryTab: "查詢參數",
+    noQuery: "無查詢參數",
+    eventTab: "事件",
+    eventsMetric: "事件數",
+    viewDetails: "檢視詳情",
+  },
+  referrers: {
+    title: "來源分析",
+    subtitle: "流量來源管道分佈。",
+    summaryTitle: "來源概覽",
+    splitTitle: "來源拆分",
+    chartTitle: "來源結構",
+    radarTitle: "前 24 來源雷達圖",
+    radarSubtitle: "對比主要來源在多項行為指標上的表現",
+    radarDuration: "停留時長",
+    radarEngagement: "互動率",
+    radarDepth: "瀏覽深度",
+    radarLoyalty: "回訪率",
+    radarFrequency: "造訪頻次",
+    radarTraffic: "流量佔比",
+    directSourceNote: "這部分流量沒有外部來源站點，屬於直接造訪。",
+    breakdownTitle: "來源明細",
+    directViews: "直接造訪量",
+    uniqueDomains: "來源網域數",
+    uniqueLinks: "來源連結數",
+    topSource: "主要外部來源",
+    topSourceShare: "造訪佔比",
+    noExternalSource: "暫無外部來源",
+    externalLabel: "外部來源",
+    nextSources: "其他 4 個來源",
+    longTail: "長尾來源",
+    channelLongTail: "其他管道",
+  },
+  campaigns: {
+    title: "推廣活動",
+    subtitle: "UTM 推廣活動表現與流量歸因。",
+    tabSource: "來源",
+    tabMedium: "媒介",
+    tabCampaign: "活動",
+    tabTerm: "關鍵詞",
+    tabContent: "內容",
+    breakdownTitle: "UTM 明細",
+    notSet: "未設定",
+    noTaggedTraffic: "目前篩選範圍內暫無帶 UTM 標籤的流量。",
+  },
+  sessions: {
+    title: "工作階段列表",
+    subtitle: "用於分析造訪品質的工作階段明細。",
+    search: "搜尋工作階段...",
+    started: "開始時間",
+    sessionId: "工作階段 ID",
+    visitor: "訪客",
+    anonymous: "匿名訪客",
+    entryPage: "入口頁面",
+    exitPage: "出口頁面",
+    duration: "時長",
+    referrer: "來源",
+    location: "地區",
+    os: "作業系統",
+    browser: "瀏覽器",
+    device: "裝置",
+    pageViews: "頁面瀏覽量",
+    customEvents: "自訂事件",
+    screenSize: "螢幕尺寸",
+    exitTime: "退出時間",
+    loadError: "無法載入工作階段資料。",
+    empty: "目前時間範圍內沒有工作階段。",
+  },
+  sessionDetail: {
+    anonymous: "匿名訪客",
+    userId: "使用者 ID",
+    userName: "使用者名稱",
+    back: "返回工作階段",
+    missing: "缺少 sessionId。",
+    notFound: "沒有找到這個工作階段。",
+    loadError: "無法載入工作階段詳細資訊。",
+    active: "進行中",
+    inactive: "已結束",
+    status: "狀態",
+    duration: "時長",
+    screenViews: "頁面瀏覽量",
+    events: "事件",
+    bounce: "是否跳出",
+    entryPath: "入口路徑",
+    exitPath: "出口路徑",
+    referrerName: "來源名稱",
+    os: "作業系統",
+    browser: "瀏覽器",
+    device: "裝置",
+    screen: "螢幕",
+    yes: "是",
+    no: "否",
+    uniquePages: "不同頁面數",
+    firstEvent: "首個事件",
+    lastEvent: "最後事件",
+    sessionStarted: "工作階段開始",
+    pageview: "瀏覽頁面",
+    exitPage: "退出頁面",
+    customEvent: "自訂事件",
+    eventTitleSeparator: "：",
+    visitDetailsTitle: "造訪明細",
+    visitDetailsSubtitle:
+      "按發生順序展示該工作階段內的開始、頁面造訪、退出和自訂事件。",
+    location: "位置",
+    visitorId: "訪客 ID",
+    sessionId: "工作階段 ID",
+    referrerUrl: "來源連結",
+    emptyEvents: "沒有事件記錄。",
+    emptyCustomEvents: "暫無自訂事件",
+    sincePrevious: "距上個事件",
+    geoLocationTitle: "地理位置",
+    performanceTitle: "目前工作階段效能",
+    range: "範圍",
+  },
+  events: {
+    title: "自訂事件",
+    subtitle: "檢視事件規模、上下文、事件載荷欄位與原始觸發記錄。",
+    detailTitle: "事件詳情",
+    detailSubtitle: "檢視單次事件的上下文與事件載荷。",
+    typeDetailSubtitle:
+      "檢視該事件的趨勢、上下文分佈、事件載荷結構與觸發記錄。",
+    backToEvents: "返回事件總覽",
+    totalEvents: "事件總數",
+    eventTypes: "事件型別",
+    sessions: "觸發工作階段",
+    visitors: "觸發訪客",
+    avgEventsPerSession: "平均事件/工作階段",
+    shareOfAllEvents: "事件佔比",
+    triggerCount: "觸發量",
+    triggerVisitors: "觸發人數",
+    trendTitle: "事件趨勢",
+    topEvents: "事件排行",
+    recordsTitle: "事件記錄",
+    fieldsTitle: "事件載荷欄位",
+    fieldsSubtitle: "選擇欄位後檢視其值分佈和中繼資料。",
+    fieldValuesTitle: "欄位值",
+    fieldValuesSubtitle: "展示目前欄位的記錄及出現次數，點選以進行篩選。",
+    fieldValuesEmpty: "目前欄位暫無記錄。",
+    payloadFilter: "篩選",
+    payloadFilterTitle: "事件載荷篩選",
+    payloadFilterSubtitle: "每行一個條件，可使用 == 或 != 組合篩選。",
+    payloadFilterPlaceholder: 'path.value == "a"\nlevel != 0',
+    payloadFilterApply: "應用篩選",
+    payloadFilterClear: "清空篩選",
+    payloadFilterInvalid: "無法解析篩選條件，請檢查欄位路徑、運算子和值。",
+    expandField: "展開欄位",
+    collapseField: "收起欄位",
+    breakdownTitle: "上下文分佈",
+    search: "搜尋事件名、ID、訪客、工作階段、頁面...",
+    eventName: "事件名",
+    eventId: "事件 ID",
+    occurredAt: "發生時間",
+    receivedAt: "接收時間",
+    page: "頁面",
+    context: "上下文",
+    visitor: "訪客",
+    visit: "造訪",
+    referrer: "來源",
+    location: "地區",
+    browser: "瀏覽器",
+    os: "作業系統",
+    device: "裝置",
+    payload: "事件載荷",
+    nodeCount: "節點數",
+    payloadFields: "事件載荷欄位",
+    values: "值",
+    nodes: "節點",
+    occurrences: "出現次數",
+    openVisitor: "開啟訪客",
+    openSession: "開啟工作階段",
+    integratingEvent: "正在整合事件 ({seconds}s)",
+    copyJson: "複製 JSON",
+    copiedJson: "JSON 已複製。",
+    copyJsonFailed: "無法複製 JSON。",
+    copyValue: "複製值",
+    copiedValue: "值已複製。",
+    copyValueFailed: "複製值失敗。",
+    loadError: "無法載入事件資料。",
+    detailNotFound: "未找到該事件記錄。",
+    empty: "目前篩選範圍內沒有自訂事件。",
+    emptyFields: "目前事件暫無事件載荷欄位。",
+    noEventName: "缺少事件名。",
+    loading: "載入中",
+    other: "其他",
+  },
+  funnels: {
+    title: "漏斗分析",
+    subtitle: "衡量多步驟使用者旅程的轉換情況。",
+    listTitle: "漏斗定義",
+    listSubtitle: "建立可重複使用的步驟序列，並按目前看板時間窗檢視轉換。",
+    conversionRecords: "轉換記錄",
+    converted: "已轉換",
+    dropped: "已流失",
+    open: "開啟漏斗",
+    moreActions: "更多操作",
+    create: "新建漏斗",
+    createTitle: "建立漏斗",
+    createDescription: "至少定義兩個有順序的觀察篩選步驟。",
+    nameLabel: "名稱",
+    namePlaceholder: "註冊啟用",
+    stepsLabel: "步驟",
+    addStep: "新增步驟",
+    removeStep: "移除步驟",
+    progression: "轉換主體",
+    conversionWindow: "轉換視窗",
+    custom: "自訂",
+    customWindowHours: "自訂視窗（小時）",
+    stepFilter: "步驟篩選",
+    filter: "篩選",
+    apply: "應用",
+    condition: "個條件",
+    conditions: "個條件",
+    expression: "篩選表示式",
+    filterPlaceholder: '例如 page.path eq "/pricing"',
+    invalidFilter: "篩選無效",
+    dragStep: "拖動步驟",
+    unnamed: "（未命名）",
+    oneHour: "1 小時",
+    oneDay: "24 小時",
+    sevenDays: "7 天",
+    thirtyDays: "30 天",
+    save: "建立",
+    saveEdit: "儲存修改",
+    edit: "編輯",
+    editTitle: "編輯漏斗",
+    creating: "建立中...",
+    cancel: "取消",
+    delete: "刪除",
+    deleteTitle: "刪除漏斗",
+    deleteDescription: "這會移除已儲存的漏斗定義，不會刪除歷史分析資料。",
+    deleteConfirm: "刪除漏斗",
+    deleting: "刪除中...",
+    empty: "暫無漏斗。",
+    emptyHint: "使用頁面瀏覽和自訂事件建立漏斗來追蹤轉換。",
+    loadError: "無法載入漏斗。",
+    detailLoadError: "無法載入漏斗分析。",
+    invalidFunnel: "請填寫名稱，並至少補全兩個篩選步驟。",
+    created: "漏斗已建立。",
+    createFailed: "建立漏斗失敗。",
+    updatedSuccess: "漏斗已更新。",
+    saveFailed: "儲存漏斗失敗。",
+    deleted: "漏斗已刪除。",
+    deleteFailed: "刪除漏斗失敗。",
+    overallConversion: "總轉換率",
+    startedSessions: "起始工作階段數",
+    startedVisitors: "起始訪客數",
+    convertedSessions: "轉換工作階段數",
+    convertedVisitors: "轉換訪客數",
+    largestDropOff: "最大流失",
+    noDropOff: "無流失",
+    step: "步驟",
+    sessions: "工作階段",
+    visitors: "訪客",
+    conversion: "轉換率",
+    stepConversion: "步驟轉換率",
+    dropOff: "流失",
+    updated: "更新於",
+  },
+  goals: {
+    title: "目標分析",
+    subtitle: "使用一個可重複使用的事件或頁面條件衡量轉換。",
+    listSubtitle: "檢視這段時間範圍內的轉換率變化情況",
+    conversionRecords: "轉換記錄",
+    open: "開啟目標",
+    moreActions: "更多操作",
+    create: "新建目標",
+    createTitle: "建立目標",
+    nameLabel: "名稱",
+    namePlaceholder: "完成購買",
+    filter: "轉換條件",
+    apply: "應用",
+    cancel: "取消",
+    save: "建立",
+    saveEdit: "儲存修改",
+    edit: "編輯",
+    editTitle: "編輯目標",
+    creating: "建立中...",
+    delete: "刪除",
+    deleteTitle: "刪除目標",
+    deleteDescription: "這會移除已儲存的目標定義，不會刪除歷史分析資料。",
+    deleteConfirm: "刪除目標",
+    empty: "暫無目標。",
+    emptyHint: "使用頁面條件或自訂事件建立目標來追蹤轉換。",
+    loadError: "無法載入目標。",
+    detailLoadError: "無法載入目標分析。",
+    invalidGoal: "請填寫名稱，並補全轉換條件。",
+    created: "目標已建立。",
+    updatedSuccess: "目標已更新。",
+    saveFailed: "儲存目標失敗。",
+    deleted: "目標已刪除。",
+    deleteFailed: "刪除目標失敗。",
+    sessions: "工作階段",
+    visitors: "訪客",
+    total: "總數",
+    converted: "已轉換",
+    conversion: "轉換率",
+    timeseries: "轉換率",
+    updated: "更新於",
+  },
+  visitors: {
+    title: "訪客分析",
+    subtitle: "訪客級別明細與最近活躍情況。",
+    search: "搜尋訪客...",
+    visitor: "訪客",
+    anonymous: "匿名訪客",
+    referrer: "來源",
+    location: "地區",
+    os: "作業系統",
+    browser: "瀏覽器",
+    device: "裝置",
+    firstSeen: "首次造訪",
+    lastSeen: "最近造訪",
+    pageViews: "頁面瀏覽量",
+    sessions: "工作階段數",
+    customEvents: "自訂事件",
+    screenSize: "螢幕尺寸",
+    loadError: "無法載入訪客資料。",
+    empty: "目前時間範圍內沒有訪客。",
+  },
+  visitorDetail: {
+    anonymous: "匿名訪客",
+    userId: "使用者 ID",
+    userName: "使用者名稱",
+    back: "返回訪客",
+    missing: "缺少 visitorId。",
+    notFound: "沒有找到這個訪客。",
+    loadError: "無法載入訪客詳情。",
+    totalDuration: "總時長",
+    events: "事件",
+    views: "頁面瀏覽量",
+    uniquePages: "不同頁面數",
+    avgPagesPerSession: "平均頁面/工作階段",
+    avgEventsPerSession: "平均事件/工作階段",
+    avgStay: "平均停留時長",
+    firstSeen: "首次造訪",
+    lastSeen: "最近造訪",
+    daysActive: "活躍天數",
+    avgTimeBetweenSessions: "平均工作階段間隔",
+    activity: "活躍記錄",
+    sessionRecords: "工作階段記錄",
+    started: "開始時間",
+    visitor: "訪客",
+    duration: "時長",
+    referrer: "來源",
+    pageViews: "頁面瀏覽量",
+    visitDetailsTitle: "造訪明細",
+    visitDetailsSubtitle:
+      "按發生順序展示該訪客的工作階段開始、頁面造訪、退出和自訂事件。",
+    customEvents: "自訂事件",
+    emptyEvents: "沒有事件記錄。",
+    emptyCustomEvents: "暫無自訂事件",
+    emptySessions: "沒有工作階段記錄。",
+    visitorId: "訪客 ID",
+    sessionId: "工作階段 ID",
+    referrerName: "來源名稱",
+    referrerUrl: "來源連結",
+    location: "位置",
+    browser: "瀏覽器",
+    os: "作業系統",
+    device: "裝置",
+    screen: "螢幕",
+    entryPath: "入口路徑",
+    exitPath: "出口路徑",
+    sessionStarted: "工作階段開始",
+    pageview: "瀏覽頁面",
+    exitPage: "退出頁面",
+    customEvent: "自訂事件",
+    eventTitleSeparator: "：",
+    sincePrevious: "距上個事件",
+    geoLocationTitle: "地理位置",
+    performanceTitle: "目前訪客效能",
+    range: "範圍",
+  },
+  retention: {
+    title: "留存分析",
+    subtitle: "基於群組的訪客回訪分析。",
+    cohortDate: "群組日期",
+    cohortSize: "人數",
+    periodLabel: "第 {n} 期",
+    matrixTitle: "留存矩陣",
+    matrixSubtitle:
+      "每一行是首次進入該週期的訪客群組，每一列是後續週期的回訪比例。",
+    cohortsMetric: "群組數",
+    visitorsMetric: "群組訪客",
+    periodOneMetric: "首期回訪",
+    averageReturnMetric: "平均回訪",
+    strongestCohortMetric: "最佳群組",
+    eligibleVisitors: "符合條件的訪客",
+    periodsAnalyzed: "已分析週期",
+    noEligibleCohorts: "暫無符合條件的群組",
+    overallRetention: "整體留存",
+    legendLow: "低",
+    legendHigh: "高",
+    periodZero: "初始",
+    empty: "目前時間範圍內沒有足夠的回訪資料。",
+    emptyHint:
+      "擴大時間範圍，或在頂部選擇更粗的時間間隔，可以更快看到留存形態。",
+    loadError: "無法載入留存資料。",
+    unavailableCell: "該群組還沒有進入這個週期。",
+    visitorsDetail: "訪客",
+    rateDetail: "留存率",
+    cohortDetail: "群組",
+    sizeDetail: "人數",
+  },
+  geo: {
+    title: "位置分析",
+    subtitle: "分析各地點的造訪表現",
+    mapTitle: "請求地理分佈",
+    countryLabel: "國家/地區",
+    regionLabel: "州/省",
+    cityLabel: "市/縣",
+    back: "返回上一級",
+    viewOnWikipedia: "檢視維基百科",
+    investigationNotice: "這些資料來源於網路，可能存在錯誤。",
+    timezoneDeltaVsLocal: "與本地時間相差 {delta}",
+    visitorCoordinates: "訪客座標",
+    ipNotice: "估算的 IP 位置，座標為粗略範圍，不代表精確家庭或辦公地址。",
+    multipleNotice: "該訪客在不同工作階段中的旅程可能涉及多個城市。",
+    investigation: {
+      countryScopedLabel: "所屬國家的{label}",
+      capital: "首都",
+      population: "人口",
+      gdp: "GDP",
+      gdpPerCapita: "人均 GDP",
+      marketPenetration: "市場滲透率",
+      region: "所屬區域",
+      currency: "貨幣",
+      phonecode: "電話區號",
+      timezone: "時區",
+      type: "型別",
+      iso: "ISO",
+      coordinates: "座標",
+      unavailable: "暫無",
+      gdpValue: "{value} 百萬美元",
+      gdpPerCapitaValue: "{value} 美元/人",
+      gdpPerCapitaNearAverage: "{value} 美元/人（接近全球平均）",
+      gdpPerCapitaAboveAverage: "{value} 美元/人（高於平均 {percent}%）",
+      gdpPerCapitaBelowAverage: "{value} 美元/人（低於平均 {percent}%）",
+      marketPenetrationWindow: "{label}({days}天)",
+      timezoneCount: "{count} 個時區",
+      typeLabels: {
+        country: "國家",
+        state: "州",
+        province: "省",
+        prefecture: "地級市",
+        city: "市",
+        county: "縣",
+        district: "區",
+        town: "鎮",
+        village: "村",
+        municipality: "市鎮",
+        territory: "地區",
+        section: "片區",
+        adm1: "一級行政區",
+        adm2: "二級行政區",
+        adm3: "三級行政區",
+        adm4: "四級行政區",
+        adm5: "五級行政區",
+      },
+    },
+  },
+  devices: {
+    title: "裝置分析",
+    subtitle: "從裝置型別、系統和螢幕尺寸觀察訪客結構。",
+    deviceShareTitle: "裝置型別佔比",
+    osShareTitle: "作業系統佔比",
+    deviceTrendTitle: "裝置型別趨勢",
+    osTrendTitle: "作業系統趨勢",
+    screenDistributionTitle: "螢幕尺寸分佈",
+    screenDistributionSubtitle: "識別最常見的視口尺寸和響應式斷點。",
+    screenBucketTitle: "斷點分桶",
+    screenPreviewTitle: "螢幕預覽",
+    selectedViewportLabel: "目前視口",
+    openSiteLabel: "開啟站點",
+    previewUnavailableLabel: "目前沒有可預覽的螢幕尺寸。",
+    browserByDeviceTitle: "裝置型別 × 瀏覽器",
+    osByDeviceTitle: "裝置型別 × 作業系統",
+    otherLabel: "其他",
+    screenBucketLabels: {
+      phoneCompact: "小屏手機",
+      phone: "手機",
+      tablet: "平板",
+      laptop: "筆記本",
+      desktopWide: "寬屏桌面",
+      unclassified: "未歸類",
+    },
+  },
+  browsers: {
+    title: "瀏覽器分析",
+    subtitle: "按瀏覽器檢視造訪分佈。",
+    trendTitle: "瀏覽器佔比趨勢",
+    engineTrendTitle: "核心佔比趨勢",
+    versionBreakdownTitle: "瀏覽器版本分佈",
+    osBreakdownTitle: "瀏覽器 × 系統",
+    deviceTypeBreakdownTitle: "瀏覽器 × 裝置型別",
+    otherLabel: "其他",
+    browserShareTitle: "瀏覽器佔比",
+    engineShareTitle: "核心佔比",
+    caniuseTitle: "特性相容性",
+    caniuseSubtitle: "根據站點訪客資料檢查 Web 特性的瀏覽器支援情況。",
+    caniuseSearchPlaceholder: "搜尋 Web 特性…",
+    caniuseHotFeatures: "熱門特性",
+    caniuseTrendingFeatures: "近期變動",
+    caniuseSiteSupport: "本站支援率",
+    caniuseGlobalSupport: "全球支援率",
+    caniuseClearSelection: "清除",
+    caniuseNoMatch: "找不到相符的功能。",
+    caniuseFullSupport: "完全支援",
+    caniusePartialSupport: "部分支援",
+    caniuseNoSupport: "不支援",
+    radarTitle: "瀏覽器行為雷達圖",
+    radarSubtitle: "對比主流瀏覽器在多項行為指標上的表現",
+    radarDuration: "停留時長",
+    radarEngagement: "互動率",
+    radarDepth: "瀏覽深度",
+    radarLoyalty: "回訪率",
+    radarFrequency: "造訪頻次",
+    radarTraffic: "流量佔比",
+  },
+  performance: {
+    title: "效能追蹤",
+    subtitle: "按指標、趨勢與路徑檢視真實訪客效能。",
+    chartTitle: "效能趨勢",
+    avgLabel: "平均值",
+    samplesLabel: "樣本數",
+    p50Label: "P50",
+    p75Label: "P75",
+    p95Label: "P95",
+    ttfb: "首位元組時間",
+    fcp: "首次內容繪製",
+    lcp: "最大內容繪製",
+    cls: "累積佈局偏移",
+    inp: "互動到下一次繪製",
+    ttfbDescription:
+      "衡量瀏覽器在收到伺服器第一個位元組前等待了多久，反映後端響應、網路延遲和快取效果。",
+    fcpDescription:
+      "衡量頁面首次繪製文字或圖片的時間，反映訪客多久能看到頁面開始載入。",
+    lcpDescription:
+      "衡量視口內最大內容元素完成渲染的時間，是感知載入速度的核心指標。",
+    clsDescription:
+      "衡量頁面生命週期中非預期佈局位移的程度，數值越低表示視覺越穩定。",
+    inpDescription:
+      "衡量使用者互動到下一次繪製之間的延遲，反映頁面載入後的響應能力。",
+    msUnit: "毫秒",
+    secondsUnit: "秒",
+    clsUnit: "分值",
+    score: "體驗評分",
+    scoreDescription:
+      "將載入、穩定性和互動指標的 P75 數值合成為 0 到 100 的體驗評分，分數越高越好。",
+    great: "優秀",
+    needsImprovement: "需要改進",
+    poor: "較差",
+    datasetTitle: "資料集概覽",
+    interpretationTitle: "目前解讀",
+    currentReading:
+      "{metric} 目前 P75 為 {value}，體驗評分為 {score}，覆蓋 {samples} 個樣本。目前判定：{status}。",
+    metricThresholdText:
+      "優秀為不高於 {good}；需要改進為 {good} 到 {poor}；較差為高於 {poor}。",
+    scoreThresholdText: "優秀為高於 90，需要改進為 50 到 90，較差為低於 50。",
+    countryHealthTitle: "國家和地區健康度",
+    countryHealthSubtitle: "根據 {metric} 對國家或地區邊界進行健康度著色。",
+    pathsTitle: "路徑效能",
+    pathsAnalyzedLabel: "已分析路徑",
+    metricValueColumn: "P75 數值",
+    statusColumn: "狀態",
+  },
+  share: {},
+  siteSettings: {
+    title: "站點設定",
+    subtitle: "管理目前站點的基礎資訊與生命週期。",
+    sections: {
+      basic: {
+        title: "基本資訊",
+        description: "管理站點身份資訊與公開分享設定。",
+      },
+      tracking: {
+        title: "追蹤設定",
+        description: "設定追蹤器如何採集造訪與效能資料。",
+      },
+      blocking: {
+        title: "遮蔽規則",
+        description: "在事件寫入儲存前，按請求上下文過濾採集資料。",
+      },
+      protection: {
+        title: "請求防護",
+        description:
+          "控制檢測到的機器人以及託管或代理網路請求在進入分析資料前的處理方式。",
+      },
+      danger: {
+        title: "危險區域",
+        description: "包含破壞性操作和需要謹慎處理的設定。",
+      },
+    },
+    editTitle: "修改站點資訊",
+    editSubtitle: "更新站點名稱和網域。",
+    nameLabel: "站點名稱",
+    domainLabel: "網域",
+    publicSharingTitle: "公開分享",
+    publicSharingSubtitle:
+      "設定站點的公開存取連結，啟用後任何人都可透過連結檢視分析資料。",
+    publicEnabledLabel: "啟用公開存取",
+    publicSlugLabel: "公開 Slug",
+    publicSlugPlaceholder: "例如 my-site",
+    publicSlugHint: "自訂 URL 路徑標識。留空將自動產生。",
+    publicLinkLabel: "公開連結",
+    publicLinkHint: "啟用公開存取後，可透過此連結分享分析資料。",
+    publicDisabledHint: "啟用公開存取後將顯示分享連結。",
+    copiedLink: "連結已複製",
+    trackingStrengthGroupTitle: "追蹤強度",
+    trackingStrengthDescription: "選擇指令碼對訪客標識與統計精度的處理方式。",
+    trackingStrengthLabel: "追蹤強度策略",
+    trackingStrengthStrong: "強",
+    trackingStrengthSmart: "智慧",
+    trackingStrengthWeak: "弱",
+    trackingStrengthStrongDescription:
+      "始終進行針對訪客的高精度追蹤。這可能違反某些國家的法規，例如 GDPR。",
+    trackingStrengthSmartDescription: "自動根據訪客所處國家切換追蹤強度。",
+    trackingStrengthWeakDescription:
+      "始終降低對訪客的追蹤精度。這可能導致同一訪客在不同時間造訪時被計數多次、且無法計算留存率。",
+    botProtectionEnabledLabel: "機器人攔截",
+    botProtectionEnabledHint:
+      "開啟後攔截高置信度機器人請求；關閉後這類請求仍會計入統計。",
+    hostingProxyBlockingEnabledLabel: "攔截託管/代理網路請求",
+    hostingProxyBlockingEnabledHint:
+      "開啟後攔截來自託管或代理網路的疑似機器人請求，預設關閉。",
+    queryHashGroupTitle: "查詢參數與 Hash 追蹤",
+    queryHashGroupDescription:
+      "控制 URL 查詢參數、Hash 與 Do Not Track 的處理方式。",
+    trackQueryParamsLabel: "開啟查詢參數追蹤",
+    trackHashLabel: "開啟 Hash 追蹤",
+    blockingRulesSave: "儲存遮蔽規則",
+    blockingRulesSaving: "正在儲存遮蔽規則...",
+    blockingRulesDialogs: {
+      testButton: "測試",
+      helpButton: "幫助",
+      searchButton: "搜尋",
+      searchTitle: "搜尋地區",
+      searchDescription: "按名稱或程式碼搜尋，選擇結果後將其新增到此卡片。",
+      searchInputLabel: "搜尋",
+      searchInputPlaceholder: "按名稱或程式碼搜尋",
+      searchCountryLabel: "國家 / 地區",
+      searchRegionLabel: "州 / 省",
+      searchBack: "更換國家 / 地區",
+      searchLoading: "正在載入地區...",
+      searchNoResults: "找不到符合條件的地區。",
+      searchLoadError: "無法載入地區，請稍後重試。",
+      searchClose: "關閉",
+      helpTitle: "規則語法",
+      helpDescription: "檢視此欄位的語法、示例和優先順序規則。",
+      syntaxTitle: "語法",
+      examplesTitle: "示例設定",
+      actionsTitle: "規則動作",
+      actionsDescription:
+        "一般規則會遮蔽；在規則前加上 - 表示允許。如果多條規則同時符合，則以最後符合的規則為準。",
+      actionBlock: "符合 {example} 時遮蔽",
+      actionAllow: "符合 {example} 時允許",
+      statusEmpty: "目前無任何針對 {field} 的遮蔽規則。",
+      statusValid: "目前規則有效。",
+      statusInvalid: "目前規則無效，請點選右側“幫助”取得詳細資訊。",
+      errorInvalidRule: "無效規則。",
+      errorInvalidLines: "{field} 的規則必須按行填寫。",
+      errorInvalidLine: "第 {line} 行不是有效的文字規則。",
+      errorLineTooLong: "第 {line} 行過長。",
+      errorTooManyLines: "規則行數過多。",
+      errorInvalidPattern: "第 {line} 行的規則格式無效。",
+      testTitle: "測試規則",
+      testDescription:
+        "輸入請求值以測試目前卡片中的規則，未儲存的編輯內容也會參與測試。",
+      testRun: "執行測試",
+      testClose: "關閉",
+      testInvalidRules: "請先修復無效規則，然後再進行測試。",
+      testInvalidRule: "無效規則。",
+      testBlocked: "已遮蔽",
+      testAllowed: "已允許",
+      testNoMatch: "沒有任何規則符合，因此允許此欄位的值。",
+      testMatchedRules: "符合的規則",
+      testActionBlock: "遮蔽",
+      testActionAllow: "允許",
+      testLine: "第",
+    },
+    blockingRulesFields: {
+      domains: {
+        title: "網域",
+        label: "網域規則（每行一條）",
+        placeholder: "*\n-example.com\n-*.example.com\nadmin.example.com\n",
+        hint: "比對頁面 hostname；使用 * 與 -網域 規則可建立允許清單。",
+        syntax:
+          "每行格式：[ - ] hostname-glob\n以 # 開頭的行將被視為註釋並忽略。\n使用 * 作為萬用字元；以 - 開頭表示允許規則。\n比對時不區分大小寫，並使用頁面 hostname。\n",
+        examples: ["*", "-example.com", "-*.example.com", "admin.example.com"],
+        exampleDescription:
+          "這段設定先遮蔽所有網域，再允許 example.com 及其子網域，最後再遮蔽與 admin.example.com 完全相符的網域。",
+        testLabel: "主機名稱",
+        testPlaceholder: "www.example.com",
+        testHint: "輸入頁面 hostname，不要包含協議或路徑。",
+      },
+      paths: {
+        title: "路徑",
+        label: "路徑規則（每行一條）",
+        placeholder: "/admin/*\n/checkout/*/confirm\n-/admin/health\n",
+        hint: "使用 glob 語法比對正規化後的 URL 路徑。",
+        syntax:
+          "每行格式：[ - ] /path-glob\n以 # 開頭的行將被視為註釋並忽略。\n路徑必須以 / 開頭，* 可以比對任意字元。\nURL 路徑正規化後按區分大小寫的方式比對。\n",
+        examples: ["/admin/*", "/checkout/*/confirm", "-/admin/health"],
+        exampleDescription:
+          "這段設定遮蔽 /admin/ 下的路徑和符合 /checkout/*/confirm 的路徑，但允許 /admin/health。",
+        testLabel: "URL 路徑",
+        testPlaceholder: "/admin/settings",
+        testHint: "只輸入 pathname，並保留開頭的斜槓。",
+      },
+      queryParameters: {
+        title: "查詢參數",
+        label: "查詢參數規則（每行一條）",
+        placeholder: "utm_*\nutm_source=*\n-utm_source=trusted\n",
+        hint: "支援 key 或 key=value，鍵和值都支援 * 萬用字元。",
+        syntax:
+          "每行格式：[ - ] key-glob[=value-glob]\n以 # 開頭的行將被視為註釋並忽略。\n省略 = 時，表示比對該鍵的任意值。\n區分大小寫，鍵和值都支援 * 萬用字元。\n",
+        examples: ["utm_*", "utm_source=*", "-utm_source=trusted"],
+        exampleDescription:
+          "這段設定遮蔽所有以 utm_ 開頭的參數以及 utm_source 的任意值，但允許 utm_source=trusted。",
+        testLabel: "查詢字串",
+        testPlaceholder: "utm_source=internal&utm_campaign=spring",
+        testHint: "輸入查詢字串，可帶或不帶開頭的 ?。",
+      },
+      referrers: {
+        title: "來源",
+        label: "來源規則（每行一條）",
+        placeholder:
+          "*.example.com\nsocial.example.com\n-trusted.example.com\n",
+        hint: "比對來源頁面的 hostname。",
+        syntax:
+          "每行格式：[ - ] hostname-glob\n以 # 開頭的行將被視為註釋並忽略。\nURL 會先轉換為 hostname，然後再進行比對。\n比對時不區分大小寫，並支援 * 萬用字元。\n",
+        examples: [
+          "*.example.com",
+          "social.example.com",
+          "-trusted.example.com",
+        ],
+        exampleDescription:
+          "這段設定遮蔽 example.com 的來源網域和 social.example.com，但允許 trusted.example.com。",
+        testLabel: "來源",
+        testPlaceholder: "https://social.example.com/article",
+        testHint: "輸入來源 URL 或 hostname。",
+      },
+      userAgents: {
+        title: "User-Agent",
+        label: "User-Agent 規則（每行一條）",
+        placeholder: "*bot*\nMozilla/*\n-Googlebot\n",
+        hint: "不區分大小寫地使用 glob 語法比對請求 User-Agent。",
+        syntax:
+          "每行格式：[ - ] text-glob\n以 # 開頭的行將被視為註釋並忽略。\n* 可以比對請求 User-Agent 中的任意字元。\n比對時不區分大小寫。\n",
+        examples: ["*bot*", "Mozilla/*", "-Googlebot"],
+        exampleDescription:
+          "這段設定遮蔽包含 bot 的 User-Agent 和以 Mozilla/ 開頭的值，但允許 Googlebot。",
+        testLabel: "User-Agent",
+        testPlaceholder: "Mozilla/5.0 (compatible; ExampleBot/1.0)",
+        testHint: "輸入完整或部分請求 User-Agent。",
+      },
+      ips: {
+        title: "IP 地址",
+        label: "IP 規則（每行一條）",
+        placeholder:
+          "203.0.113.15\n2001:db8::1\n203.0.113.0/24\n2001:db8::/32\n-203.0.113.10..203.0.113.20\n",
+        hint: "支援 IPv4/IPv6、CIDR 網段以及起始..結束範圍。",
+        syntax:
+          "每行格式：[ - ] address | CIDR | start..end\n以 # 開頭的行將被視為註釋並忽略。\n支援 IPv4 和 IPv6 地址。\n範圍兩端必須使用相同地址族，且起點不能大於終點。\n",
+        examples: [
+          "203.0.113.15",
+          "2001:db8::1",
+          "203.0.113.0/24",
+          "2001:db8::/32",
+          "-203.0.113.10..203.0.113.20",
+        ],
+        exampleDescription:
+          "這段設定演示 IPv4/IPv6 單個地址、CIDR 網段和 start..end 範圍；範圍前的 - 表示允許該範圍。",
+        testLabel: "IP 地址",
+        testPlaceholder: "203.0.113.15",
+        testHint: "輸入一個 IPv4 或 IPv6 地址進行測試。",
+      },
+      asns: {
+        title: "ASN",
+        label: "ASN 規則（每行一條）",
+        placeholder: "64500\n*\n-64501\n",
+        hint: "比對 Cloudflare metadata 中的數字自治系統編號。",
+        syntax:
+          "每行格式：[ - ] ASN-number\n以 # 開頭的行將被視為註釋並忽略。\n使用 * 比對任意 ASN。\n測試 metadata 值時也接受可選的 AS 字首。\n",
+        examples: ["64500", "*", "-64501"],
+        exampleDescription:
+          "這段設定遮蔽 ASN 64500 和任意 ASN，但透過最後一條規則放行 ASN 64501。",
+        testLabel: "ASN",
+        testPlaceholder: "64500",
+        testHint: "輸入數字自治系統編號。",
+      },
+      countries: {
+        title: "國家 / 地區",
+        label: "國家規則（每行一條）",
+        placeholder: "DE\n*\n-US\n",
+        hint: "使用 ISO 3166-1 alpha-2 國家程式碼。",
+        syntax:
+          "每行格式：[ - ] ISO-3166-alpha-2\n以 # 開頭的行將被視為註釋並忽略。\n使用 * 比對任意國家。\n國家程式碼比對時不區分大小寫。\n",
+        examples: ["DE", "*", "-US"],
+        exampleDescription:
+          "這段設定遮蔽 DE 和任意國家，但透過最後一條規則放行 US。",
+        testLabel: "國家程式碼",
+        testPlaceholder: "DE",
+        testHint: "輸入 ISO 3166-1 alpha-2 國家程式碼。",
+      },
+      regions: {
+        title: "州 / 省",
+        label: "地區規則（每行一條）",
+        placeholder: "DE-BE\n*\n-US-CA\n",
+        hint: "使用 Cloudflare metadata 中的 COUNTRY-REGION_CODE 格式。",
+        syntax:
+          "每行格式：[ - ] COUNTRY-REGION_CODE\n以 # 開頭的行將被視為註釋並忽略。\n使用 * 比對任意地區。\n地區值比對時不區分大小寫。\n",
+        examples: ["DE-BE", "*", "-US-CA"],
+        exampleDescription:
+          "這段設定遮蔽 DE-BE 和任意地區，但透過最後一條規則放行 US-CA。",
+        testLabel: "地區程式碼",
+        testPlaceholder: "US-CA",
+        testHint: "輸入 metadata 中的 COUNTRY-REGION_CODE 值。",
+      },
+    },
+    ignoreDoNotTrackLabel: "忽略瀏覽器 Do Not Track",
+    autoTrackGroupTitle: "自動追蹤",
+    autoTrackGroupDescription: "控制自動事件捕獲行為。",
+    autoTrackOutboundLinksLabel: "自動追蹤外鏈點選",
+    autoTrackOutboundLinksHint:
+      "開啟後，點選指向外部網域的連結將自動回報 outbound_click 事件。",
+    performanceGroupTitle: "效能追蹤",
+    performanceGroupDescription: "透過取樣率控制 Web 效能指標採集。",
+    performanceSampleRateLabel: "效能取樣率（%）",
+    performanceSampleRateHint:
+      "被取樣的造訪會在離開頁面時記錄 TTFB、FCP、LCP、CLS 和 INP。填 0 表示不採樣，100 表示全量採集。",
+    booleanOn: "開啟",
+    booleanOff: "關閉",
+    loadingSettings: "正在載入指令碼設定...",
+    saveTracking: "儲存追蹤設定",
+    savingTracking: "正在儲存追蹤設定…",
+    save: "儲存修改",
+    saving: "儲存中...",
+    transferTitle: "轉移到其他團隊",
+    transferSubtitle: "將目前站點遷移到你可管理的其他團隊。",
+    transferTeamLabel: "目標團隊",
+    transfer: "轉移站點",
+    transferring: "轉移中...",
+    scriptTitle: "安裝統計指令碼",
+    scriptSubtitle: "將此指令碼新增到你的網站後即可開始採集分析資料。",
+    scriptHint:
+      "推薦放在 </head> 結束標籤前；若不方便，也可放在 </body> 前，但請確保每頁只加載一次。",
+    copyScript: "複製指令碼",
+    copiedScript: "指令碼已複製。",
+    loadingScript: "正在載入指令碼...",
+    scriptUnavailable: "目前無法取得指令碼。",
+    deleteTitle: "刪除站點",
+    deleteSubtitle: "此操作會將目前站點從團隊中移除。",
+    delete: "刪除站點",
+    deleting: "刪除中...",
+    deleteConfirm: "該操作不可撤銷，是否繼續？",
+    toasts: {
+      saved: "站點設定已儲存。",
+      saveFailed: "站點設定儲存失敗。",
+      transferred: "站點已轉移。",
+      transferFailed: "站點轉移失敗。",
+      scriptLoadFailed: "載入指令碼片段失敗。",
+      settingsLoadFailed: "載入指令碼設定失敗。",
+      settingsPropagationHint: "設定分發到全球節點可能需要最多 1 小時。",
+      deleted: "站點已刪除。",
+      deleteFailed: "刪除站點失敗。",
+      invalidInput: "請填寫有效的站點名稱和網域。",
+    },
+  },
+  accountSettings: {
+    title: "帳戶設定",
+    subtitle: "管理你的個人資訊、登入密碼和儀表盤時區。",
+    profileTitle: "個人資訊",
+    profileDescription: "更新暱稱、使用者名稱和電子郵件。",
+    nicknameLabel: "暱稱",
+    nicknamePlaceholder: "例如：產品分析師",
+    usernameLabel: "使用者名稱",
+    usernamePlaceholder: "例如：alex",
+    usernameDescription: "使用者名稱也可用於登入。",
+    emailLabel: "電子郵件",
+    emailPlaceholder: "name@example.com",
+    invalidProfile: "請填寫有效的使用者名稱和電子郵件。",
+    profileSave: "儲存個人資訊",
+    profileSaving: "儲存中...",
+    profileSaved: "個人資訊已儲存。",
+    profileSaveFailed: "儲存個人資訊失敗。",
+    passwordTitle: "登入密碼",
+    passwordDescription: "修改目前帳號的登入密碼。",
+    currentPasswordLabel: "目前密碼",
+    newPasswordLabel: "新密碼",
+    confirmPasswordLabel: "確認新密碼",
+    currentPasswordRequired: "請輸入目前密碼。",
+    passwordTooShort: "新密碼至少需要 8 個字元。",
+    passwordMismatch: "兩次輸入的新密碼不一致。",
+    passwordSave: "修改密碼",
+    passwordSaving: "修改中...",
+    passwordSaved: "密碼已修改。",
+    passwordSaveFailed: "修改密碼失敗。",
+    preferredLanguageTitle: "通知語言",
+    preferredLanguageDescription: "選擇定時通知郵件使用的語言。",
+    preferredLanguageLabel: "郵件語言",
+    preferredLanguageDefault: "預設",
+    preferredLanguageEnglish: "英語",
+    preferredLanguageChinese: "簡體中文",
+    preferredLanguageTraditionalChinese: "繁體中文",
+    preferredLanguageJapanese: "日語",
+    preferredLanguageSaved: "通知語言已儲存。",
+    preferredLanguageSaveFailed: "儲存通知語言失敗。",
+    timeZoneTitle: "報表時區",
+    timeZoneDescription: "儀表盤裡的自然日期範圍和聚合分桶都會使用這個時區。",
+    activeTimeZone: "目前生效時區",
+    browserTimeZone: "瀏覽器時區",
+    browserUnavailable: "未檢測到",
+    browserSource: "跟隨瀏覽器",
+    manualSource: "手動設定",
+    preferenceLabel: "時區偏好",
+    preferenceDescription:
+      "跟隨瀏覽器會使用目前裝置時區；手動設定會在所有裝置上保持同一時區。",
+    useBrowser: "跟隨瀏覽器時區",
+    useCustom: "選擇時區",
+    customTimeZoneLabel: "時區",
+    customTimeZoneDescription: "從支援的 IANA 時區中選擇。",
+    invalidTimeZone: "請選擇有效的 IANA 時區。",
+    save: "儲存偏好",
+    saving: "儲存中...",
+    saved: "時區偏好已儲存。",
+    saveFailed: "儲存時區偏好失敗。",
+  },
+  notificationCenter: {
+    title: "通知中心",
+    subtitle: "檢視你的全部通知和報告。",
+    empty: "暫無通知。",
+    loading: "正在載入通知",
+    markRead: "標記已讀",
+    markAllRead: "全部標記為已讀",
+    refresh: "重新整理",
+    attention: "重點",
+    loadFailed: "載入通知失敗。",
+    markReadFailed: "標記通知為已讀失敗。",
+    markAllReadSuccess: "通知已全部標記為已讀。",
+    markAllReadFailed: "全部標記為已讀失敗。",
+    ruleFilterActive: "正在檢視此規則產生的通知。",
+    ruleFilterClear: "清除篩選",
+    sections: {
+      importantTitle: "重要通知",
+      importantDescription: "{count} 條未讀重點通知。",
+      importantEmpty: "目前沒有重要通知。",
+      reportsTitle: "報告",
+      reportsDescription: "檢視通知規則產生的定期報告。",
+      reportsEmpty: "目前沒有報告。",
+    },
+    tabs: {
+      all: "全部",
+      unread: "未讀",
+      attention: "重點",
+      report: "報告",
+    },
+    tabDescriptions: {
+      all: "全部訊息",
+      unread: "等待檢視",
+      attention: "需要關注",
+      report: "定期報告",
+    },
+    messageTypes: {
+      report: "報告",
+      milestone: "里程碑",
+      threshold: "閾值",
+      change: "變化",
+      health: "健康",
+      system: "系統",
+      test: "測試",
+    },
+    severities: {
+      info: "資訊",
+      success: "成功",
+      warning: "警告",
+      critical: "嚴重",
+    },
+    deliveryStatuses: {
+      created: "已建立",
+      sending: "傳送中",
+      sent: "已傳送",
+      partial: "部分完成",
+      failed: "失敗",
+      skipped: "已跳過",
+    },
+    channels: {
+      inApp: "站內通知",
+      email: "郵件",
+    },
+    channelStatuses: {
+      sent: "已傳送",
+      skipped: "已跳過",
+      failed: "失敗",
+      created: "已建立",
+    },
+    emailSkipReasons: {
+      user_preference_disabled: "使用者已關閉郵件通知",
+      system_email_unconfigured: "系統郵件尚未設定",
+      recipient_email_invalid: "收件人電子郵件無效",
+      secret_decryption_failed: "儲存的郵件憑據無法解密",
+      provider_failed: "郵件服務商拒絕傳送",
+      network_failed: "無法連線郵件服務商",
+      unknown: "未知原因",
+    },
+    emailAttempts: "嘗試次數：{count}",
+    emailRetryCount: "重試次數：{count}",
+    emailDuration: "{duration} 毫秒",
+    typeFilterLabel: "型別",
+    severityFilterLabel: "嚴重程度",
+    allTypes: "全部型別",
+    allSeverities: "全部嚴重程度",
+    preferencesTitle: "通知偏好",
+    preferencesDescription:
+      "這些設定控制郵件投遞，以及哪些訊息會保持未讀以提醒關注。",
+    emailNotificationsLabel: "郵件通知",
+    emailNotificationsDescription: "規則觸發時傳送郵件。",
+    reportsUnreadLabel: "報告保持未讀",
+    reportsUnreadDescription: "報告建立後保持未讀狀態。",
+    milestonesUnreadLabel: "里程碑保持未讀",
+    milestonesUnreadDescription: "將未讀狀態保留給里程碑訊息。",
+    alertsUnreadLabel: "告警保持未讀",
+    alertsUnreadDescription: "閾值和健康告警保持未讀。",
+    preferencesSaved: "通知偏好已儲存。",
+    preferencesSaveFailed: "儲存通知偏好失敗。",
+    detailFields: {},
+  },
+  notificationEmail: {
+    common: {
+      brand: "InsightFlare",
+      date: "日期",
+      coreMetrics: "核心指標",
+      topPages: "熱門頁面",
+      topReferrers: "主要來源",
+      views: "瀏覽量",
+      visitors: "訪客數",
+      sessions: "工作階段數",
+      visits: "次造訪",
+      viewsUnit: "次瀏覽",
+      direct: "直接造訪",
+      metric: "指標",
+      window: "時間視窗",
+      currentValue: "目前值",
+      previousValue: "上期值",
+      threshold: "閾值",
+      milestone: "里程碑",
+      change: "變化",
+      mode: "模式",
+      lastSeen: "最後收到資料",
+      never: "從未收到",
+      noPageData: "暫無頁面資料。",
+      noReferrerData: "暫無來源資料。",
+      footer: "這封郵件由 InsightFlare 通知系統傳送。",
+      fallbackSubject: "InsightFlare 通知",
+      trackingHint: "請檢查統計指令碼是否正常安裝，或確認站點是否仍有流量。",
+      severity: {
+        info: "資訊",
+        success: "成功",
+        warning: "警告",
+        critical: "嚴重",
+      },
+    },
+    test: {
+      subject: "InsightFlare 通知測試",
+      title: "InsightFlare 通知測試",
+      summary: "這是一條來自 InsightFlare 的測試通知。",
+      body: "這是一條來自 InsightFlare 的測試通知。如果郵件已設定並啟用，它也會驗證 Resend 投遞是否正常。",
+    },
+    report: {
+      subject: "{site} {periodLabel}造訪報告",
+      title: "{site} {periodLabel}造訪報告",
+      summary: "{date}：{visitors} 位訪客，{views} 次瀏覽。",
+      periodLabels: {
+        daily: "每日",
+        weekly: "每週",
+        monthly: "每月",
+        quarterly: "每季度",
+        yearly: "每年",
+      },
+    },
+    milestone: {
+      subject: "{site} 達到 {bucket} {metric}",
+      title: "{site} 達到 {bucket} {metric}",
+      summary: "已達到流量里程碑：{bucket} {metric}。",
+    },
+    threshold: {
+      subject: "{site} 造訪量達到閾值",
+      title: "{site} 造訪量達到閾值",
+      summary: "{window}的{metric}為 {value}，已符合閾值 {operator} {target}。",
+      metricLabels: {
+        views: "瀏覽量",
+        visitors: "訪客數",
+        sessions: "工作階段數",
+      },
+      windows: {
+        last_1h: "過去 1 小時",
+        last_24h: "過去 24 小時",
+        yesterday: "昨天",
+      },
+    },
+    health: {
+      subject: "{site} 已超過 {hours} 小時沒有收到造訪資料",
+      title: "{site} 已超過 {hours} 小時沒有收到造訪資料",
+      noHistory: "目前沒有歷史造訪資料。請檢查統計指令碼是否已正確安裝。",
+    },
+    change: {
+      subject: "{site} 流量變化提醒",
+      title: "{site} 流量變化提醒",
+      summary: "{window}的{metric}變化了 {change}。",
+    },
+  },
+  runtimeConfigError: {
+    title: "需要執行時設定",
+    eyebrow: "部署已暫停",
+    heading: "InsightFlare 需要一個執行時金鑰後才能載入控制台。",
+    description:
+      "應用已經啟動，但目前執行環境沒有讀取到必需的 root secret，因此暫時阻止進入控制台。",
+    requiredTitle: "必需的執行時金鑰",
+    requiredDescription: "請在 Cloudflare 執行時金鑰中至少設定以下其中一個值。",
+    secretHint: "推薦使用 MAIN_SECRET。舊部署仍可繼續使用 DAILY_SALT_SECRET。",
+    commandTitle: "Cloudflare 命令",
+    commandDescription: "使用專案內建命令寫入推薦金鑰，然後重新部署。",
+    quickStartHint:
+      "或者，請檢視 GitHub README 的“快速開始”章節來設定這個變數。",
+    docsLabel: "開啟 GitHub",
+    homeLabel: "重試控制台",
+  },
+  login: {
+    title: "登入",
+    subtitle: "使用 InsightFlare 帳號登入。",
+    username: "使用者名稱或電子郵件",
+    password: "密碼",
+    signIn: "登入",
+    invalidCredentials: "使用者名稱或密碼錯誤。",
+  },
+  accountLinks: {
+    invite: {
+      title: "團隊邀請",
+      subtitle: "接受邀請後加入該團隊。",
+      loading: "正在載入邀請...",
+      missingToken: "缺少邀請 token。",
+      loadFailed: "載入邀請失敗。",
+      accept: "接受邀請",
+      accepting: "正在接受...",
+      accepted: "已接受邀請。",
+      acceptFailed: "接受邀請失敗。",
+      signIn: "登入後接受",
+      signedInNotice: "目前已登入。接受後會將目前帳號加入該團隊。",
+      teamLabel: "團隊",
+      roleLabel: "角色",
+      emailLabel: "邀請電子郵件",
+      accountEmailLabel: "帳號電子郵件",
+      anyEmail: "任意電子郵件",
+      expiresLabel: "過期時間",
+      usernameLabel: "使用者名稱",
+      nameLabel: "顯示名稱",
+      passwordLabel: "密碼",
+      roles: {
+        admin: "管理員",
+        member: "成員",
+      },
+    },
+    resetPassword: {
+      title: "重設密碼",
+      subtitle: "為該帳號設定新密碼。",
+      loading: "正在載入重設連結...",
+      missingToken: "缺少重設 token。",
+      loadFailed: "載入重設連結失敗。",
+      reset: "重設密碼",
+      resetting: "正在重設...",
+      resetDone: "密碼已重設，請使用新密碼登入。",
+      resetFailed: "重設密碼失敗。",
+      signIn: "返回登入",
+      accountLabel: "帳號",
+      emailLabel: "電子郵件",
+      expiresLabel: "過期時間",
+      passwordLabel: "新密碼",
+      confirmPasswordLabel: "確認密碼",
+      passwordTooShort: "密碼至少 8 個字元。",
+      passwordMismatch: "兩次輸入的密碼不一致。",
+    },
+  },
+  empty: {
+    noTeams: "目前帳號還沒有可存取的團隊。",
+  },
+  errorPage: {
+    notFoundEyebrow: "頁面未找到",
+    notFoundTitle: "找不到這個頁面",
+    notFoundDescription: "地址可能不正確，或者頁面已經被移動。",
+    errorEyebrow: "應用錯誤",
+    errorTitle: "頁面出現了問題",
+    errorDescription:
+      "InsightFlare 無法完成這次請求。下面的診斷資訊可以幫助我們定位問題。",
+    statusLabel: "狀態",
+    reasonLabel: "原因",
+    requestLabel: "請求路徑",
+    timestampLabel: "時間",
+    diagnosticIdLabel: "診斷 ID",
+    errorTypeLabel: "錯誤型別",
+    errorMessageLabel: "錯誤資訊",
+    notFoundReason: "route_not_found",
+    unexpectedReason: "unexpected_application_error",
+    homeAction: "返回首頁",
+    reportAction: "在 GitHub 反饋",
+    reportHint: "將開啟一個已預填內容的 GitHub Issue，提交前請先檢查資訊。",
+  },
+  actions: {
+    logout: "登出",
+    switchToEnglish: "English",
+    switchToChinese: "簡體中文",
+    switchToTraditionalChinese: "繁體中文",
+    switchToJapanese: "日本語",
+    switchToLight: "淺色",
+    switchToDark: "深色",
+  },
+  teamSelect: {
+    groupLabel: "團隊",
+    groups: {
+      created: "建立的團隊",
+      managed: "管理的團隊",
+      member: "所屬的團隊",
+      system: "系統中的全部團隊",
+    },
+    createHint: "新建團隊",
+    createTitle: "新建團隊",
+    createDescription: "建立後會自動切換到新團隊。",
+    nameLabel: "團隊名稱",
+    namePlaceholder: "例如：增長團隊",
+    slugLabel: "團隊 Slug（可選）",
+    slugPlaceholder: "例如：growth-team",
+    create: "建立",
+    creating: "建立中...",
+    cancel: "取消",
+    invalidName: "團隊名稱至少 2 個字元。",
+    createFailed: "建立失敗，請稍後重試。",
+    createSuccess: "團隊已建立。",
+  },
+  teamManagement: {
+    stats: {
+      sites: "站點",
+      members: "成員",
+    },
+    toasts: {
+      teamSaved: "團隊設定已儲存。",
+      teamSaveFailed: "團隊設定儲存失敗。",
+      teamDeleted: "團隊已刪除。",
+      teamDeleteFailed: "刪除團隊失敗。",
+      memberRemoved: "成員已移除。",
+      memberRemoveFailed: "移除成員失敗。",
+      roleChanged: "成員角色已更新。",
+      roleChangeFailed: "更新成員角色失敗。",
+      siteAccessChanged: "成員站點權限已更新。",
+      siteAccessChangeFailed: "更新站點權限失敗。",
+      invalidTeamName: "團隊名稱至少 2 個字元。",
+      inviteCreated: "邀請連結已建立。",
+      inviteCreateFailed: "建立邀請連結失敗。",
+      inviteRevoked: "邀請已撤銷。",
+      inviteRevokeFailed: "撤銷邀請失敗。",
+      inviteCopied: "邀請連結已複製。",
+      inviteCopyFailed: "複製邀請連結失敗。",
+      invalidInviteEmail: "請輸入有效的邀請電子郵件。",
+      invalidInviteExpiry: "邀請有效期至少為 1 小時。",
+      ownerTransferred: "所有權已轉移。",
+      ownerTransferFailed: "轉移所有權失敗。",
+      invalidTransferTarget: "請選擇新的所有者。",
+    },
+    sites: {
+      title: "站點儀表盤",
+      subtitle: "聚合檢視該團隊下所有站點的造訪表現。",
+      aggregateTitle: "總造訪量",
+      pagesPerSession: "每工作階段頁面數",
+      noSites: "目前團隊還沒有站點。",
+      openAnalytics: "檢視分析",
+    },
+    widgets: {
+      title: "小元件",
+      subtitle: "小元件功能正在開發中。",
+      underConstruction: "正在開發中",
+    },
+    notifications: {
+      title: "通知規則",
+      subtitle: "管理目前團隊的通知規則。",
+      empty: "目前團隊還沒有通知規則。",
+      forbiddenTitle: "通知規則由團隊管理員管理",
+      forbiddenDescription:
+        "你仍然可以檢視自己的通知訊息，並修改個人通知偏好。",
+      rulesTitle: "通知規則",
+      enabledCount: "目前團隊已啟用 {count} 條規則。",
+      loadingRules: "正在載入通知規則",
+      deliveryTestTitle: "投遞測試",
+      deliveryTestDescription:
+        "為你建立一條站內通知；如果可用，也會嘗試傳送郵件。",
+      inAppTestHint: "我們會向你傳送一條站內通知。",
+      emailTestConfiguredHint: "我們會向你傳送一條測試郵件。",
+      emailTestUnconfiguredHint:
+        "目前系統未設定郵件傳送服務，請聯絡管理員新增。",
+      sendTestNotification: "傳送測試通知",
+      loadRulesFailed: "載入通知規則失敗。",
+      testNotificationSent: "測試通知已傳送。",
+      sendTestNotificationFailed: "傳送測試通知失敗。",
+      createRule: "建立規則",
+      editRule: "編輯規則",
+      dialogDescription: "為目前團隊設定一條基礎通知規則。",
+      ruleInfoSection: "規則資訊",
+      scheduleSection: "計劃",
+      sendScheduleSection: "傳送時間",
+      checkSection: "檢查頻率",
+      conditionSection: "條件",
+      deliverySection: "投遞",
+      summarySection: "摘要",
+      liveSummaryDescription: "即時確認這條規則會如何執行。",
+      nameLabel: "名稱",
+      siteLabel: "站點",
+      chooseSite: "選擇站點",
+      ruleTypeLabel: "規則型別",
+      recipientLabel: "接收人",
+      enabledLabel: "啟用",
+      enabledHint: "執行這條規則",
+      scheduleLabel: "計劃",
+      timeLabel: "時間",
+      timezoneLabel: "時區",
+      intervalLabel: "間隔",
+      dayLabel: "星期",
+      dayOfMonthLabel: "日期",
+      monthLabel: "月份",
+      reportPeriodLabel: "報告週期",
+      milestoneEveryLabel: "每個里程碑",
+      matchLabel: "比對",
+      matchAll: "全部",
+      matchAny: "任一",
+      changeValueLabel: "變化值",
+      changeModeLabel: "變化方式",
+      changeModePercent: "百分比",
+      changeModeAbsolute: "絕對值",
+      addCondition: "新增條件",
+      removeCondition: "移除",
+      conditionItemTitle: "條件 {index}",
+      metricLabel: "指標",
+      windowLabel: "時間視窗",
+      operatorLabel: "運算子",
+      valueLabel: "閾值",
+      cooldownLabel: "冷卻時間",
+      cooldownDescription: "在這段時間內，不會重複傳送通知。",
+      noDataHoursLabel: "無資料小時數",
+      pleaseChooseSite: "請選擇一個站點。",
+      pleaseChooseRecipients: "請至少選擇一個接收人。",
+      ruleCreated: "規則已建立。",
+      ruleUpdated: "規則已更新。",
+      createRuleFailed: "建立規則失敗。",
+      updateRuleFailed: "更新規則失敗。",
+      deleteConfirm: "確認刪除「{name}」？",
+      ruleDeleted: "規則已刪除。",
+      deleteRuleFailed: "刪除規則失敗。",
+      lastChecked: "上次檢查",
+      actions: "操作",
+      edit: "編輯",
+      enable: "啟用",
+      disable: "停用",
+      delete: "刪除",
+      saveRule: "儲存規則",
+      emailPreview: "郵件預覽",
+      preview: "預覽",
+      runNow: "立即執行",
+      previewFailed: "預覽規則失敗。",
+      runFailed: "執行規則失敗。",
+      runResultToast:
+        "已建立 {messages} 條訊息。郵件傳送 {sent} 條，失敗 {failed} 條。",
+      previewDialogTitle: "規則預覽",
+      previewDialogDescription: "僅評估規則，不建立訊息，也不傳送郵件。",
+      coolingDownUntil: "冷卻至 {time}",
+      scheduleDaily: "每天 {time}",
+      scheduleWeekly: "每週{day} {time}",
+      scheduleMonthly: "每月 {day} 日 {time}",
+      scheduleQuarterly: "每季度 {day} 日 {time}",
+      scheduleYearly: "每年 {month}/{day} {time}",
+      scheduleInterval: "每 {minutes} 分鐘",
+      scheduleCustom: "自訂",
+      conditionReport: "{period}報告",
+      summaryWhenConditions: "當滿足下列{combinator}條件時，傳送{type}通知：",
+      summaryWhenSingleCondition: "當滿足此條件時，傳送{type}通知：",
+      summaryConditionThreshold: "{window}{metric}{operator}{value}",
+      summaryConditionChange: "{window}{metric}{mode}變化{operator}{value}",
+      summaryReportSchedule: "{period}：{schedule}",
+      summaryMilestoneCondition: "{metric} 每達到 {step} 觸發",
+      summaryHealthCondition: "{hours} 小時無資料",
+      defaultNames: {
+        report: "{site} 每日報告",
+        milestone: "{site} 流量里程碑",
+        threshold: "{site} 造訪閾值",
+        change: "{site} 流量變化",
+        health: "{site} 健康檢查",
+      },
+      columns: {
+        name: "名稱",
+        type: "型別",
+        site: "站點",
+        recipient: "接收人",
+        schedule: "計劃",
+        condition: "條件",
+        nextRun: "下次執行",
+        status: "狀態",
+      },
+      status: {
+        enabled: "已啟用",
+        disabled: "未啟用",
+      },
+      nextRunStates: {
+        disabled: "未啟用",
+        coolingDown: "冷卻中",
+        dueNow: "應立即執行",
+      },
+      previewFields: {
+        status: "狀態",
+        summary: "摘要",
+        title: "標題",
+        htmlPreview: "HTML 預覽",
+        bodyText: "正文",
+        data: "資料",
+        createdAt: "建立時間",
+        updatedAt: "更新時間",
+        loadingContent: "正在載入實際報告內容",
+        noHtmlPreview: "目前預覽沒有 HTML 內容。",
+      },
+      ruleTypes: {
+        report: "報告",
+        milestone: "里程碑",
+        threshold: "閾值",
+        change: "變化",
+        health: "健康",
+        test: "測試",
+      },
+      ruleTypeDescriptions: {
+        report: "定期傳送站點概覽",
+        milestone: "指標達到階段值時通知",
+        threshold: "指標高於或低於閾值時通知",
+        change: "指標相對上個週期變化時通知",
+        health: "長時間無資料時通知",
+      },
+      recipientModes: {
+        creator: "建立者",
+        team_admins: "團隊管理員",
+        all_team_members: "全部團隊成員",
+        users: "指定使用者",
+      },
+      recipientKindLabel: "接收人型別",
+      recipientPresetLabel: "預設",
+      customRecipientsEmpty: "未選擇接收人",
+      noTeamMembers: "目前沒有可選團隊成員。",
+      recipientKinds: {
+        preset: "預設",
+        custom: "自訂",
+      },
+      scheduleKinds: {
+        daily: "每天",
+        weekly: "每週",
+        monthly: "每月",
+        quarterly: "每季度",
+        yearly: "每年",
+        interval: "間隔",
+      },
+      reportPeriods: {
+        daily: "日報",
+        weekly: "週報",
+        monthly: "月報",
+        quarterly: "季度報告",
+        yearly: "年報",
+      },
+      cooldownUnits: {
+        minutes: "分鐘",
+        hours: "小時",
+        days: "天",
+      },
+      intervalOptions: {
+        every30Minutes: "每 30 分鐘",
+        everyHour: "每小時",
+        every6Hours: "每 6 小時",
+        every12Hours: "每 12 小時",
+        everyDay: "每天",
+        every7Days: "每 7 天",
+        every30Days: "每 30 天",
+      },
+      weekDays: ["週日", "週一", "週二", "週三", "週四", "週五", "週六"],
+      metrics: {
+        views: "瀏覽量",
+        visitors: "訪客",
+        sessions: "工作階段",
+      },
+      windows: {
+        last_1h: "最近 1 小時",
+        last_24h: "最近 24 小時",
+        yesterday: "昨天",
+      },
+      emailPreviewPage: {
+        title: "通知郵件預覽",
+        subtitle: "不建立訊息、不呼叫 Resend，直接渲染通知郵件。",
+        typeLabel: "預覽型別",
+        localeLabel: "預覽語言",
+        formatLabel: "預覽格式",
+        html: "HTML",
+        text: "純文字",
+        json: "JSON",
+        refresh: "預覽",
+        loading: "正在渲染預覽...",
+        loadFailed: "渲染郵件預覽失敗。",
+        subject: "主題",
+      },
+    },
+    publicLinks: {
+      title: "公開連結",
+      subtitle: "管理目前團隊可公開存取的分享連結。",
+      enabled: "已啟用",
+      disabled: "未啟用",
+      disabledHint: "未啟用公開存取。前往站點設定開啟。",
+      viewSettings: "檢視設定",
+      copyLink: "複製連結",
+      linkCopied: "連結已複製",
+      noSites: "目前團隊還沒有站點。",
+      columns: {
+        site: "站點",
+        domain: "網域",
+        publicUrl: "公開連結",
+        status: "狀態",
+        action: "操作",
+      },
+    },
+    apiKeys: {
+      title: "API 金鑰",
+      subtitle: "管理目前團隊用於介面存取的金鑰。",
+      empty: "目前團隊還沒有 API 金鑰。",
+      create: "建立金鑰",
+      creating: "建立中...",
+      createTitle: "建立 API 金鑰",
+      createSubtitle: "只授予這個整合真正需要的最小權限。",
+      nameLabel: "金鑰名稱",
+      namePlaceholder: "生產同步任務",
+      scopesTitle: "權限",
+      scopesDescription: "API 金鑰永遠不能管理成員、使用者、所有權或其他金鑰。",
+      siteScopeTitle: "站點範圍",
+      siteScopeDescription: "不選擇站點表示目前團隊所有現有和未來站點。",
+      allSites: "全部站點",
+      expirationLabel: "過期時間",
+      expiration30: "30 天",
+      expiration90: "90 天",
+      expiration180: "180 天",
+      expiration365: "365 天",
+      expirationNever: "永不過期",
+      oneTimeSecretTitle: "立即複製這個金鑰",
+      oneTimeSecretDescription: "完整金鑰只顯示一次，關閉彈窗後無法再次檢視。",
+      copySecret: "複製金鑰",
+      revoke: "撤銷",
+      rotate: "輪換",
+      revokeConfirm: "確認立即撤銷這個 API 金鑰嗎？",
+      rotateConfirm: "確認輪換這個 API 金鑰嗎？舊金鑰會被立即撤銷。",
+      neverExpires: "永不過期",
+      notUsed: "未使用",
+      loading: "正在載入 API 金鑰...",
+      loadFailed: "API 金鑰載入失敗。",
+      invalidInput: "請輸入名稱並至少選擇一個權限。",
+      createFailed: "API 金鑰建立失敗。",
+      revokeFailed: "API 金鑰撤銷失敗。",
+      rotateFailed: "API 金鑰輪換失敗。",
+      copied: "已複製",
+      status: {
+        active: "有效",
+        expired: "已過期",
+        revoked: "已撤銷",
+      },
+      scopes: {
+        analyticsRead: "讀取分析",
+        analysisRead: "讀取分析定義",
+        analysisWrite: "寫入分析定義",
+        siteRead: "讀取站點",
+        siteWrite: "寫入站點",
+        siteConfigRead: "讀取設定",
+        siteConfigWrite: "寫入設定",
+      },
+      scopeDescriptions: {
+        analyticsRead: "檢視造訪量、訪客、頁面瀏覽等分析資料",
+        analysisRead: "檢視團隊共享的已儲存篩選器和漏斗定義",
+        analysisWrite: "建立、更新或刪除漏斗定義",
+        siteRead: "檢視站點列表和站點詳情",
+        siteWrite: "建立、更新或刪除站點",
+        siteConfigRead: "檢視站點設定，如追蹤程式碼、網域允許清單等",
+        siteConfigWrite: "修改站點設定，如追蹤強度、路徑黑名單等",
+      },
+      scopeGroups: {
+        analytics: "分析",
+        analysis: "分析定義",
+        site: "站點",
+        siteConfig: "站點設定",
+      },
+      columns: {
+        name: "名稱",
+        scopes: "權限",
+        sites: "站點",
+        expires: "過期",
+        lastUsed: "最近使用",
+        status: "狀態",
+        action: "操作",
+      },
+    },
+    settings: {
+      title: "團隊設定",
+      subtitle: "更新團隊顯示名和 slug。",
+      nameLabel: "團隊顯示名",
+      slugLabel: "團隊 Slug",
+      save: "儲存設定",
+      saving: "儲存中...",
+      delete: "刪除團隊",
+      deleting: "刪除中...",
+      deleteConfirm: "確認刪除該團隊及其所有資料嗎？此操作不可撤銷。",
+      transferTitle: "轉移所有權",
+      transferSubtitle:
+        "將團隊所有權轉移給另一位成員。目前所有者會自動降為管理員。",
+      transferTargetLabel: "新的所有者",
+      transferTargetPlaceholder: "選擇團隊成員",
+      transfer: "轉移所有權",
+      transferring: "轉移中...",
+      transferConfirm:
+        "此操作不可撤銷，你將失去對該團隊的所有權（仍保留管理員權限）。確認繼續嗎？",
+      noTransferableMembers: "目前團隊沒有其他可轉移的成員，請先新增成員。",
+    },
+    members: {
+      title: "成員管理",
+      subtitle: "建立邀請連結或移除現有成員。",
+      remove: "移除成員",
+      removeMemberAction: "移除成員「{target}」",
+      removeMemberConfirm:
+        "確認將「{target}」從該團隊移除嗎？移除後將立即失去存取權限。",
+      noMembers: "目前團隊暫無成員。",
+      invitesTitle: "建立邀請連結",
+      invitesSubtitle: "使用者接受邀請後才會加入此團隊。",
+      inviteEmailLabel: "電子郵件限制（可選）",
+      inviteEmailPlaceholder: "user@example.com",
+      inviteExpiresLabel: "有效期（小時）",
+      createInvite: "建立邀請連結",
+      creatingInvite: "建立中...",
+      copyInvite: "複製邀請連結",
+      inviteLinksTitle: "邀請連結",
+      inviteLinksSubtitle: "檢視邀請狀態並撤銷有效連結。",
+      noInvites: "目前團隊暫無邀請連結。",
+      anyEmail: "任意電子郵件",
+      revokeInvite: "撤銷邀請",
+      revokeInviteAction: "撤銷「{target}」的邀請",
+      revokeInviteConfirm:
+        "確認撤銷「{target}」的邀請嗎？該邀請連結將立即失效。",
+      siteAccessLabel: "站點權限",
+      siteAccessAll: "全部站點",
+      siteAccessRestricted: "限定站點",
+      siteAccessSelected: "已選擇 {count} 個站點",
+      siteAccessDescription: "保持為全部站點，或選擇此成員可以存取的具體站點。",
+      siteAccessAdmins: "管理員可以存取此團隊內的全部站點。",
+      siteAccessDialogTitle: "編輯站點權限",
+      saveSiteAccess: "儲存權限",
+      cancelSiteAccess: "取消",
+      noSitesForAccess: "目前團隊暫無站點。",
+      inviteStatuses: {
+        active: "有效",
+        used: "已使用",
+        revoked: "已撤銷",
+        expired: "已過期",
+      },
+      columns: {
+        name: "名稱",
+        username: "使用者名稱",
+        email: "電子郵件",
+        inviteCode: "邀請碼",
+        role: "角色",
+        siteAccess: "站點權限",
+        joinedAt: "加入時間",
+        createdAt: "建立時間",
+        expiresAt: "過期時間",
+        usedAt: "使用時間",
+        status: "狀態",
+        action: "操作",
+      },
+      roleLabels: {
+        owner: "所有者",
+        admin: "管理員",
+        member: "成員",
+      },
+    },
+  },
+  managementNav: {
+    users: "使用者管理",
+    sites: "站點管理",
+    teams: "團隊管理",
+    versionUpdates: "版本更新",
+    scheduledTasks: "排程任務",
+    requestObservation: "請求觀測",
+    systemPerformance: "系統效能",
+    systemSettings: "系統設定",
+  },
+  managementPages: {
+    versionUpdates: {
+      subtitle: "檢視 InsightFlare 已釋出版本與目前執行中的建置版本。",
+      empty: "暫無版本更新記錄。",
+      currentVersion: "目前版本",
+      latestVersion: "最新版本",
+      currentCommit: "目前提交",
+      releaseCount: "釋出數",
+      publishedAt: "釋出時間",
+      author: "釋出者",
+      commit: "提交",
+      statusStable: "正式版",
+      statusPrerelease: "預釋出",
+      statusDraft: "草稿",
+      currentVersionBadge: "目前版本",
+      releaseNotes: "更新說明",
+      openRelease: "開啟 Release",
+      viewDetails: "檢視詳細變更",
+      detailsTitle: "詳細變更",
+      detailsDescription: "{range} 包含的提交。",
+      detailsLoading: "正在載入詳細變更...",
+      detailsEmpty: "這個版本暫無可對比的上一個釋出版本。",
+      detailsFailed: "載入詳細變更失敗。",
+      currentCommitBadge: "目前部署",
+      openCompare: "開啟對比",
+      openCommit: "開啟提交",
+      commitCount: "提交數",
+      source: "資料來源",
+      loadFailed: "載入版本索引失敗。",
+      unknown: "未知",
+    },
+    scheduledTasks: {
+      subtitle: "檢視和管理系統排程任務。",
+      empty: "暫無排程任務。",
+      refresh: "重新整理",
+      loadFailed: "載入排程任務失敗。",
+      loadMore: "載入更多",
+      allStatuses: "全部狀態",
+      runs24h: "24 小時內執行次數",
+      successRate24h: "24 小時成功率",
+      successRateDescription: "只統計成功狀態的執行。",
+      problemRuns24h: "異常執行次數",
+      retentionPrefix: "保留",
+      days: "天",
+      failed: "失敗",
+      partial: "部分完成",
+      lastRun: "最近執行",
+      staleRunning: "長時間未完成的執行",
+      noStaleRunning: "沒有長時間未完成的執行",
+      taskListTitle: "任務",
+      taskListDescription: "目前系統註冊的排程任務和近 30 天健康狀況。",
+      task: "任務",
+      schedule: "計劃",
+      enabled: "狀態",
+      enabledYes: "已啟用",
+      enabledNo: "未啟用",
+      taskStateSaved: "任務狀態已更新。",
+      taskStateSaveFailed: "更新任務狀態失敗。",
+      lastStatus: "最近狀態",
+      runs30d: "30 天執行",
+      successRate30d: "30 天成功率",
+      avgDuration: "平均耗時",
+      runHistoryTitle: "執行歷史",
+      nextRun: "下次執行",
+      runHistoryDescription: "最近 30 天內的任務執行記錄。",
+      noRuns: "暫無執行記錄。",
+      scheduledAt: "計劃時間",
+      startedAt: "開始時間",
+      finishedAt: "結束時間",
+      trigger: "觸發",
+      tasks: "任務",
+      taskCount: "任務數",
+      subtaskCount: "子任務數",
+      taskResult: "任務結果",
+      statusLabel: "狀態",
+      duration: "耗時",
+      sites: "站點",
+      hours: "小時",
+      rows: "行數",
+      rulesScanned: "規則",
+      messagesCreated: "訊息",
+      emailFailed: "郵件失敗",
+      logs: "日誌",
+      viewLogs: "檢視日誌",
+      logTitle: "執行日誌",
+      noRunSelected: "選擇一條執行記錄以檢視日誌。",
+      noLogs: "暫無日誌。",
+      error: "錯誤",
+      status: {
+        running: "執行中",
+        success: "成功",
+        partial: "部分完成",
+        failed: "失敗",
+        skipped: "已跳過",
+      },
+      taskDefinitions: {
+        visit_hourly_rollup: {
+          name: "小時造訪聚合",
+          description:
+            "將已關閉的造訪記錄聚合為小時彙總，用於儀表盤計數器和趨勢。",
+          schedule: "每小時",
+        },
+        notification_tick: {
+          name: "通知分發",
+          description: "檢查通知規則並分發訊息。",
+          schedule: "每 30 分鐘",
+        },
+        database_maintenance: {
+          name: "資料庫最佳化",
+          description: "分批清理過期執行資料和通知，並最佳化 D1 查詢統計資訊。",
+          schedule: "每天",
+        },
+      },
+    },
+  },
+  adminUsers: {
+    title: "使用者管理",
+    subtitle: "僅系統管理員可建立和管理後臺使用者。",
+    createTitle: "新建使用者",
+    createTeamNotice:
+      "在這裡建立使用者會同時建立一個由該使用者擁有的新團隊。如果只是想把使用者加入現有團隊，請前往對應團隊設定中建立邀請連結。",
+    username: "使用者名稱",
+    email: "電子郵件",
+    name: "名稱（可選）",
+    password: "密碼（至少 8 位）",
+    role: "系統角色",
+    teamName: "團隊名稱",
+    teamSlug: "團隊 Slug（可選）",
+    defaultTeamName: "{name} 的團隊",
+    create: "建立使用者",
+    creating: "建立中...",
+    delete: "刪除",
+    deleting: "刪除中...",
+    deleteConfirm: "確認刪除該使用者帳號嗎？",
+    deleteSuccess: "使用者已刪除。",
+    deleteFailed: "刪除使用者失敗。",
+    generateResetLink: "產生重設密碼連結",
+    resetLinkCreated: "重設密碼連結已產生。",
+    resetLinkCreateFailed: "產生重設密碼連結失敗。",
+    resetLinkCopied: "重設密碼連結已複製。",
+    resetLinkCopyFailed: "複製重設密碼連結失敗。",
+    copyResetLink: "複製連結",
+    resetLinkExpiresAt: "過期時間",
+    listTitle: "使用者列表",
+    listSubtitle: "目前系統內所有使用者。",
+    noData: "暫無使用者資料。",
+    loadFailed: "載入使用者列表失敗。",
+    createSuccess: "使用者建立成功。",
+    createFailed: "使用者建立失敗。",
+    invalidInput: "請填寫有效的使用者名稱、電子郵件和密碼。",
+    columns: {
+      name: "名稱",
+      username: "使用者名稱",
+      email: "電子郵件",
+      role: "角色",
+      teams: "團隊數",
+      created: "建立時間",
+      action: "操作",
+    },
+  },
+  adminSites: {
+    title: "站點管理",
+    subtitle: "管理目前團隊下的站點。",
+    team: "團隊",
+    createTitle: "新建站點",
+    createSubtitle: "新建後可直接進入分析頁面。",
+    name: "站點名稱",
+    domain: "網域",
+    publicSlug: "公開 Slug（可選）",
+    create: "建立站點",
+    creating: "建立中...",
+    listTitle: "站點列表",
+    listSubtitle: "目前團隊下所有站點。",
+    noData: "暫無站點資料。",
+    loadFailed: "載入站點失敗。",
+    createSuccess: "站點建立成功。",
+    createFailed: "站點建立失敗。",
+    invalidInput: "請填寫有效的站點名稱和網域。",
+    open: "開啟分析",
+    columns: {
+      name: "名稱",
+      domain: "網域",
+      slug: "Slug",
+      created: "建立時間",
+      action: "操作",
+    },
+  },
+  adminTeams: {
+    title: "團隊管理",
+    subtitle: "僅系統管理員可建立與檢視所有團隊。",
+    createTitle: "新建團隊",
+    createSubtitle: "建立後可進入團隊設定與成員管理。",
+    name: "團隊名稱",
+    slug: "團隊 Slug（可選）",
+    create: "建立團隊",
+    creating: "建立中...",
+    listTitle: "團隊列表",
+    listSubtitle: "系統中所有團隊。",
+    noData: "暫無團隊資料。",
+    loadFailed: "載入團隊失敗。",
+    createSuccess: "團隊建立成功。",
+    createFailed: "團隊建立失敗。",
+    invalidInput: "團隊名稱至少 2 個字元。",
+    open: "進入團隊",
+    settings: "設定",
+    columns: {
+      name: "名稱",
+      slug: "Slug",
+      sites: "站點數",
+      members: "成員數",
+      created: "建立時間",
+      action: "操作",
+    },
+  },
+  requestObservation: {
+    uiLabels: {
+      pageSubtitle: "基於 Analytics Engine 觀察請求分類、實際處置與統計鏈路。",
+      blocked: "攔截請求",
+      included: "統計請求",
+      disposition: "處置",
+      normalRequests: "正常請求",
+      suspectedBotRequests: "疑似機器人",
+      botRequests: "機器人請求",
+      customBlockedRequests: "自定義攔截",
+      includedRequests: "統計請求數",
+      blockedRequests: "攔截請求數",
+      totalRequests: "總請求數",
+      botRequestRatio: "機器人請求比例",
+      blockedRequestRatio: "攔截請求比例",
+      normalRequestRatio: "正常請求比例",
+      normalTrafficShare: "正常請求",
+      suspectedBotTraffic: "疑似機器人",
+      botTraffic: "機器人請求",
+      customBlockedTraffic: "自定義攔截",
+      requests: "請求數",
+      blockedSubtitle: "聚焦實際被攔截的請求；分類仍表示請求的檢測結果。",
+      includedSubtitle:
+        "聚焦進入統計鏈路的請求，包括正常請求和未被攔截的機器人信號。",
+      blockedTrendDescription: "按時間顯示實際攔截請求數與攔截比例。",
+      includedTrendDescription: "按時間顯示進入統計鏈路的請求數。",
+      recentBlockedTitle: "最近攔截請求",
+      recentBlockedDescription:
+        "這些記錄來自統一的 Request Analytics Engine 數據集。",
+      recentIncludedTitle: "最近統計請求",
+      recentIncludedDescription:
+        "這些記錄來自統一的 Request Analytics Engine 數據集。",
+      detailTitle: "請求詳情",
+      detailSubtitle: "查看請求的分類、處置結果、網絡和客戶端上下文。",
+    },
+    title: "請求觀測",
+    tabs: {
+      overview: "總覽",
+      blocked: "攔截請求",
+      included: "統計請求",
+    },
+    refresh: "重新整理",
+    loadFailed: "載入請求觀測資料失敗。",
+    notConfiguredTitle: "尚未設定 Analytics Engine 讀取憑據",
+    notConfiguredDescription:
+      "請先在系統設定中填寫 Cloudflare Account ID 和 API Token，用於讀取請求觀測 Analytics Engine 資料集。",
+    analyticsEngineDisabledTitle: "Analytics Engine 尚未啟用",
+    analyticsEngineDisabledDescription:
+      "目前部署未繫結 Analytics Engine，因為 Cloudflare 帳戶尚未啟用 Analytics Engine。請先在 Cloudflare 中啟用，然後重新部署以採集請求觀測資料。",
+    openAnalyticsEngine: "開啟 Analytics Engine",
+    openSettings: "開啟設定",
+    affectedSites: "受影響站點",
+    uniqueCountries: "國家/地區",
+    noData: "目前時間視窗內沒有請求資料。",
+    trendTitle: "分流趨勢",
+    client: "客戶端",
+    edge: "邊緣",
+    identifiers: "識別符號",
+    fullUserAgent: "完整 User-Agent",
+    id: "ID",
+    metadata: "中繼資料",
+    time: "時間",
+    site: "站點",
+    location: "位置",
+    network: "網路",
+    reason: "原因",
+    request: "請求",
+    ip: "IP",
+    userAgent: "User-Agent",
+    category: "分類",
+    emptyValue: "未知",
+    kind: "型別",
+    botScore: "Bot 分數",
+    botScoreBucket: "Bot Score 區間",
+    verifiedBotCategory: "驗證機器人類別",
+    hostname: "主機名稱",
+    pathname: "路徑",
+    origin: "Origin",
+    asOrganization: "ASN 組織",
+    asn: "ASN",
+    country: "國家/地區",
+    region: "州/省",
+    city: "城市",
+    colo: "資料中心",
+    userAgentLengthBucket: "User-Agent 長度",
+    userAgentLength: "User-Agent 長度（精確）",
+    ipPrefix: "IP 字首",
+    botReasonLabels: {
+      missing_ua: "缺少 User-Agent",
+      ua_too_long: "User-Agent 過長",
+      ua_isbot: "User-Agent 命中機器人特徵",
+      script_ua: "指令碼客戶端 User-Agent",
+      cf_bot_score_low: "Cloudflare Bot Score 偏低",
+      cf_verified_bot_category: "Cloudflare 驗證機器人類別",
+      hosting_asn: "託管服務 ASN",
+      network_service_asn: "網路服務 ASN",
+      transit_asn: "中轉網路 ASN",
+      access_asn: "接入網路 ASN",
+      missing_browser_provenance: "缺少瀏覽器來源訊號",
+      origin_hostname_mismatch: "Origin 與主機名稱不符",
+      custom_block: "命中自訂遮蔽規則",
+      blocked_domains: "命中網域遮蔽規則",
+      blocked_paths: "命中路徑遮蔽規則",
+      blocked_query_parameters: "命中查詢參數遮蔽規則",
+      blocked_referrers: "命中引薦來源遮蔽規則",
+      blocked_user_agents: "命中 User-Agent 遮蔽規則",
+      blocked_ips: "命中 IP 遮蔽規則",
+      blocked_asns: "命中 ASN 遮蔽規則",
+      blocked_countries: "命中國家/地區遮蔽規則",
+      blocked_regions: "命中區域遮蔽規則",
+    },
+    requestKindLabels: {
+      pageview: "頁面瀏覽",
+      custom_event: "自訂事件",
+      request: "請求",
+      visibility: "可見性",
+      leave: "離開",
+      identify: "使用者識別",
+    },
+    overviewLabels: {
+      p50Latency: "P50 Worker 處理耗時",
+      p75Latency: "P75 Worker 處理耗時",
+      p99Latency: "P99 Worker 處理耗時",
+      p95Latency: "P95 Worker 處理耗時",
+      avgLatency: "平均 Worker 處理耗時",
+      pageviews: "頁面瀏覽",
+      customEvents: "自訂事件",
+      overviewTrendTitle: "請求分流趨勢",
+      trafficCompositionTitle: "業務請求構成",
+      trafficCompositionDescription:
+        "按時間顯示正常採集鏈路中頁面瀏覽、離開、可見性、自訂事件和使用者識別的數量。",
+      categoryShareTitle: "請求分類佔比",
+      latencyTitle: "Worker 處理耗時趨勢",
+      latencyDescription:
+        "正常請求寫入 AE 時記錄的 P50 / P75 / P95 / P99 Worker 處理耗時。",
+      requests: "請求數",
+      windowDays: "最近 {days} 天",
+      latencyMilliseconds: "{value} 毫秒",
+    },
+    normalDetail: {
+      requestMethod: "請求方法",
+      edgeLatency: "Worker 處理耗時",
+      eventAt: "事件時間",
+      receivedAt: "接收時間",
+      continent: "大洲",
+    },
+  },
+  systemSettings: {
+    title: "系統設定",
+    subtitle: "管理目前 InsightFlare 例項的全站設定。",
+    guide: "教程",
+    analyticsEngineTitle: "分析引擎",
+    analyticsEngineDescription:
+      "設定用於讀取請求觀測以及未來流量和事件分析資料的 Cloudflare 憑據。",
+    analyticsEngineAccountIdLabel: "Cloudflare Account ID",
+    analyticsEngineApiTokenLabel: "Cloudflare API Token",
+    analyticsEngineApiTokenPlaceholder: "檢視教程以取得 Cloudflare API Token",
+    analyticsEngineSaved: "分析引擎設定已儲存。",
+    analyticsEngineSaveFailed: "儲存分析引擎設定失敗。",
+    analyticsEngineDeleted: "分析引擎設定已刪除。",
+    analyticsEngineDeleteFailed: "刪除分析引擎設定失敗。",
+    analyticsEngineDeleteConfirm:
+      "確認刪除分析引擎讀取憑據嗎？刪除後，依賴 Analytics Engine 的功能將顯示為未設定。",
+    analyticsEngineDisabledTitle: "Analytics Engine 尚未啟用",
+    analyticsEngineDisabledDescription:
+      "目前部署已自動停用 Analytics Engine 繫結，因為 Cloudflare 帳戶尚未啟用 Analytics Engine。請先在 Cloudflare 中啟用 Analytics Engine，然後重新部署 InsightFlare 以啟用相關分析功能。",
+    analyticsEngineDisabledHint:
+      "在啟用 Analytics Engine 並重新部署 Worker 前，分析引擎設定不可修改。",
+    analyticsEngineOpenCloudflare: "開啟 Cloudflare Analytics Engine",
+    analyticsEngineGuideTitle: "取得分析引擎設定",
+    analyticsEngineGuideDescription:
+      "分析引擎需要 Cloudflare 帳號資訊和一個可讀取 Analytics Engine 的 API Token。",
+    analyticsEngineGuideSteps: [
+      "開啟 Cloudflare Dashboard，進入目標帳號並複製 Account ID。",
+      "在 Workers & Pages 中啟用 Analytics Engine；Request、Traffic 和 Event 三個資料集會隨部署自動建立並繫結。",
+      "前往 My Profile → API Tokens，建立 Custom token。",
+      "為 Token 新增 Account Analytics 讀取權限，並限制到目前帳號。",
+      "儲存後複製 Token，回到這裡填寫 Account ID 和 API Token。",
+    ],
+    notificationEmailTitle: "郵件通知",
+    notificationEmailDescription:
+      "設定系統用於傳送報告、告警和測試郵件的郵件服務。",
+    notificationEmailGuideTitle: "取得 Resend 郵件設定",
+    notificationEmailGuideDescription:
+      "使用 Resend 傳送系統郵件前，需要準備寄件網域和 API Key。",
+    notificationEmailGuideSteps: [
+      "開啟 Resend Dashboard，並確認寄件網域已完成 DNS 驗證。",
+      "在 API Keys 頁面建立新的 API Key。",
+      "選擇傳送郵件所需的權限，並複製產生後的 API Key。",
+      "回到這裡填寫發件人名稱、發件電子郵件、Reply-To 和 Resend API Key。",
+      "儲存後使用測試收件人傳送一封測試郵件，確認投遞鏈路正常。",
+    ],
+    retentionTitle: "執行資料保留期",
+    retentionDescription:
+      "設定任務執行記錄、任務日誌和通知訊息的保留時間。修改只影響新建記錄。",
+    scheduledTaskLogsDaysLabel: "排程任務執行記錄和日誌（天）",
+    notificationTestDaysLabel: "測試通知（天）",
+    notificationAttentionDaysLabel: "警告和嚴重通知（天）",
+    notificationDefaultDaysLabel: "其他通知（天）",
+    retentionRangeHint: "請輸入 1 到 3650 之間的整數天數。",
+    retentionSave: "儲存保留期設定",
+    retentionSaving: "儲存中...",
+    retentionSaved: "保留期設定已儲存。",
+    retentionSaveFailed: "儲存保留期設定失敗。",
+    loginTurnstileTitle: "登入 Turnstile 防護",
+    loginTurnstileDescription:
+      "啟用後，登入頁會在後臺執行 Cloudflare Turnstile Invisible 驗證，並在服務端登入流程中強制校驗。",
+    loginTurnstileEnabledLabel: "啟用登入保護",
+    loginTurnstileSiteKeyLabel: "Site Key",
+    loginTurnstileSecretKeyLabel: "Secret Key",
+    loginTurnstileSecretKeyPlaceholder: "檢視教程以取得 Turnstile Secret Key",
+    loginTurnstileModeLabel: "驗證模式",
+    loginTurnstileModeInvisible: "隱形（Invisible）",
+    loginTurnstileTest: "測試設定",
+    loginTurnstileTesting: "驗證中...",
+    loginTurnstileTestPassed: "驗證成功",
+    loginTurnstileTestRequired: "新 Secret Key 需要先測試",
+    loginTurnstileTestMissing: "請先填寫 Site Key 和 Secret Key。",
+    loginTurnstileTestFailed: "驗證失敗，請檢查 Site Key 與 Secret Key。",
+    loginTurnstileSaved: "登入 Turnstile 設定已儲存。",
+    loginTurnstileSaveFailed: "儲存登入 Turnstile 設定失敗。",
+    loginTurnstileDeleted: "登入 Turnstile 設定已刪除。",
+    loginTurnstileDeleteFailed: "刪除登入 Turnstile 設定失敗。",
+    loginTurnstileDeleteConfirm:
+      "確認刪除登入 Turnstile 設定嗎？刪除後登入保護將關閉。",
+    loginTurnstileLoadFailed: "載入登入 Turnstile 設定失敗。",
+    loginTurnstilePrivacyNotice:
+      "請在 Cloudflare Turnstile 控制台建立 Invisible widget。自託管站點啟用後，請自行確認隱私權政策符合 Cloudflare Turnstile 的使用要求。",
+    loginTurnstileGuideTitle: "取得 Turnstile 設定",
+    loginTurnstileGuideDescription:
+      "登入保護需要 Cloudflare Turnstile 的 Site Key 和 Secret Key。",
+    loginTurnstileGuideSteps: [
+      "開啟 Cloudflare Dashboard，進入 Turnstile。",
+      "建立 widget，並選擇 Invisible 模式。",
+      "將目前 InsightFlare 登入網域加入允許的主機名稱清單。",
+      "建立後複製 Site Key 和 Secret Key。",
+      "回到這裡填寫 Site Key 和 Secret Key，先執行測試驗證，再儲存設定。",
+    ],
+    enabledLabel: "啟用郵件傳送",
+    enabledOn: "開啟",
+    enabledOff: "關閉",
+    providerLabel: "郵件服務",
+    providerResend: "Resend",
+    fromNameLabel: "發件人名稱",
+    fromEmailLabel: "發件人電子郵件",
+    replyToLabel: "Reply-To 電子郵件",
+    replyToPlaceholder: "可選，預設使用發件人電子郵件",
+    resendApiKeyLabel: "Resend API Key",
+    resendApiKeyPlaceholder: "檢視教程以取得 Resend API Key",
+    testRecipientLabel: "測試收件人",
+    save: "儲存設定",
+    saving: "儲存中...",
+    test: "傳送測試郵件",
+    testing: "傳送中...",
+    saved: "郵件設定已儲存。",
+    saveFailed: "儲存郵件設定失敗。",
+    delete: "刪除設定",
+    deleting: "刪除中...",
+    cancel: "取消",
+    deleted: "郵件設定已刪除。",
+    deleteFailed: "刪除郵件設定失敗。",
+    deleteConfirm:
+      "確認刪除郵件通知設定嗎？刪除後系統將視為未設定並關閉郵件傳送。",
+    testSent: "測試郵件已傳送。",
+    testFailed: "測試郵件傳送失敗。",
+    loadFailed: "載入郵件設定失敗。",
+  },
+  systemPerformance: {
+    title: "系統效能",
+    subtitle: "基於現有分析行監控 InsightFlare 的採集、緩衝和寫入健康度。",
+    refresh: "重新整理",
+    loadFailed: "載入系統效能資料失敗。",
+    noData: "目前時間視窗內暫無系統效能資料。",
+    range15m: "最近 15 分鐘",
+    range1h: "最近 1 小時",
+    range6h: "最近 6 小時",
+    range24h: "最近 24 小時",
+    totalEvents: "已接收事件",
+    p95Latency: "P95 估算延遲",
+    p50Latency: "P50",
+    p75Latency: "P75",
+    p50Label: "P50",
+    p75Label: "P75",
+    p95Label: "P95",
+    dataFreshness: "資料新鮮度",
+    noRecentWrite: "暫無最近寫入",
+    clockAnomalies: "時鐘/延遲異常",
+    delayed: "延遲",
+    future: "未來時間戳",
+    latencyPercentileTrend: "延遲分位趨勢",
+    latencyPercentileTrendDescription:
+      "檢視接收事件的 P50、P75、P95 估算延遲。",
+    throughputTrend: "已接收事件吞吐",
+    throughputTrendDescription: "檢視接收事件的吞吐情況。",
+    visits: "造訪",
+    customEvents: "自訂事件",
+    anomalyBucket: "異常分桶",
+    openVisitHealth: "未關閉造訪堆積",
+    openVisitHealthDescription:
+      "尚未被離開事件、路由切換或超時收尾關閉的造訪行。",
+    open: "未關閉",
+    stale: "停滯",
+    timedOut: "已超時",
+    oldestOpen: "最早未關閉",
+    latestActivity: "最近活動",
+    latencySampleHealth: "延遲樣本健康度",
+    latencySampleHealthDescription: "檢視可信事件的延遲情況。",
+    trustedSamples: "可信樣本",
+    topSitesTitle: "系統負載最高的站點",
+    topSitesDescription: "目前接收事件數量最多的站點。",
+    events: "事件",
+    avgLatency: "平均延遲",
+    slowestEventsTitle: "估算最慢事件",
+    slowestEventsDescription:
+      "目前視窗內伺服器端寫入時間與事件時間正向差值最大的記錄。",
+    eventTime: "事件時間",
+    serverTime: "伺服器端寫入時間",
+    estimatedDelay: "估算延遲",
+    doDiagnosticTitle: "DO 內部緩衝診斷",
+    doDiagnosticDescription:
+      "診斷每個站點的專用 Durable Object 中的資料停滯情況。",
+    doDiagnosticLoadFailed: "載入 DO 診斷資料失敗。",
+    doDiagnosticLoading: "正在拉取每個 DO 的狀態…",
+    doDiagnosticRun: "執行 DO 診斷",
+    doDiagnosticEmpty: "暫無站點 DO 狀態。",
+    doDiagnosticUnreachable: "部分站點 DO 不可達",
+    doDiagnosticReachableSites: "可達 DO",
+    doDiagnosticTotalSites: "總站點",
+    doDiagnosticActiveAlarms: "活躍 Alarm 定時器",
+    doDiagnosticBufferedVisits: "緩衝造訪",
+    doDiagnosticOpenVisits: "緩衝未關閉造訪行",
+    doDiagnosticOpenStale: "未關閉且停滯 >30 分鐘",
+    doDiagnosticOpenTimedOut: "未關閉且停滯 >12 小時",
+    doDiagnosticOpenHardAged: "開始時間超過 36 小時",
+    doDiagnosticOpenFutureSkew: "未來時間戳",
+    doDiagnosticStuckDirty: "未重新整理且卡住",
+    doDiagnosticMaxFlushAttempts: "最大重試次數",
+    doDiagnosticBufferedCustomEvents: "緩衝自訂事件",
+    doDiagnosticOldestOpen: "最早未關閉起始",
+    doDiagnosticFutureMaxActivity: "最晚的未來活動時間",
+    doDiagnosticSiteList: "風險最高的站點",
+    doDiagnosticSiteListDescription:
+      "按風險評分排序，前 20 個站點的 DO 內部緩衝快照。",
+    doDiagnosticSiteFailed: "不可達",
+    doDiagnosticSiteOpen: "未關閉",
+    doDiagnosticSiteStuck: "卡滯",
+    doDiagnosticSiteFuture: "未來時間戳",
+    doDiagnosticSiteHardAged: "超齡",
+    doDiagnosticSiteAlarm: "Alarm 狀態",
+    doDiagnosticSiteAlarmNone: "無",
+    doDiagnosticSiteAlarmDue: "到期",
+    doDiagnosticSiteNextDue: "下一次到期",
+    doDiagnosticSiteNextDueFlush: "Flush",
+    doDiagnosticSiteNextDueHidden: "隱藏回退",
+    doDiagnosticSiteNextDueTimeout: "造訪超時",
+    doDiagnosticSiteResponseMs: "響應耗時",
+    doDiagnosticThresholdsHint:
+      "閾值：stale {stale}，timeout {timeout}，hardAged {hardAged}，stuck flush_attempts ≥ {stuck}",
+    doDiagnosticHealthy: "目前未發現異常緩衝行。",
+  },
+  loginForm: {
+    signingIn: "登入中...",
+    verifyingSecurity: "正在安全驗證...",
+    securityVerificationTitle: "安全驗證失敗",
+    securityVerificationFailed: "安全驗證失敗，請重試。",
+    retrySecurityVerification: "重試驗證",
+    redirecting: "正在跳轉...",
+    failed: "登入失敗，請稍後重試。",
+  },
+  logoutAction: {
+    pending: "退出中...",
+    success: "已登出。",
+    failed: "登出失敗，請稍後重試。",
+  },
+  sidebarFooter: {
+    loggingOut: "退出中...",
+    logoutSuccess: "已登出。",
+    logoutFailed: "登出失敗，請稍後重試。",
+  },
+  teamEntry: {
+    title: "選擇團隊",
+    description: "你目前可存取多個團隊，請先選擇要進入的團隊。",
+  },
+} as AppMessages;
+
 const jaMessages = {
   appName: "InsightFlare",
+  uiGallery: {
+    searchLabel: "UI コンポーネントを検索",
+    searchPlaceholder: "コンポーネントを検索",
+    backToApp: "InsightFlare に戻る",
+    noSearchResults: "検索に一致するコンポーネントはありません。",
+    toggleNavigation: "ライブラリナビゲーションを切り替え",
+    library: "UI ライブラリ",
+    componentsCount: "{count} 個のコンポーネント",
+    statesCount: "{count} 個の状態",
+    designSystem: "InsightFlare デザインシステム",
+    pageTitle: "UI コンポーネント",
+    catalogSummary: "{components} 個のコンポーネント · {states} 個の prop 値",
+    categories: {
+      inputs: "入力",
+      feedback: "フィードバック",
+      foundations: "基礎",
+      navigation: "ナビゲーション",
+      "data-display": "データ表示",
+      overlays: "オーバーレイ",
+      "product-analytics": "プロダクト UI / 分析",
+      "product-management": "プロダクト UI / 管理",
+      "product-realtime": "プロダクト UI / リアルタイム",
+    },
+    browseCategories: "カテゴリーから探す",
+    featuredComponents: "注目のコンポーネント",
+    backToCatalog: "UI コンポーネント",
+    canonicalStates: "Props と値",
+    browseAllComponents: "すべてのコンポーネントを見る",
+    previewState: "プレビューを開く",
+    resetPreview: "プレビューをリセット",
+    expandCode: "コードを展開",
+    collapseCode: "コードを折りたたむ",
+  },
   navigation: {
     overview: "概要",
     realtime: "リアルタイム",
@@ -7930,6 +12373,7 @@ const jaMessages = {
     sessions: "セッション",
     events: "イベント",
     funnels: "ファネル",
+    goals: "目標",
     campaigns: "キャンペーン",
     visitors: "訪問者",
     retention: "リテンション",
@@ -7959,7 +12403,6 @@ const jaMessages = {
     entryPage: "入口ページ",
     exitPage: "離脱ページ",
     referrer: "参照元",
-    startedAt: "開始",
     event: "イベント",
     location: "地域",
     browser: "ブラウザー",
@@ -8007,6 +12450,10 @@ const jaMessages = {
     admin: "管理者",
     user: "ユーザー",
     search: "検索",
+    open: "開く",
+    sortBy: "{label}で並べ替え",
+    change: "変化",
+    new: "新規",
     tableExport: {
       action: "エクスポート",
       title: "CSV をエクスポート",
@@ -8020,8 +12467,6 @@ const jaMessages = {
       fileNameLabel: "ファイル名",
       download: "CSV をエクスポート",
       empty: "エクスポートできる行がありません。",
-      allTabsUnavailable:
-        "すべてのタブは、各データの読み込み後に利用できます。",
     },
     tableColumns: {
       action: "列設定",
@@ -8054,7 +12499,6 @@ const jaMessages = {
     last90d: "過去 90 日",
     last6m: "過去 6 か月",
     last12m: "過去 12 か月",
-    allTime: "全期間",
     custom: "カスタム範囲",
   },
   intervals: {
@@ -8067,11 +12511,32 @@ const jaMessages = {
   dashboardHeader: {
     range: "期間",
     interval: "間隔",
-    filters: "フィルター",
+    compareButton: "比較",
+    compareTitle: "比較設定",
+    compareSubtitle: "比較する期間とフィルター条件を選択します。",
+    compareTimeLabel: "比較期間",
+    compareCurrentPeriod: "現在の期間",
+    compareCurrentPeriodDescription: "現在選択されている期間を使用します。",
+    comparePreviousPeriod: "前の期間",
+    comparePreviousPeriodDescription:
+      "現在の期間と同じ長さの直前の期間を使用します。",
+    compareFilterLabel: "比較フィルター",
+    compareFollowCurrentFilter: "現在のフィルターに従う",
+    compareFollowCurrentFilterDescription:
+      "このページで現在適用されているフィルターを使用します。",
+    compareCustomFilter: "カスタムフィルター",
+    compareCustomFilterDescription: "比較用に別のフィルター条件を設定します。",
+    compareApply: "比較を適用",
+    compareCancel: "キャンセル",
+    compareDisabled: "このページでは比較を利用できません。",
+    filterButton: "フィルター",
+    filterButtonEvent: "フィルター（イベント）",
+    filterButtonSession: "フィルター（セッション）",
+    filterButtonVisitor: "フィルター（訪問者）",
     customRange: "カスタム範囲を選択",
     customHint: "開始日と終了日を選択してください。",
     customPendingEnd: "開始日が選択されました。終了日を選択してください。",
-    customApply: "適用",
+    customApply: "日付範囲を適用",
     rangeGroupQuick: "クイック範囲",
     rangeGroupCalendar: "カレンダー期間",
     rangeGroupRolling: "ローリング期間",
@@ -8090,10 +12555,6 @@ const jaMessages = {
     customSelectionSummary: "選択範囲：{from} から {to}（{days} 日）",
   },
   filters: {
-    country: "国",
-    device: "デバイス",
-    browser: "ブラウザー",
-    all: "すべて",
     clear: "クリア",
   },
   conditionDescription: {
@@ -8107,35 +12568,58 @@ const jaMessages = {
     filterAnyOf: "{field} は {values} のいずれかに一致",
     filterNoneOf: "{field} は {values} のいずれにも一致しない",
     filterBetween: "{field} は {from} から {to} の間",
+    filterContains: "{field} は {value} を含む",
     filterStartsWith: "{field} は {value} で始まる",
     filterEndsWith: "{field} は {value} で終わる",
+    filterGreaterThan: "{field} は {value} より大きい",
+    filterGreaterThanOrEqual: "{field} は {value} 以上",
+    filterLessThan: "{field} は {value} より小さい",
+    filterLessThanOrEqual: "{field} は {value} 以下",
+    filterExists: "{field} が存在する",
+    filterNotExists: "{field} が存在しない",
+    filterIsNull: "{field} は NULL",
+    filterNotNull: "{field} は NULL ではない",
+    filterIsEmpty: "{field} は空",
+    filterNotEmpty: "{field} は空ではない",
   },
   filterBuilder: {
     fieldGroups: {
+      advanced: "高度なフィルター",
       page: "ページ",
       session: "セッション",
+      visitor: "訪問者",
       referrer: "参照元とチャネル",
       campaign: "キャンペーン",
       client: "クライアント",
       geography: "地域",
       event: "イベント",
+      acquisition: "獲得",
+      device: "デバイス",
+      geo: "地理",
+      performance: "パフォーマンス",
+      user: "ユーザー",
+      time: "時間",
+      aggregation: "集計",
+      calculation: "計算",
+      relation: "行動関係",
     },
     fieldLabels: {
       "page.path": "ページパス",
       "page.title": "ページタイトル",
-      "page.hostname": "ページホスト名",
-      "page.query": "クエリ文字列",
-      "page.hash": "ハッシュフラグメント",
+      "page.collection": "ページ集合",
+      "page.hostname": "ページドメイン",
+      "page.query": "クエリパラメーター",
+      "page.hash": "URL ハッシュ",
       "session.entryPath": "入口ページ",
       "session.exitPath": "出口ページ",
       "referrer.domain": "リファラードメイン",
       "referrer.url": "リファラー URL",
       "traffic.channel": "トラフィックチャネル",
-      "utm.source": "キャンペーンソース",
-      "utm.medium": "キャンペーンメディア",
-      "utm.campaign": "キャンペーン名",
-      "utm.term": "キャンペーン用語",
-      "utm.content": "キャンペーンコンテンツ",
+      "utm.source": "UTM ソース",
+      "utm.medium": "UTM メディア",
+      "utm.campaign": "UTM キャンペーン",
+      "utm.term": "UTM キーワード",
+      "utm.content": "UTM コンテンツ",
       "client.browser": "ブラウザー",
       "client.browserVersion": "ブラウザーのバージョン",
       "client.browserEngine": "ブラウザーエンジン",
@@ -8145,13 +12629,59 @@ const jaMessages = {
       "client.language": "言語",
       "client.screenSize": "画面サイズ",
       "geo.country": "国・地域",
-      "geo.region": "地域",
+      "geo.region": "都道府県 / 州 / 地域",
       "geo.city": "市区町村",
       "geo.continent": "大陸",
       "geo.timeZone": "タイムゾーン",
-      "geo.organization": "組織",
+      "geo.organization": "ネットワーク組織",
+      "event.collection": "イベント集合",
       "event.name": "イベント名",
-      "event.payload": "イベントペイロード",
+      "event.payload": "イベント属性",
+      "page.durationMs": "ページ滞在時間",
+      "session.collection": "セッション集合",
+      "session.durationMs": "セッション時間",
+      "session.views": "ページ閲覧数",
+      "session.events": "イベント数",
+      "session.bounce": "直帰したか",
+      "visitor.collection": "訪問者集合",
+      "visitor.sessions": "セッション数",
+      "visitor.views": "ページ閲覧数",
+      "visitor.events": "イベント数",
+      "performance.ttfbMs": "TTFB",
+      "performance.fcpMs": "FCP",
+      "performance.lcpMs": "LCP",
+      "performance.cls": "CLS",
+      "performance.inpMs": "INP",
+      "user.id": "ユーザー ID",
+      "user.name": "ユーザー名",
+      "client.screenWidth": "画面幅",
+      "client.screenHeight": "画面の高さ",
+      "geo.isEU": "EU 地域か",
+      time: "時間",
+      "time(...)": "発生時刻",
+      $items: "期間内項目",
+      $span: "シーケンス幅",
+      "$gap(...)": "ステップ間隔",
+      "$same(...)": "ステップ共通値",
+      "bucket(...)": "時間バケット",
+      "window(...)": "相対時間ウィンドウ",
+      "periods(...)": "期間グループ",
+      "count(...)": "件数",
+      "first(...)": "最初",
+      "last(...)": "最後",
+      "nth(...)": "N 番目",
+      "countDistinct(...)": "個別件数",
+      "sum(...)": "合計",
+      "avg(...)": "平均",
+      "min(...)": "最小",
+      "max(...)": "最大",
+      "add(...)": "加算",
+      "sub(...)": "減算",
+      "mul(...)": "乗算",
+      "div(...)": "除算",
+      "sequence(...)": "行動シーケンス",
+      "adjacent(...)": "連続行動",
+      "without(...)": "中間行動を除外",
     },
     operatorLabels: {
       eq: "等しい",
@@ -8189,8 +12719,20 @@ const jaMessages = {
     valueLoading: "値を読み込み中",
     valueSearchPlaceholder: "値を検索または入力",
     valueListPlaceholder: "値を検索または入力して Enter で追加",
+    removeValue: "フィルター値「{value}」を削除",
     rangeStartPlaceholder: "下限",
     rangeEndPlaceholder: "上限",
+    unitAriaLabel: "表示単位",
+    durationUnit: "期間の単位",
+    units: {
+      hours: "時間",
+      minutes: "分",
+      seconds: "秒",
+      milliseconds: "ミリ秒",
+      percent: "%",
+      perMille: "‰",
+      pixels: "ピクセル",
+    },
     jsonPointer: "JSON ポインター",
     jsonPointerPlaceholder: "JSON ポインターを検索または入力",
     match: "一致条件",
@@ -8214,9 +12756,106 @@ const jaMessages = {
     expressionHelpFieldType: "型",
     expressionHelpFieldOperators: "演算子",
     expressionHelpOtherFields: "その他",
+    expressionHelpContextTitle: "発生時刻とコンテキスト組み込み値",
+    expressionHelpContextDescription:
+      "小文字のドット区切り名は登録済みフィールド、大文字の PAGE、EVENT、SESSION、VISITOR はエンティティ集合です。エンティティセレクター内の $.member は現在のエンティティを参照し、-> は集合メンバーを明示的に射影します。@ は時間アンカーで、Sequence と Period の条件には $span、$gap、$items もあります。",
+    expressionHelpContextExamples:
+      'time(last(PAGE)) gte @now-14d\nsequence([EVENT { $.name eq "signup" }, EVENT { $.name eq "purchase" }]) {\n  $span lte 14d AND $gap(1, 2) lte 7d AND $same($.payload("/productId"))\n} exists',
+    advancedEditor: {
+      not: "NOT",
+      removeNot: "NOT を削除",
+      matchAll: "すべて一致",
+      matchAny: "いずれかに一致",
+      addCondition: "条件を追加",
+      addGroup: "グループを追加",
+      wrapInNot: "NOT で囲む",
+      remove: "削除",
+      condition: "条件",
+      literalValue: "リテラル値",
+      compareWithExpression: "式と比較",
+      valuesAsJson: "JSON 形式のフィルター値",
+      scalarArrayHelp: "JSON スカラー値の配列を入力してください。",
+      chooseValue: "値を選択",
+      filterValue: "フィルター値",
+      durationAmount: "期間",
+      jsonPointer: "ペイロード JSON ポインター",
+      jsonPointerPlaceholder: "/property/path",
+      entityMember: "エンティティメンバー",
+      nthIndex: "N 番目のインデックス",
+      fromStep: "開始ステップ",
+      toStep: "終了ステップ",
+      occurrenceKind: "発生の選択方法",
+      occurrenceEntity: "発生の種類",
+      occurrenceIndex: "発生番号",
+      correlationTarget: "各ステップで共通する値",
+      periodItemCount: "期間ごとの項目数",
+      nestedTooDeep: "式のネストが深すぎます。",
+      applyOffset: "オフセットを適用",
+      removeStep: "ステップを削除",
+      addStep: "シーケンスステップを追加",
+      excludedActivity: "除外するアクティビティ",
+      fixedTime: "固定時刻",
+      toggleOffsetSign: "時間オフセットの符号を切り替え",
+      timeUnits: {
+        milliseconds: "ミリ秒",
+        seconds: "秒",
+        minutes: "分",
+        hours: "時間",
+        days: "日",
+        weeks: "週",
+        months: "か月",
+        years: "年",
+      },
+      coreRelation: "高度なフィルター",
+      coreRelationExpression: "高度なフィルター式",
+      structuredEditor: "高度なフィルター設定",
+      unavailableForObservation:
+        "Goal と Funnel のステップでは高度なフィルターを使用できません。",
+      targetKinds: {
+        time: "時刻",
+        field: "フィールド",
+        "event-payload": "イベントペイロード",
+        "entity-root": "エンティティコレクション",
+        "context-root": "コンテキスト",
+        "context-intrinsic": "コンテキスト組み込み値",
+        "occurrence-time": "発生時刻",
+        member: "メンバー",
+        selector: "セレクター",
+        projection: "射影",
+        reducer: "リデューサー",
+        arithmetic: "算術式",
+        duration: "期間",
+        "time-anchor": "相対時間",
+        "sequence-span": "シーケンス幅",
+        "sequence-gap": "ステップ間隔",
+        "sequence-same": "シーケンス共通値",
+        "period-items": "期間内項目",
+        bucket: "時間バケット",
+        window: "ウィンドウ",
+        periods: "期間コレクション",
+        sequence: "シーケンス",
+        adjacent: "隣接シーケンス",
+        without: "アクティビティを除外するシーケンス",
+      },
+    },
     savedFiltersLoading: "保存済みフィルターを取得中...",
     noSavedFilter: "保存済みフィルターを使用しない",
     systemPresets: "システムプリセット",
+    systemPresetCategories: {
+      acquisition: "獲得",
+      device: "デバイス",
+      visitBehavior: "訪問行動",
+      sessionEngagement: "セッションエンゲージメント",
+      visitorBehavior: "訪問者行動",
+      performance: "パフォーマンス",
+      dataQuality: "データ品質",
+    },
+    systemPresetScopes: {
+      preserve: "現在のスコープを維持",
+      event: "イベントスコープ",
+      session: "セッションスコープ",
+      visitor: "訪問者スコープ",
+    },
     systemPresetItems: {
       directTraffic: {
         name: "直接トラフィック",
@@ -8282,6 +12921,99 @@ const jaMessages = {
         name: "タブレットトラフィック",
         description: "タブレット端末からの訪問です。",
       },
+      longPageViews: {
+        name: "長いページビュー",
+        description: "30 秒以上続いたページビューです。",
+      },
+      shortPageViews: {
+        name: "短いページビュー",
+        description: "10 秒未満で終わったページビューです。",
+      },
+      identifiedActivity: {
+        name: "識別済みアクティビティ",
+        description: "識別済みユーザーに関連するイベントです。",
+      },
+      customEventActivity: {
+        name: "カスタムイベントアクティビティ",
+        description: "カスタムイベント名が記録されたイベントです。",
+      },
+      bouncedSessions: {
+        name: "バウンスセッション",
+        description: "ページビューが 1 回だけのセッションです。",
+      },
+      nonBouncedSessions: {
+        name: "非バウンスセッション",
+        description: "複数のページビューを含むセッションです。",
+      },
+      longSessions: {
+        name: "長いセッション",
+        description: "5 分以上続いたセッションです。",
+      },
+      shortSessions: {
+        name: "短いセッション",
+        description: "1 分未満のセッションです。",
+      },
+      deepSessions: {
+        name: "深いセッション",
+        description: "3 ページ以上を閲覧したセッションです。",
+      },
+      eventfulSessions: {
+        name: "イベントの多いセッション",
+        description: "カスタムイベントを 1 件以上含むセッションです。",
+      },
+      highEngagementSessions: {
+        name: "高エンゲージメントセッション",
+        description:
+          "3 ビュー以上かつ 2 件以上のカスタムイベントを含むセッションです。",
+      },
+      returningVisitors: {
+        name: "リピーター訪問者",
+        description: "2 セッション以上を持つ訪問者です。",
+      },
+      frequentVisitors: {
+        name: "頻繁な訪問者",
+        description: "5 セッション以上を持つ訪問者です。",
+      },
+      deepVisitors: {
+        name: "深い訪問者",
+        description: "5 ページ以上を閲覧した訪問者です。",
+      },
+      eventfulVisitors: {
+        name: "イベントの多い訪問者",
+        description: "2 件以上のカスタムイベントを持つ訪問者です。",
+      },
+      identifiedVisitors: {
+        name: "識別済み訪問者",
+        description: "識別済みユーザーに関連する訪問者です。",
+      },
+      organicSearchVisitors: {
+        name: "自然検索訪問者",
+        description: "タグのない検索リファラーを持つ訪問者です。",
+      },
+      coreWebVitalsNeedsImprovement: {
+        name: "Core Web Vitals の改善が必要",
+        description: "Core Web Vitals のしきい値を超えた訪問です。",
+      },
+      slowLcp: {
+        name: "LCP が遅い",
+        description: "LCP が 2.5 秒を超える訪問です。",
+      },
+      slowInp: {
+        name: "INP が遅い",
+        description: "INP が 200 ミリ秒を超える訪問です。",
+      },
+      highCls: {
+        name: "CLS が高い",
+        description: "CLS が 0.1 を超える訪問です。",
+      },
+      slowTtfb: {
+        name: "TTFB が遅い",
+        description: "TTFB が 800 ミリ秒を超える訪問です。",
+      },
+      slowFcp: {
+        name: "FCP が遅い",
+        description: "FCP が 1.8 秒を超える訪問です。",
+      },
     },
     savedFiltersPersonal: "個人用フィルター",
     savedFiltersTeam: "チームのフィルター",
@@ -8296,6 +13028,11 @@ const jaMessages = {
     manageSavedFilter: "フィルターを管理",
     savedFilterName: "名前",
     savedFilterDescription: "メモ",
+    scopeLabel: "フィルター対象",
+    scopeAuto: "現在のページに応じて自動選択",
+    scopeEvent: "条件に一致するイベントを絞り込む",
+    scopeSession: "これらの条件を満たすセッションを絞り込む",
+    scopeVisitor: "これらの条件を満たす訪問者を絞り込む",
     savedFilterVisibility: "公開範囲",
     savedFilterVisibilityPrivate: "自分のみ",
     savedFilterVisibilityTeam: "チームと共有",
@@ -8341,7 +13078,6 @@ const jaMessages = {
     viewPage: "ページ表示",
     customEvent: "カスタムイベント",
     detailsTitle: "イベント詳細",
-    detailsSection: "情報",
     browsingSection: "閲覧",
     geographySection: "地理位置",
     sourceSection: "参照元",
@@ -8364,23 +13100,17 @@ const jaMessages = {
       "現在のリアルタイム範囲における、この訪問者のすべての記録です。",
     visitorHistoryRange: "閲覧期間",
     visitorHistoryEmpty: "この訪問者の追加記録はまだありません。",
-    visitorMapSection: "訪問者の地域",
-    visitorMapSubtitle: "このイベントの座標から推定したおおよその地域です。",
     visitorMapUnavailable: "このイベントには利用可能な座標がありません。",
     visitorId: "訪問者 ID",
     sessionId: "セッション ID",
     visitId: "訪問 ID",
-    eventType: "イベント種別",
     eventTime: "イベント時刻",
     eventKind: "イベント種別",
     eventName: "イベント名",
-    eventId: "イベント ID",
     siteId: "サイト ID",
     traceId: "トレース ID",
-    sequence: "シーケンス",
     receivedAt: "受信時刻",
     startedAt: "開始時刻",
-    previousVisitId: "前回の訪問 ID",
     previousVisitStartedAt: "前回の訪問開始時刻",
     userId: "ユーザー ID",
     userName: "ユーザー名",
@@ -8394,24 +13124,19 @@ const jaMessages = {
     browserVersion: "ブラウザーのバージョン",
     osVersion: "OS バージョン",
     userAgent: "ユーザーエージェント",
-    screenWidth: "画面の幅",
-    screenHeight: "画面の高さ",
     postalCode: "郵便番号",
     metroCode: "都市圏コード",
     status: "ステータス",
     visibilityState: "表示状態",
-    hiddenAt: "非表示時刻",
     endedAt: "終了時刻",
-    finalizedAt: "確定時刻",
     duration: "継続時間",
     durationSource: "継続時間のソース",
     exitReason: "退出理由",
     leaveAt: "離脱時刻",
-    performanceVisitId: "パフォーマンス訪問 ID",
   },
   overview: {
     title: "トラフィック概要",
-    subtitle: "高レベルのパフォーマンスとオーディエンス行動を監視します。",
+    subtitle: "主要指標とトラフィックの推移を確認します。",
     trendTitle: "トラフィック推移",
     sourceTab: "ソース",
     sourceDomainColumn: "ソース（ドメイン）",
@@ -8439,6 +13164,9 @@ const jaMessages = {
     title: "ページ",
     subtitle: "選択範囲で最も訪問されたパスです。",
     pagesPerSession: "ページ / セッション",
+    changePercentColumnLabel: "{metric}の変化（%）",
+    changePointsColumnLabel: "{metric}の変化（ポイント）",
+    percentagePointSuffix: "ポイント",
     untitled: "無題のページ",
     empty: "現在のフィルターに一致するページデータはありません。",
     loadError:
@@ -8521,6 +13249,8 @@ const jaMessages = {
   },
   sessionDetail: {
     anonymous: "匿名",
+    userId: "ユーザー ID",
+    userName: "ユーザー名",
     back: "セッションへ戻る",
     missing: "sessionId がありません。",
     notFound: "セッションが見つかりません。",
@@ -8644,21 +13374,42 @@ const jaMessages = {
     listTitle: "ファネル定義",
     listSubtitle:
       "再利用可能なシーケンスを作成し、現在のダッシュボード期間でコンバージョンを確認します。",
+    conversionRecords: "コンバージョン記録",
+    converted: "コンバージョン済み",
+    dropped: "離脱",
+    open: "ファネルを開く",
+    moreActions: "その他の操作",
     create: "新規ファネル",
     createTitle: "ファネルを作成",
     createDescription:
-      "ページビューまたはカスタムイベントの順序付きステップを少なくとも 2 つ定義してください。",
+      "順序付きの観測フィルターを少なくとも 2 つ定義してください。",
     nameLabel: "名前",
     namePlaceholder: "登録アクティベーション",
     stepsLabel: "ステップ",
     addStep: "ステップを追加",
     removeStep: "削除",
-    stepTypePageview: "ページビュー",
-    stepTypeEvent: "イベント",
-    stepValueLabel: "値",
-    pageviewPlaceholder: "/pricing",
-    eventPlaceholder: "signup_started",
+    progression: "コンバージョン単位",
+    conversionWindow: "コンバージョン期間",
+    custom: "カスタム",
+    customWindowHours: "カスタム期間（時間）",
+    stepFilter: "ステップフィルター",
+    filter: "フィルター",
+    apply: "適用",
+    condition: "条件",
+    conditions: "条件",
+    expression: "フィルター式",
+    filterPlaceholder: '例 page.path eq "/pricing"',
+    invalidFilter: "無効なフィルター",
+    dragStep: "ステップをドラッグ",
+    unnamed: "（名前なし）",
+    oneHour: "1 時間",
+    oneDay: "24 時間",
+    sevenDays: "7 日",
+    thirtyDays: "30 日",
     save: "作成",
+    saveEdit: "変更を保存",
+    edit: "編集",
+    editTitle: "ファネルを編集",
     creating: "作成中...",
     cancel: "キャンセル",
     delete: "削除",
@@ -8672,13 +13423,17 @@ const jaMessages = {
       "ページビューとカスタムイベントからファネルを作成し、コンバージョンを追跡します。",
     loadError: "ファネルを読み込めません。",
     detailLoadError: "ファネル分析を読み込めません。",
-    invalidFunnel: "名前と、完全なステップを少なくとも 2 つ追加してください。",
+    invalidFunnel:
+      "名前と、完全なフィルターステップを少なくとも 2 つ追加してください。",
     created: "ファネルを作成しました。",
     createFailed: "ファネルを作成できません。",
+    updatedSuccess: "ファネルを更新しました。",
+    saveFailed: "ファネルを保存できません。",
     deleted: "ファネルを削除しました。",
     deleteFailed: "ファネルを削除できません。",
     overallConversion: "全体コンバージョン",
     startedSessions: "開始セッション数",
+    startedVisitors: "開始訪問者数",
     convertedSessions: "コンバージョンセッション数",
     convertedVisitors: "コンバージョン訪問者数",
     largestDropOff: "最大離脱",
@@ -8691,12 +13446,54 @@ const jaMessages = {
     dropOff: "離脱",
     updated: "更新",
   },
+  goals: {
+    title: "目標",
+    subtitle:
+      "再利用可能なイベントまたはページ条件でコンバージョンを測定します。",
+    listSubtitle: "この期間のコンバージョン率の変化を確認します。",
+    conversionRecords: "コンバージョン記録",
+    open: "目標を開く",
+    moreActions: "その他の操作",
+    create: "新しい目標",
+    createTitle: "目標を作成",
+    nameLabel: "名前",
+    namePlaceholder: "購入完了",
+    filter: "コンバージョン条件",
+    apply: "適用",
+    cancel: "キャンセル",
+    save: "作成",
+    saveEdit: "変更を保存",
+    edit: "編集",
+    editTitle: "目標を編集",
+    creating: "作成中...",
+    delete: "削除",
+    deleteTitle: "目標を削除",
+    deleteDescription:
+      "保存した目標定義を削除します。過去の分析データは削除されません。",
+    deleteConfirm: "目標を削除",
+    empty: "目標はまだありません。",
+    emptyHint: "ページ条件またはカスタムイベントから目標を作成します。",
+    loadError: "目標を読み込めません。",
+    detailLoadError: "目標分析を読み込めません。",
+    invalidGoal: "名前と完全なコンバージョン条件を入力してください。",
+    created: "目標を作成しました。",
+    updatedSuccess: "目標を更新しました。",
+    saveFailed: "目標を保存できません。",
+    deleted: "目標を削除しました。",
+    deleteFailed: "目標を削除できません。",
+    sessions: "セッション",
+    visitors: "訪問者",
+    total: "合計",
+    converted: "コンバージョン",
+    conversion: "転換率",
+    timeseries: "コンバージョン率",
+    updated: "更新",
+  },
   visitors: {
     title: "訪問者",
     subtitle: "訪問者単位の内訳と直近状況です。",
     search: "訪問者を検索...",
     visitor: "訪問者",
-    sessionId: "セッション ID",
     anonymous: "匿名",
     referrer: "参照元",
     location: "地域",
@@ -8714,6 +13511,8 @@ const jaMessages = {
   },
   visitorDetail: {
     anonymous: "匿名",
+    userId: "ユーザー ID",
+    userName: "ユーザー名",
     back: "訪問者へ戻る",
     missing: "visitorId がありません。",
     notFound: "訪問者が見つかりません。",
@@ -8799,7 +13598,7 @@ const jaMessages = {
     title: "地域分析",
     subtitle: "地域別にトラフィックパフォーマンスを分析します。",
     mapTitle: "リクエスト地域分布",
-    countryLabel: "国",
+    countryLabel: "国 / 地域",
     regionLabel: "地域",
     cityLabel: "都市",
     back: "戻る",
@@ -8811,7 +13610,7 @@ const jaMessages = {
     ipNotice:
       "IP から推定した地域です。座標は概算であり、正確な住所を示すものではありません。",
     multipleNotice:
-      "IP から推定した地域です。複数セッションのジャーニーは複数都市にまたがる場合があります。",
+      "この訪問者は、異なるセッションで複数の都市を訪れる場合があります。",
     investigation: {
       countryScopedLabel: "所属国の{label}",
       capital: "首都",
@@ -8955,7 +13754,7 @@ const jaMessages = {
     metricThresholdText:
       "良好：{good} 以下、要改善：{good} から {poor}、不良：{poor} 超。",
     scoreThresholdText: "良好：90 超、要改善：50 から 90、不良：50 未満。",
-    countryHealthTitle: "国・地域別の状態",
+    countryHealthTitle: "国・地域の状態",
     countryHealthSubtitle:
       "国または地域ごとの {metric} の状態を境界色で示します。",
     pathsTitle: "パスパフォーマンス",
@@ -8980,6 +13779,11 @@ const jaMessages = {
         title: "ブロックルール",
         description:
           "イベントを保存する前に、リクエストのコンテキストで収集を絞り込みます。",
+      },
+      protection: {
+        title: "リクエスト保護",
+        description:
+          "検出したボットやホスティング・プロキシネットワークのリクエストを分析データに入れる前の扱いを設定します。",
       },
       danger: {
         title: "危険な操作",
@@ -9016,6 +13820,13 @@ const jaMessages = {
       "訪問者の国に基づいてトラッキング強度を自動で切り替えます。",
     trackingStrengthWeakDescription:
       "常にトラッキング精度を下げます。同じ訪問者が複数回カウントされ、リテンション分析ができなくなる場合があります。",
+    botProtectionEnabledLabel: "検出したボットをブロック",
+    botProtectionEnabledHint:
+      "有効にすると高信頼度のボットリクエストをブロックし、無効にすると統計に含めます。",
+    hostingProxyBlockingEnabledLabel:
+      "ホスティング・プロキシネットワークをブロック",
+    hostingProxyBlockingEnabledHint:
+      "有効にするとホスティングまたはプロキシネットワークからの疑わしいボットリクエストをブロックします。デフォルトはオフです。",
     queryHashGroupTitle: "クエリとハッシュのトラッキング",
     queryHashGroupDescription:
       "クエリ文字列、URL ハッシュ、Do Not Track の扱いを制御します。",
@@ -9026,6 +13837,20 @@ const jaMessages = {
     blockingRulesDialogs: {
       testButton: "テスト",
       helpButton: "ヘルプ",
+      searchButton: "検索",
+      searchTitle: "地域を検索",
+      searchDescription:
+        "名前またはコードで検索し、結果を選択してこのカードに追加します。",
+      searchInputLabel: "検索",
+      searchInputPlaceholder: "名前またはコードで検索",
+      searchCountryLabel: "国 / 地域",
+      searchRegionLabel: "州 / 省",
+      searchBack: "国 / 地域を変更",
+      searchLoading: "地域を読み込み中...",
+      searchNoResults: "一致する地域がありません。",
+      searchLoadError:
+        "地域を読み込めません。しばらくしてから再試行してください。",
+      searchClose: "閉じる",
       helpTitle: "ルール構文",
       helpDescription: "このフィールドの構文、例、優先順位を確認します。",
       syntaxTitle: "構文",
@@ -9048,7 +13873,7 @@ const jaMessages = {
       errorInvalidPattern: "{line} 行目のルール形式が無効です。",
       testTitle: "ルールをテスト",
       testDescription:
-        "この Card の現在のルールに対してリクエスト値をテストします。未保存の編集内容も使用されます。",
+        "このカードの現在のルールに対してリクエスト値をテストします。未保存の編集内容も使用されます。",
       testRun: "テストを実行",
       testClose: "閉じる",
       testInvalidRules: "テストする前に無効なルールを修正してください。",
@@ -9073,7 +13898,7 @@ const jaMessages = {
         examples: ["*", "-example.com", "-*.example.com", "admin.example.com"],
         exampleDescription:
           "この設定はすべてのドメインをブロックし、example.com とそのサブドメインを許可した後、完全一致する admin.example.com を再びブロックします。",
-        testLabel: "Hostname",
+        testLabel: "ホスト名",
         testPlaceholder: "www.example.com",
         testHint: "スキームやパスを含めず、ページの hostname を入力します。",
       },
@@ -9289,7 +14114,8 @@ const jaMessages = {
     preferredLanguageLabel: "メール言語",
     preferredLanguageDefault: "デフォルト",
     preferredLanguageEnglish: "英語",
-    preferredLanguageChinese: "中国語",
+    preferredLanguageChinese: "簡体字中国語",
+    preferredLanguageTraditionalChinese: "繁体字中国語",
     preferredLanguageJapanese: "日本語",
     preferredLanguageSaved: "通知言語を保存しました。",
     preferredLanguageSaveFailed: "通知言語を保存できません。",
@@ -9581,8 +14407,6 @@ const jaMessages = {
   },
   empty: {
     noTeams: "利用可能なチームはまだありません。",
-    noSites: "このチームには利用可能なサイトがありません。",
-    siteNotFound: "チームまたはサイトが見つかりません。",
   },
   errorPage: {
     notFoundEyebrow: "ページが見つかりません",
@@ -9609,7 +14433,8 @@ const jaMessages = {
   actions: {
     logout: "ログアウト",
     switchToEnglish: "English",
-    switchToChinese: "中文",
+    switchToChinese: "簡体字中国語",
+    switchToTraditionalChinese: "繁体字中国語",
     switchToJapanese: "日本語",
     switchToLight: "ライト",
     switchToDark: "ダーク",
@@ -9778,10 +14603,6 @@ const jaMessages = {
       scheduleInterval: "{minutes} 分ごと",
       scheduleCustom: "カスタム",
       conditionReport: "{period} レポート",
-      conditionMilestone: "{metric} が {step} ごと",
-      conditionThreshold: "{window} {metric} {operator} {value}",
-      conditionChange: "{window} {metric} 変化 {operator} {value}",
-      conditionHealth: "{hours}h データなし",
       summaryWhenConditions:
         "次の条件のうち {combinator} が一致したら、{type} 通知を送信します：",
       summaryWhenSingleCondition:
@@ -9956,7 +14777,7 @@ const jaMessages = {
       expiration90: "90 日",
       expiration180: "180 日",
       expiration365: "365 日",
-      expirationNever: "なし",
+      expirationNever: "無期限",
       oneTimeSecretTitle: "今すぐこのキーをコピー",
       oneTimeSecretDescription:
         "完全なキーは一度だけ表示されます。このダイアログを閉じる前に保存してください。",
@@ -10042,7 +14863,10 @@ const jaMessages = {
     members: {
       title: "メンバー",
       subtitle: "メンバーを招待、または既存メンバーを削除します。",
-      remove: "削除",
+      remove: "メンバーを削除",
+      removeMemberAction: '"{target}" をメンバーから削除',
+      removeMemberConfirm:
+        '"{target}" をこのチームから削除しますか？直ちにアクセスできなくなります。',
       noMembers: "このチームにはメンバーがいません。",
       invitesTitle: "招待リンクを作成",
       invitesSubtitle:
@@ -10052,13 +14876,16 @@ const jaMessages = {
       inviteExpiresLabel: "有効期限（時間）",
       createInvite: "招待リンクを作成",
       creatingInvite: "作成中...",
-      copyInvite: "リンクをコピー",
+      copyInvite: "招待リンクをコピー",
       inviteLinksTitle: "招待リンク",
       inviteLinksSubtitle:
         "招待ステータスを確認し、有効なリンクを取り消します。",
       noInvites: "このチームには招待リンクがありません。",
       anyEmail: "任意のメールアドレス",
       revokeInvite: "招待を取り消し",
+      revokeInviteAction: '"{target}" の招待を取り消し',
+      revokeInviteConfirm:
+        '"{target}" の招待を取り消しますか？このリンクは使用できなくなります。',
       siteAccessLabel: "サイト権限",
       siteAccessAll: "全サイト",
       siteAccessRestricted: "制限付き",
@@ -10135,7 +14962,7 @@ const jaMessages = {
       openCommit: "コミットを開く",
       commitCount: "コミット",
       source: "データソース",
-      loadFailed: "GitHub Releases を読み込めません。",
+      loadFailed: "リリース一覧を読み込めません。",
       unknown: "不明",
     },
     scheduledTasks: {
@@ -10143,6 +14970,7 @@ const jaMessages = {
       empty: "スケジュールタスクはまだありません。",
       refresh: "更新",
       loadFailed: "スケジュールタスクを読み込めません。",
+      loadMore: "さらに読み込む",
       allStatuses: "すべてのステータス",
       runs24h: "24時間以内の実行回数",
       successRate24h: "24時間以内の成功率",
@@ -10163,11 +14991,14 @@ const jaMessages = {
       enabled: "状態",
       enabledYes: "有効",
       enabledNo: "無効",
+      taskStateSaved: "タスク状態を更新しました。",
+      taskStateSaveFailed: "タスク状態を更新できません。",
       lastStatus: "最終ステータス",
       runs30d: "30日実行",
       successRate30d: "30日成功率",
       avgDuration: "平均所要時間",
       runHistoryTitle: "実行履歴",
+      nextRun: "次回実行",
       runHistoryDescription: "過去 30 日間に保持されたタスク実行です。",
       noRuns: "実行はまだありません。",
       scheduledAt: "予定",
@@ -10209,7 +15040,13 @@ const jaMessages = {
         notification_tick: {
           name: "通知配信",
           description: "通知ルールを評価し、メッセージを配信します。",
-          schedule: "毎時",
+          schedule: "30分ごと",
+        },
+        database_maintenance: {
+          name: "データベースメンテナンス",
+          description:
+            "期限切れの実行データと通知を削除し、D1 の統計情報を最適化します。",
+          schedule: "毎日",
         },
       },
     },
@@ -10315,13 +15152,46 @@ const jaMessages = {
     },
   },
   requestObservation: {
+    uiLabels: {
+      pageSubtitle:
+        "Analytics Engine でリクエストの分類、処置、集計経路を確認します。",
+      blocked: "ブロック済みリクエスト",
+      included: "集計対象リクエスト",
+      disposition: "処置",
+      normalRequests: "通常リクエスト",
+      suspectedBotRequests: "ボット疑い",
+      botRequests: "ボットリクエスト",
+      customBlockedRequests: "カスタムブロック",
+      includedRequests: "集計対象リクエスト数",
+      blockedRequests: "ブロック済みリクエスト数",
+      totalRequests: "総リクエスト数",
+      botRequestRatio: "ボットリクエスト比率",
+      blockedRequestRatio: "ブロック率",
+      normalRequestRatio: "通常リクエスト比率",
+      normalTrafficShare: "通常リクエスト",
+      suspectedBotTraffic: "ボット疑い",
+      botTraffic: "ボットリクエスト",
+      customBlockedTraffic: "カスタムブロック",
+      requests: "リクエスト数",
+      blockedSubtitle: "実際にブロックされたリクエストを表示します。",
+      includedSubtitle: "統計に含まれるリクエストを表示します。",
+      blockedTrendDescription: "時間帯ごとのブロック数とブロック率。",
+      includedTrendDescription: "時間帯ごとの集計対象リクエスト数。",
+      recentBlockedTitle: "最近のブロック済みリクエスト",
+      recentBlockedDescription:
+        "統合された Request Analytics Engine データセットの記録です。",
+      recentIncludedTitle: "最近の集計対象リクエスト",
+      recentIncludedDescription:
+        "統合された Request Analytics Engine データセットの記録です。",
+      detailTitle: "リクエスト詳細",
+      detailSubtitle:
+        "分類、処置、ネットワーク、クライアントの情報を確認します。",
+    },
     title: "リクエスト監視",
-    subtitle:
-      "Analytics Engine をもとに、リクエスト全体、異常ルーティング、通常の収集経路を監視します。",
     tabs: {
       overview: "概要",
-      abnormal: "異常リクエスト",
-      normal: "通常リクエスト",
+      blocked: "ブロック済みリクエスト",
+      included: "統計対象リクエスト",
     },
     refresh: "更新",
     loadFailed: "リクエスト監視データを読み込めません。",
@@ -10333,20 +15203,10 @@ const jaMessages = {
       "Cloudflare アカウントで Analytics Engine が有効化されていないため、このデプロイは Analytics Engine バインディングなしで公開されました。Cloudflare で有効化してから再デプロイすると、リクエスト監視データを収集できます。",
     openAnalyticsEngine: "Analytics Engine を開く",
     openSettings: "設定を開く",
-    highConfidenceBots: "高信頼度 Bot",
     affectedSites: "影響サイト",
-    uniqueCountries: "国",
+    uniqueCountries: "国 / 地域",
     noData: "この期間にリクエストデータはありません。",
     trendTitle: "ルーティング推移",
-    trendDescription:
-      "通常リクエスト、異常リクエスト、分流比率を間隔ごとに表示します。",
-    recentTitle: "最近の Bot リクエスト",
-    recentDescription:
-      "Bot 用 Analytics Engine データセットにのみ書き込まれた詳細記録です。",
-    recentLoadedAll: "すべての記録を読み込みました",
-    detailTitle: "Bot リクエスト詳細",
-    detailSubtitle:
-      "この分流リクエストの検出シグナル、ネットワークコンテキスト、クライアントデータを確認します。",
     client: "クライアント",
     edge: "エッジ",
     identifiers: "識別子",
@@ -10361,9 +15221,7 @@ const jaMessages = {
     request: "リクエスト",
     ip: "IP",
     userAgent: "User-Agent",
-    confidence: "信頼度",
-    blocked: "ブロック済み",
-    highConfidenceRequests: "高信頼度リクエスト",
+    category: "カテゴリ",
     emptyValue: "不明",
     kind: "種別",
     botScore: "Bot スコア",
@@ -10374,7 +15232,7 @@ const jaMessages = {
     origin: "オリジン",
     asOrganization: "ASN 組織",
     asn: "ASN",
-    country: "国",
+    country: "国 / 地域",
     region: "地域",
     city: "都市",
     colo: "データセンター",
@@ -10386,7 +15244,7 @@ const jaMessages = {
       ua_too_long: "User-Agent が長すぎます",
       ua_isbot: "User-Agent が Bot と一致",
       script_ua: "スクリプトクライアント User-Agent",
-      cf_bot_score_low: "Cloudflare Bot スコア低",
+      cf_bot_score_low: "Cloudflare Bot スコアが低い",
       cf_verified_bot_category: "Cloudflare 認証済み Bot カテゴリ",
       hosting_asn: "ホスティング ASN",
       network_service_asn: "ネットワークサービス ASN",
@@ -10394,7 +15252,16 @@ const jaMessages = {
       access_asn: "アクセス ASN",
       missing_browser_provenance: "ブラウザー由来情報なし",
       origin_hostname_mismatch: "オリジンとホスト名の不一致",
-      blocked_pathname: "ブロック対象パス",
+      custom_block: "カスタムブロックルールに一致",
+      blocked_domains: "ブロック対象ドメイン",
+      blocked_paths: "ブロック対象パス",
+      blocked_query_parameters: "ブロック対象クエリパラメータ",
+      blocked_referrers: "ブロック対象リファラー",
+      blocked_user_agents: "ブロック対象 User-Agent",
+      blocked_ips: "ブロック対象 IP",
+      blocked_asns: "ブロック対象 ASN",
+      blocked_countries: "ブロック対象国",
+      blocked_regions: "ブロック対象地域",
     },
     requestKindLabels: {
       pageview: "ページビュー",
@@ -10402,86 +15269,65 @@ const jaMessages = {
       request: "リクエスト",
       visibility: "可視性",
       leave: "離脱",
+      identify: "ユーザー識別",
     },
     overviewLabels: {
-      totalRequests: "総リクエスト数",
-      normalRequests: "通常リクエスト",
-      abnormalRequests: "異常リクエスト",
-      abnormalRatio: "異常リクエスト比率",
-      p50Latency: "P50 エッジ遅延",
-      p75Latency: "P75 エッジ遅延",
-      p95Latency: "P95 エッジ遅延",
-      p99Latency: "P99 エッジ遅延",
-      avgLatency: "平均エッジ遅延",
+      p50Latency: "P50 Worker 処理時間",
+      p75Latency: "P75 Worker 処理時間",
+      p99Latency: "P99 Worker 処理時間",
+      p95Latency: "P95 Worker 処理時間",
+      avgLatency: "平均 Worker 処理時間",
       pageviews: "ページビュー",
       customEvents: "カスタムイベント",
       overviewTrendTitle: "リクエストルーティング推移",
-      overviewTrendDescription:
-        "通常リクエスト、異常リクエスト、異常比率をトップバーの間隔ごとに集計します。",
-      trafficCompositionTitle: "リクエスト構成",
+      trafficCompositionTitle: "ビジネスリクエスト構成",
       trafficCompositionDescription:
-        "通常リクエスト、異常リクエスト、ページイベントを同じ時系列で表示します。",
-      confidenceShareTitle: "リクエスト信頼度の内訳",
-      normalTrafficShare: "通常トラフィック",
-      lowConfidenceTraffic: "低信頼度トラフィック",
-      mediumConfidenceTraffic: "中信頼度トラフィック",
-      highConfidenceTraffic: "高信頼度トラフィック",
-      latencyTitle: "エッジ遅延推移",
+        "ページビュー、離脱、可視性の変化、カスタムイベント、ユーザー識別など、通常の収集イベントを種類別に時系列で表示します。",
+      categoryShareTitle: "リクエストカテゴリの内訳",
+      latencyTitle: "Worker 処理時間の推移",
       latencyDescription:
-        "通常リクエストが AE に書き込まれる際に記録された P50 / P75 / P95 / P99 エッジ遅延です。",
-      abnormalSubtitle:
-        "分流された異常リクエストに絞り込み、マップと表には赤色の異常トラフィックのみを表示します。",
-      normalSubtitle:
-        "通常の収集経路に入ったリクエストに絞り込み、マップと表には通常リクエストのみを表示します。",
+        "通常リクエストが AE に書き込まれる際に記録された P50 / P75 / P95 / P99 Worker 処理時間です。",
       requests: "リクエスト数",
       windowDays: "過去 {days} 日",
       latencyMilliseconds: "{value} ミリ秒",
     },
     normalDetail: {
-      title: "通常リクエスト詳細",
-      subtitle: "通常リクエストの AE 記録フィールド、地域、遅延を確認します。",
       requestMethod: "リクエストメソッド",
-      edgeLatency: "エッジ遅延",
+      edgeLatency: "Worker 処理時間",
       eventAt: "イベント時刻",
       receivedAt: "受信時刻",
-      coordinates: "座標",
       continent: "大陸",
-    },
-    recentNormal: {
-      title: "最近の通常リクエスト",
-      description:
-        "通常リクエスト用 Analytics Engine データセットにのみ書き込まれた詳細記録です。",
     },
   },
   systemSettings: {
     title: "システム設定",
     subtitle: "この InsightFlare デプロイ全体の設定を管理します。",
     guide: "ガイド",
-    botAnalyticsTitle: "Analytics Engine",
-    botAnalyticsDescription:
-      "Bot 保護やその他の分析機能で Analytics Engine データを読むための Cloudflare 認証情報を設定します。",
-    botAnalyticsAccountIdLabel: "Cloudflare Account ID",
-    botAnalyticsApiTokenLabel: "Cloudflare API トークン",
-    botAnalyticsApiTokenPlaceholder:
+    analyticsEngineTitle: "Analytics Engine",
+    analyticsEngineDescription:
+      "リクエスト監視と将来のトラフィック・イベント分析で使用する Analytics Engine の Cloudflare 認証情報を設定します。",
+    analyticsEngineAccountIdLabel: "Cloudflare Account ID",
+    analyticsEngineApiTokenLabel: "Cloudflare API トークン",
+    analyticsEngineApiTokenPlaceholder:
       "ガイドを見て Cloudflare API トークンを取得",
-    botAnalyticsSaved: "Analytics Engine 設定を保存しました。",
-    botAnalyticsSaveFailed: "Analytics Engine 設定を保存できません。",
-    botAnalyticsDeleted: "Analytics Engine 設定を削除しました。",
-    botAnalyticsDeleteFailed: "Analytics Engine 設定を削除できません。",
-    botAnalyticsDeleteConfirm:
+    analyticsEngineSaved: "Analytics Engine 設定を保存しました。",
+    analyticsEngineSaveFailed: "Analytics Engine 設定を保存できません。",
+    analyticsEngineDeleted: "Analytics Engine 設定を削除しました。",
+    analyticsEngineDeleteFailed: "Analytics Engine 設定を削除できません。",
+    analyticsEngineDeleteConfirm:
       "Analytics Engine の読み取り用認証情報を削除しますか？依存する機能は認証情報が復元されるまで設定が必要な状態になります。",
-    botAnalyticsEngineDisabledTitle: "Analytics Engine が有効ではありません",
-    botAnalyticsEngineDisabledDescription:
+    analyticsEngineDisabledTitle: "Analytics Engine が有効ではありません",
+    analyticsEngineDisabledDescription:
       "Cloudflare アカウントで Analytics Engine が有効化されていないため、このデプロイでは Analytics Engine バインディングが自動的に無効化されました。Cloudflare で Analytics Engine を有効化し、InsightFlare を再デプロイすると関連分析機能が有効になります。",
-    botAnalyticsEngineDisabledHint:
+    analyticsEngineDisabledHint:
       "Analytics Engine が有効化され Worker が再デプロイされるまで、Analytics Engine 設定はロックされます。",
-    botAnalyticsOpenCloudflare: "Cloudflare Analytics Engine を開く",
-    botAnalyticsGuideTitle: "Analytics Engine 認証情報を取得",
-    botAnalyticsGuideDescription:
+    analyticsEngineOpenCloudflare: "Cloudflare Analytics Engine を開く",
+    analyticsEngineGuideTitle: "Analytics Engine 認証情報を取得",
+    analyticsEngineGuideDescription:
       "Analytics Engine には Cloudflare アカウント情報と、Analytics Engine データを読み取れる API トークンが必要です。",
-    botAnalyticsGuideSteps: [
+    analyticsEngineGuideSteps: [
       "Cloudflare Dashboard を開き、対象アカウントに入り、Account ID をコピーします。",
-      "Workers & Pages で Analytics Engine を有効化します。Bot と通常リクエストのデータセットはデプロイ時に自動作成・バインドされます。",
+      "Workers & Pages で Analytics Engine を有効化します。Request、Traffic、Event の 3 データセットはデプロイ時に自動作成・バインドされます。",
       "My Profile → API Tokens に移動し、Custom token を作成します。",
       "トークンに Account Analytics の読み取り権限を付与し、現在のアカウントにスコープします。",
       "トークンをコピーし、ここに Account ID と API トークンを入力します。",
@@ -10499,6 +15345,18 @@ const jaMessages = {
       "ここに送信者名、送信者メール、Reply-To、Resend API キーを入力します。",
       "設定を保存し、テストメールを送信して配信を確認します。",
     ],
+    retentionTitle: "運用データの保持期間",
+    retentionDescription:
+      "タスク実行、タスクログ、通知メッセージの保持期間を設定します。変更は新しいレコードにのみ適用されます。",
+    scheduledTaskLogsDaysLabel: "スケジュールタスクの実行とログ（日）",
+    notificationTestDaysLabel: "テスト通知（日）",
+    notificationAttentionDaysLabel: "警告・重大通知（日）",
+    notificationDefaultDaysLabel: "その他の通知（日）",
+    retentionRangeHint: "1〜3650 の整数日を入力してください。",
+    retentionSave: "保持期間を保存",
+    retentionSaving: "保存中...",
+    retentionSaved: "保持期間を保存しました。",
+    retentionSaveFailed: "保持期間を保存できません。",
     loginTurnstileTitle: "ログイン Turnstile 保護",
     loginTurnstileDescription:
       "有効にすると、ログインページはバックグラウンドで Cloudflare Turnstile Invisible 検証を実行し、サーバー側のサインイン処理で強制します。",
@@ -10525,7 +15383,7 @@ const jaMessages = {
       "ログイン Turnstile 設定を削除しますか？ログイン保護は無効になります。",
     loginTurnstileLoadFailed: "ログイン Turnstile 設定を読み込めません。",
     loginTurnstilePrivacyNotice:
-      "Cloudflare Turnstile コンソールで Invisible ウィジェット を作成してください。セルフホスト環境では、プライバシーポリシーが Cloudflare Turnstile の要件に合っていることを確認してください。",
+      "Cloudflare Turnstile コンソールで Invisible ウィジェットを作成してください。 セルフホスト環境では、プライバシーポリシーが Cloudflare Turnstile の要件に合っていることを確認してください。",
     loginTurnstileGuideTitle: "Turnstile 認証情報を取得",
     loginTurnstileGuideDescription:
       "ログイン保護には Cloudflare Turnstile の Site Key と Secret Key が必要です。",
@@ -10650,6 +15508,10 @@ const jaMessages = {
     doDiagnosticSiteAlarm: "アラーム",
     doDiagnosticSiteAlarmNone: "なし",
     doDiagnosticSiteAlarmDue: "期限到来",
+    doDiagnosticSiteNextDue: "次回期限",
+    doDiagnosticSiteNextDueFlush: "フラッシュ",
+    doDiagnosticSiteNextDueHidden: "非表示フォールバック",
+    doDiagnosticSiteNextDueTimeout: "訪問タイムアウト",
     doDiagnosticSiteResponseMs: "応答時間",
     doDiagnosticThresholdsHint:
       "しきい値：stale {stale}、timeout {timeout}、hardAged {hardAged}、stuck flush_attempts ≥ {stuck}",
@@ -10685,6 +15547,7 @@ const jaMessages = {
 const DICTIONARIES: Record<Locale, AppMessages> = {
   en: enMessages,
   zh: zhMessages,
+  "zh-tw": zhTwMessages,
   ja: jaMessages,
 };
 

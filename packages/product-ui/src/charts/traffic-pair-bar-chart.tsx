@@ -1,0 +1,424 @@
+import { memo, useCallback, useMemo, useState } from "react";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
+import {
+  calculateChartYAxisWidth,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  createChartNumberFormatter,
+} from "@insightflare/ui/chart";
+import { Spinner } from "@insightflare/ui/spinner";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
+import { cn } from "../utils/cn";
+import { intlLocale } from "./chart-format";
+import {
+  type ChartAxisDateFormat,
+  createChartAxisDateFormatter,
+  createChartTooltipDateFormatter,
+} from "./chart-time";
+import {
+  createTrafficPairChartConfig,
+  createTrafficPairChartData,
+  createTrafficPairComparisonChartConfig,
+  createTrafficPairComparisonChartData,
+  createTrafficPairCountFormatter,
+  TrafficPairComparisonTooltip,
+  type TrafficPairDataPoint,
+  type TrafficPairRange,
+  TrafficPairTooltip,
+} from "./traffic-pair-chart";
+import type { ChartLocale as Locale, DashboardInterval } from "./types";
+import {
+  useAnimationOnChartSwitch,
+  useChartVisibility,
+} from "./use-chart-animation";
+
+export interface TrafficPairBarChartProps {
+  data: ReadonlyArray<TrafficPairDataPoint>;
+  locale: Locale;
+  timeZone: string;
+  interval: DashboardInterval;
+  viewsLabel: string;
+  visitorsLabel: string;
+  compact?: boolean;
+  dataIsComplete?: boolean;
+  axisDateFormat?: ChartAxisDateFormat;
+  showLegend?: boolean;
+  maxPoints?: number;
+  loading?: boolean;
+  className?: string;
+  range?: TrafficPairRange;
+  comparisonData?: ReadonlyArray<TrafficPairDataPoint>;
+  comparisonRange?: TrafficPairRange;
+  currentPeriodLabel?: string;
+  comparisonLabel?: string;
+}
+
+const TrafficPairRegularBarChart = memo(function TrafficPairRegularBarChart({
+  data,
+  locale,
+  timeZone,
+  interval,
+  viewsLabel,
+  visitorsLabel,
+  compact = false,
+  dataIsComplete = false,
+  axisDateFormat = "compact",
+  showLegend = false,
+  maxPoints,
+  loading = false,
+  className,
+  range,
+  comparisonData,
+  comparisonRange,
+  currentPeriodLabel = "Current period",
+  comparisonLabel = "Comparison",
+}: TrafficPairBarChartProps) {
+  const { containerRef, isVisible, hasMeasuredVisibility } =
+    useChartVisibility("0px");
+  const [hasChartSize, setHasChartSize] = useState(false);
+  const handleChartResize = useCallback((width: number, height: number) => {
+    if (width <= 0 || height <= 0) return;
+    setHasChartSize(true);
+  }, []);
+  const chartData = useMemo(() => {
+    return createTrafficPairChartData(
+      data,
+      interval,
+      timeZone,
+      maxPoints ?? (compact ? 72 : undefined),
+      range,
+      dataIsComplete,
+    );
+  }, [data, interval, timeZone, maxPoints, compact, range, dataIsComplete]);
+  const comparisonChartData = useMemo(
+    () =>
+      comparisonData
+        ? createTrafficPairComparisonChartData(
+            data,
+            comparisonData,
+            interval,
+            timeZone,
+            maxPoints,
+            range,
+            comparisonRange,
+            dataIsComplete,
+          )
+        : null,
+    [
+      comparisonData,
+      comparisonRange,
+      data,
+      dataIsComplete,
+      interval,
+      maxPoints,
+      range,
+      timeZone,
+    ],
+  );
+  const chartDataForDisplay = comparisonChartData ?? chartData;
+  const config = useMemo(
+    () =>
+      comparisonData
+        ? createTrafficPairComparisonChartConfig(
+            currentPeriodLabel,
+            comparisonLabel,
+            viewsLabel,
+            visitorsLabel,
+          )
+        : createTrafficPairChartConfig(viewsLabel, visitorsLabel),
+    [
+      comparisonData,
+      comparisonLabel,
+      currentPeriodLabel,
+      viewsLabel,
+      visitorsLabel,
+    ],
+  );
+  const tickFormatter = useMemo(
+    () =>
+      createChartAxisDateFormatter(locale, interval, timeZone, axisDateFormat),
+    [locale, interval, timeZone, axisDateFormat],
+  );
+  const tooltipFormatter = useMemo(
+    () => createChartTooltipDateFormatter(locale, interval, timeZone),
+    [locale, interval, timeZone],
+  );
+  const countFormatter = useMemo(
+    () => createTrafficPairCountFormatter(locale),
+    [locale],
+  );
+  const pairChartDataKey = useMemo(() => {
+    const firstTimestamp = chartDataForDisplay[0]?.timestampMs ?? 0;
+    const lastTimestamp =
+      chartDataForDisplay[chartDataForDisplay.length - 1]?.timestampMs ?? 0;
+    const comparisonFirstValue = comparisonChartData?.[0]?.comparisonViews ?? 0;
+    const comparisonLastValue =
+      comparisonChartData?.[comparisonChartData.length - 1]?.comparisonViews ??
+      0;
+    return `${interval}:${compact ? "compact" : "regular"}:${chartDataForDisplay.length}:${firstTimestamp}:${lastTimestamp}:${comparisonFirstValue}:${comparisonLastValue}`;
+  }, [compact, comparisonChartData, chartDataForDisplay, interval]);
+  const isAnimationActive = useAnimationOnChartSwitch({
+    switchKey: pairChartDataKey,
+    hasData: chartDataForDisplay.length > 0,
+    isVisible,
+    hasMeasuredVisibility,
+  });
+  const yAxisValues = useMemo(() => {
+    if (comparisonChartData) {
+      return comparisonChartData.map((point) =>
+        Math.max(point.views, point.comparisonViews),
+      );
+    }
+    return chartData.map((point) => point.views);
+  }, [chartData, comparisonChartData]);
+  const yAxisNumberFormatter = useMemo(
+    () => createChartNumberFormatter(intlLocale(locale)),
+    [locale],
+  );
+  const yAxisWidth = useMemo(
+    () =>
+      calculateChartYAxisWidth(
+        yAxisValues.map((value) => yAxisNumberFormatter.format(value)),
+        4,
+      ),
+    [yAxisNumberFormatter, yAxisValues],
+  );
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <ChartContainer
+        className={cn(
+          compact
+            ? "h-4 w-full aspect-auto"
+            : "h-[180px] w-full aspect-auto transition-opacity duration-200",
+          "[&_.recharts-bar-rectangles]:transition-[filter] [&_.recharts-bar-rectangles]:duration-200 motion-reduce:[&_.recharts-bar-rectangles]:transition-none",
+          compact || hasChartSize ? "opacity-100" : "opacity-0",
+          loading
+            ? "[&_.recharts-bar-rectangles]:brightness-50"
+            : "[&_.recharts-bar-rectangles]:brightness-100",
+          className,
+        )}
+        config={config}
+        onChartResize={handleChartResize}
+      >
+        <BarChart
+          data={chartDataForDisplay}
+          margin={
+            compact
+              ? { left: 0, right: 0, top: 0, bottom: 0 }
+              : { left: 0, right: 8 }
+          }
+          barCategoryGap={comparisonChartData ? "12%" : undefined}
+          barGap={comparisonChartData ? 2 : 0}
+        >
+          {compact ? null : <CartesianGrid vertical={false} />}
+          {compact ? null : (
+            <XAxis
+              dataKey="timestampMs"
+              tickFormatter={(value) =>
+                tickFormatter.format(new Date(Number(value ?? 0)))
+              }
+              tickLine={false}
+              axisLine={false}
+              tickMargin={8}
+              minTickGap={14}
+            />
+          )}
+          {compact ? null : (
+            <YAxis
+              width={yAxisWidth}
+              tickFormatter={(value) =>
+                yAxisNumberFormatter.format(Number(value))
+              }
+              allowDecimals={false}
+              tickLine={false}
+              axisLine={false}
+              tickMargin={4}
+            />
+          )}
+          {compact ? null : (
+            <ChartTooltip
+              allowEscapeViewBox={{ x: false, y: true }}
+              wrapperStyle={{ zIndex: 20 }}
+              content={
+                comparisonChartData ? (
+                  <TrafficPairComparisonTooltip
+                    currentPeriodLabel={currentPeriodLabel}
+                    comparisonLabel={comparisonLabel}
+                    viewsLabel={viewsLabel}
+                    visitorsLabel={visitorsLabel}
+                    tooltipFormatter={tooltipFormatter}
+                    countFormatter={countFormatter}
+                  />
+                ) : (
+                  <TrafficPairTooltip
+                    viewsLabel={viewsLabel}
+                    visitorsLabel={visitorsLabel}
+                    tooltipFormatter={tooltipFormatter}
+                    countFormatter={countFormatter}
+                  />
+                )
+              }
+            />
+          )}
+          {comparisonChartData
+            ? [
+                <Bar
+                  key="comparisonVisitors"
+                  dataKey="comparisonVisitors"
+                  stackId="comparison"
+                  fill="var(--color-comparisonVisitors)"
+                  radius={0}
+                  isAnimationActive={isAnimationActive}
+                  animationDuration={isAnimationActive ? 220 : 0}
+                />,
+                <Bar
+                  key="comparisonNonVisitorViews"
+                  dataKey="comparisonNonVisitorViews"
+                  stackId="comparison"
+                  fill="var(--color-comparisonNonVisitorViews)"
+                  radius={0}
+                  isAnimationActive={isAnimationActive}
+                  animationDuration={isAnimationActive ? 220 : 0}
+                />,
+                <Bar
+                  key="currentVisitors"
+                  dataKey="currentVisitors"
+                  stackId="current"
+                  fill="var(--color-currentVisitors)"
+                  radius={0}
+                  isAnimationActive={isAnimationActive}
+                  animationDuration={isAnimationActive ? 220 : 0}
+                />,
+                <Bar
+                  key="currentNonVisitorViews"
+                  dataKey="currentNonVisitorViews"
+                  stackId="current"
+                  fill="var(--color-currentNonVisitorViews)"
+                  radius={0}
+                  isAnimationActive={isAnimationActive}
+                  animationDuration={isAnimationActive ? 220 : 0}
+                />,
+              ]
+            : [
+                <Bar
+                  key="visitors"
+                  dataKey="visitors"
+                  stackId="traffic"
+                  fill="var(--color-visitors)"
+                  radius={0}
+                  isAnimationActive={isAnimationActive}
+                  animationDuration={isAnimationActive ? 220 : 0}
+                />,
+                <Bar
+                  key="nonVisitorViews"
+                  dataKey="nonVisitorViews"
+                  stackId="traffic"
+                  fill="var(--color-nonVisitorViews)"
+                  radius={0}
+                  isAnimationActive={isAnimationActive}
+                  animationDuration={isAnimationActive ? 220 : 0}
+                />,
+              ]}
+          {showLegend && !compact ? (
+            <ChartLegend content={<ChartLegendContent className="pt-4" />} />
+          ) : null}
+        </BarChart>
+      </ChartContainer>
+      {compact ? null : (
+        <AutoTransition
+          initial={false}
+          aria-hidden={!loading && hasChartSize}
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-center text-muted-foreground",
+            showLegend ? "bottom-8" : "bottom-0",
+          )}
+          transitionKey={loading || !hasChartSize ? "loading" : "ready"}
+          duration={0.2}
+          presenceMode="sync"
+        >
+          {loading || !hasChartSize ? (
+            <Spinner key="traffic-pair-loading-indicator" className="size-5" />
+          ) : null}
+        </AutoTransition>
+      )}
+    </div>
+  );
+});
+
+const TrafficPairCompactBarChart = memo(function TrafficPairCompactBarChart({
+  data,
+  interval,
+  timeZone,
+  maxPoints,
+  dataIsComplete = false,
+  loading = false,
+  className,
+  range,
+}: TrafficPairBarChartProps) {
+  const chartData = useMemo(
+    () =>
+      createTrafficPairChartData(
+        data,
+        interval,
+        timeZone,
+        maxPoints ?? 72,
+        range,
+        dataIsComplete,
+      ),
+    [data, interval, timeZone, maxPoints, range, dataIsComplete],
+  );
+  const paths = useMemo(() => {
+    const maxViews = Math.max(1, ...chartData.map((point) => point.views));
+    const visitors: string[] = [];
+    const remainingViews: string[] = [];
+
+    chartData.forEach((point, index) => {
+      const visitorHeight = (point.visitors / maxViews) * 16;
+      const remainingHeight = (point.nonVisitorViews / maxViews) * 16;
+      const x = index + 0.1;
+      const visitorY = 16 - visitorHeight;
+
+      if (visitorHeight > 0) {
+        visitors.push(
+          `M${x.toFixed(2)} ${visitorY.toFixed(2)}h0.8v${visitorHeight.toFixed(2)}h-0.8Z`,
+        );
+      }
+      if (remainingHeight > 0) {
+        remainingViews.push(
+          `M${x.toFixed(2)} ${(visitorY - remainingHeight).toFixed(2)}h0.8v${remainingHeight.toFixed(2)}h-0.8Z`,
+        );
+      }
+    });
+
+    return {
+      visitors: visitors.join(""),
+      remainingViews: remainingViews.join(""),
+    };
+  }, [chartData]);
+
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      className={cn("block h-4 !w-full", loading && "brightness-50", className)}
+      viewBox={`0 0 ${Math.max(1, chartData.length)} 16`}
+      preserveAspectRatio="none"
+    >
+      <path d={paths.visitors} fill="var(--color-chart-3)" />
+      <path d={paths.remainingViews} fill="var(--color-chart-1)" />
+    </svg>
+  );
+});
+
+export const TrafficPairBarChart = memo(function TrafficPairBarChart(
+  props: TrafficPairBarChartProps,
+) {
+  if (props.compact) {
+    return <TrafficPairCompactBarChart {...props} />;
+  }
+
+  return <TrafficPairRegularBarChart {...props} />;
+});

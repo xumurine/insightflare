@@ -1,8 +1,9 @@
+import { scopedFilterMetadata } from "@/lib/edge/analytics/contract";
 import {
   hasFilterDocument,
   queryOverviewForSitesFromHourlyRollups,
   queryTrendForSitesFromHourlyRollups,
-} from "@/lib/edge/hourly-rollup";
+} from "@/lib/edge/analytics/providers/d1/internal/hourly-rollup-queries";
 import type { Env } from "@/lib/edge/types";
 
 import type {
@@ -23,12 +24,18 @@ import {
   timeBucketTimestamp,
   visitSourceBindings,
 } from "./core";
-import type { D1ReadDiagnostics } from "./diagnostics";
+import {
+  type D1ReadDiagnostics,
+  recordScopedFilterDiagnostics,
+} from "./diagnostics";
 import {
   queryOverviewClientDimensionsFromD1,
   queryOverviewGeoDimensionsFromD1,
 } from "./dimensions";
-
+import {
+  scopedDatasetFor,
+  scopedDatasetForUnpreparedReader,
+} from "./scoped-dataset";
 export async function queryOverviewFromD1(
   env: Env,
   siteId: string,
@@ -36,35 +43,44 @@ export async function queryOverviewFromD1(
   filters: FilterDocument,
   diagnostics?: D1ReadDiagnostics,
 ): Promise<OverviewAggregateRow> {
-  const filter = buildVisitFilterSql(filters);
-  const hasFilter = filter.clause.length > 0;
+  const scopedDataset =
+    scopedDatasetFor(siteId, window, filters) ??
+    scopedDatasetForUnpreparedReader(
+      "overview",
+      siteId,
+      window,
+      filters,
+      "session",
+    );
+  recordScopedFilterDiagnostics(diagnostics, scopedFilterMetadata(filters));
+  const filter = scopedDataset
+    ? { clause: "", bindings: [] as Array<string | number> }
+    : buildVisitFilterSql(filters, "visit_source", { window });
   const visitSource = buildVisitSourceCte().replace(
     "visit_source AS (",
     "visit_source AS MATERIALIZED (",
   );
-  const metricSource = hasFilter ? "calculated_visits" : "filtered_visits";
-  const sql = `
-WITH
-${visitSource},
+  const metricSource = scopedDataset
+    ? scopedDataset.visitRelation
+    : "filtered_visits";
+  const entityCounts = scopedDataset
+    ? `
+  (SELECT count(*) FROM ${scopedDataset.sessionRelation}) AS sessions,
+  (SELECT count(*) FROM ${scopedDataset.visitorRelation}) AS visitors,`
+    : `
+  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
+  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors,`;
+  const sourceSql = scopedDataset
+    ? `${scopedDataset.ctes},`
+    : `${visitSource},
 filtered_visits AS MATERIALIZED (
   SELECT *
   FROM visit_source
   ${filter.clause}
-),${
-    hasFilter
-      ? `
-matched_sessions AS MATERIALIZED (
-  SELECT DISTINCT session_id
-  FROM filtered_visits
-  WHERE session_id != ''
-),
-calculated_visits AS MATERIALIZED (
-  SELECT vs.*
-  FROM visit_source vs
-  INNER JOIN matched_sessions ms ON ms.session_id = vs.session_id
-),`
-      : ""
-  }
+),`;
+  const sql = `
+WITH
+${sourceSql}
 session_rollup AS (
   SELECT vs.session_id, count(*) AS visit_count
   FROM ${metricSource} vs
@@ -73,8 +89,7 @@ session_rollup AS (
 )
 SELECT
   count(*) AS views,
-  count(DISTINCT CASE WHEN session_id != '' THEN session_id ELSE NULL END) AS sessions,
-  count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors,
+${entityCounts}
   COALESCE((SELECT count(*) FROM session_rollup WHERE visit_count = 1), 0) AS bounces,
   COALESCE(sum(CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0 THEN duration_ms ELSE 0 END), 0) AS totalDuration,
   COALESCE(sum(CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0 THEN 1 ELSE 0 END), 0) AS durationViews
@@ -85,7 +100,9 @@ FROM ${metricSource}
       await queryD1All<Record<string, unknown>>(
         env,
         sql,
-        [...visitSourceBindings(siteId, window), ...filter.bindings],
+        scopedDataset
+          ? scopedDataset.bindings.map((binding) => binding.value)
+          : [...visitSourceBindings(siteId, window), ...filter.bindings],
         diagnostics,
       )
     )[0] ?? {};
@@ -98,7 +115,6 @@ FROM ${metricSource}
     durationViews: Number(row.durationViews ?? 0),
   };
 }
-
 export async function queryTrendFromD1(
   env: Env,
   siteId: string,
@@ -107,38 +123,58 @@ export async function queryTrendFromD1(
   filters: FilterDocument,
   diagnostics?: D1ReadDiagnostics,
 ): Promise<TrendAggregateRow[]> {
-  const filter = buildVisitFilterSql(filters);
-  const hasFilter = filter.clause.length > 0;
+  const scopedDataset =
+    scopedDatasetFor(siteId, window, filters) ??
+    scopedDatasetForUnpreparedReader(
+      "trend",
+      siteId,
+      window,
+      filters,
+      "session",
+    );
+  recordScopedFilterDiagnostics(diagnostics, scopedFilterMetadata(filters));
+  const filter = scopedDataset
+    ? { clause: "", bindings: [] as Array<string | number> }
+    : buildVisitFilterSql(filters, "visit_source", { window });
   const visitSource = buildVisitSourceCte().replace(
     "visit_source AS (",
     "visit_source AS MATERIALIZED (",
   );
   const buckets = buildTimeBuckets(window, interval);
   const visitBucket = timeBucketCase(buckets, "started_at");
-  const sessionBucket = timeBucketCase(buckets, "session_started_at");
-  const metricSource = hasFilter ? "calculated_visits" : "filtered_visits";
-  const sql = `
-WITH
-${visitSource},
-filtered_visits AS MATERIALIZED (
-  SELECT *
-  FROM visit_source
-  ${filter.clause}
-),${
-    hasFilter
-      ? `
-matched_sessions AS MATERIALIZED (
-  SELECT DISTINCT session_id
-  FROM filtered_visits
-  WHERE session_id != ''
-),
-calculated_visits AS MATERIALIZED (
-  SELECT vs.*
-  FROM visit_source vs
-  INNER JOIN matched_sessions ms ON ms.session_id = vs.session_id
+  const scopedVisitorBucket = scopedDataset
+    ? timeBucketCase(buckets, "observed_at")
+    : null;
+  const sessionBucket = timeBucketCase(
+    buckets,
+    scopedDataset ? "session_observed_at" : "session_started_at",
+  );
+  const metricSource = scopedDataset
+    ? scopedDataset.visitRelation
+    : "filtered_visits";
+  const scopedEntityObservations = scopedDataset
+    ? `
+scope_entity_observations AS (
+  SELECT visitor_id, session_id, started_at AS observed_at, 1 AS is_visit_observation
+  FROM ${scopedDataset.visitRelation}
+  UNION ALL
+  SELECT visitor_id, session_id, occurred_at AS observed_at, 0 AS is_visit_observation
+  FROM ${scopedDataset.eventRelation}
 ),`
-      : ""
-  }
+    : "";
+  const visitBucketRollup = scopedDataset
+    ? `
+visit_bucket_rollup AS (
+  SELECT
+    ${visitBucket.sql} AS bucket,
+    count(*) AS views,
+    0 AS visitors,
+    COALESCE(sum(CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0 THEN duration_ms ELSE 0 END), 0) AS totalDuration,
+    COALESCE(sum(CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0 THEN 1 ELSE 0 END), 0) AS durationViews
+  FROM ${metricSource}
+  GROUP BY bucket
+),`
+    : `
 visit_bucket_rollup AS (
   SELECT
     ${visitBucket.sql} AS bucket,
@@ -148,7 +184,29 @@ visit_bucket_rollup AS (
     COALESCE(sum(CASE WHEN duration_ms IS NOT NULL AND duration_ms >= 0 THEN 1 ELSE 0 END), 0) AS durationViews
   FROM ${metricSource}
   GROUP BY bucket
-),
+),`;
+  const scopedVisitorBucketRollup = scopedDataset
+    ? `
+visitor_bucket_rollup AS (
+  SELECT
+    ${scopedVisitorBucket?.sql} AS bucket,
+    count(DISTINCT CASE WHEN visitor_id != '' THEN visitor_id ELSE NULL END) AS visitors
+  FROM scope_entity_observations
+  GROUP BY bucket
+),`
+    : "";
+  const sessionRollup = scopedDataset
+    ? `
+session_rollup AS (
+  SELECT
+    session_id,
+    MIN(observed_at) AS session_observed_at,
+    COUNT(CASE WHEN is_visit_observation = 1 THEN 1 END) AS visit_count
+  FROM scope_entity_observations
+  WHERE session_id != ''
+  GROUP BY session_id
+),`
+    : `
 session_rollup AS (
   SELECT
     vs.session_id,
@@ -157,7 +215,37 @@ session_rollup AS (
   FROM ${metricSource} vs
   WHERE vs.session_id != ''
   GROUP BY vs.session_id
-),
+),`;
+  const combined = scopedDataset
+    ? `
+combined AS (
+  SELECT bucket, views, visitors, 0 AS sessions, 0 AS bounces, totalDuration, durationViews FROM visit_bucket_rollup
+  UNION ALL
+  SELECT bucket, 0 AS views, visitors, 0 AS sessions, 0 AS bounces, 0 AS totalDuration, 0 AS durationViews FROM visitor_bucket_rollup
+  UNION ALL
+  SELECT bucket, 0 AS views, 0 AS visitors, sessions, bounces, 0 AS totalDuration, 0 AS durationViews FROM session_bucket_rollup
+ )`
+    : `
+combined AS (
+  SELECT bucket, views, visitors, 0 AS sessions, 0 AS bounces, totalDuration, durationViews FROM visit_bucket_rollup
+  UNION ALL
+  SELECT bucket, 0 AS views, 0 AS visitors, sessions, bounces, 0 AS totalDuration, 0 AS durationViews FROM session_bucket_rollup
+ )`;
+  const sourceSql = scopedDataset
+    ? `${scopedDataset.ctes},
+${scopedEntityObservations}`
+    : `${visitSource},
+filtered_visits AS MATERIALIZED (
+  SELECT *
+  FROM visit_source
+  ${filter.clause}
+),`;
+  const sql = `
+WITH
+${sourceSql}
+${visitBucketRollup}
+${scopedVisitorBucketRollup}
+${sessionRollup}
 session_bucket_rollup AS (
   SELECT
     ${sessionBucket.sql} AS bucket,
@@ -166,11 +254,7 @@ session_bucket_rollup AS (
   FROM session_rollup
   GROUP BY bucket
 ),
-combined AS (
-  SELECT bucket, views, visitors, 0 AS sessions, 0 AS bounces, totalDuration, durationViews FROM visit_bucket_rollup
-  UNION ALL
-  SELECT bucket, 0 AS views, 0 AS visitors, sessions, bounces, 0 AS totalDuration, 0 AS durationViews FROM session_bucket_rollup
-)
+${combined}
 SELECT
   bucket,
   sum(views) AS views,
@@ -188,9 +272,11 @@ ORDER BY bucket ASC
       env,
       sql,
       [
-        ...visitSourceBindings(siteId, window),
-        ...filter.bindings,
+        ...(scopedDataset
+          ? scopedDataset.bindings.map((binding) => binding.value)
+          : [...visitSourceBindings(siteId, window), ...filter.bindings]),
         ...visitBucket.bindings,
+        ...(scopedVisitorBucket?.bindings ?? []),
         ...sessionBucket.bindings,
       ],
       diagnostics,
@@ -206,7 +292,6 @@ ORDER BY bucket ASC
     durationViews: Number(row.durationViews ?? 0),
   }));
 }
-
 /**
  * Site-level activity is a composite concern, not a breakdown metric. Keep
  * the filter and half-open window aligned with the overview/trend readers.
@@ -218,35 +303,37 @@ export async function queryLatestSiteActivity(
   filters: FilterDocument,
   diagnostics?: D1ReadDiagnostics,
 ): Promise<number | null> {
-  const filter = buildVisitFilterSql(filters);
-  const hasFilter = filter.clause.length > 0;
+  const scopedDataset =
+    scopedDatasetFor(siteId, window, filters) ??
+    scopedDatasetForUnpreparedReader(
+      "overview",
+      siteId,
+      window,
+      filters,
+      "session",
+    );
+  recordScopedFilterDiagnostics(diagnostics, scopedFilterMetadata(filters));
+  const filter = scopedDataset
+    ? { clause: "", bindings: [] as Array<string | number> }
+    : buildVisitFilterSql(filters, "visit_source", { window });
   const visitSource = buildVisitSourceCte().replace(
     "visit_source AS (",
     "visit_source AS MATERIALIZED (",
   );
-  const metricSource = hasFilter ? "calculated_visits" : "filtered_visits";
-  const sql = `
-WITH
-${visitSource},
+  const metricSource = scopedDataset
+    ? scopedDataset.visitRelation
+    : "filtered_visits";
+  const sourceSql = scopedDataset
+    ? `${scopedDataset.ctes},`
+    : `${visitSource},
 filtered_visits AS MATERIALIZED (
   SELECT *
   FROM visit_source
   ${filter.clause}
-),${
-    hasFilter
-      ? `
-matched_sessions AS MATERIALIZED (
-  SELECT DISTINCT session_id
-  FROM filtered_visits
-  WHERE session_id != ''
-),
-calculated_visits AS MATERIALIZED (
-  SELECT vs.*
-  FROM visit_source vs
-  INNER JOIN matched_sessions ms ON ms.session_id = vs.session_id
-),`
-      : ""
-  }
+),`;
+  const sql = `
+WITH
+${sourceSql}
 SELECT MAX(last_activity_at) AS lastActivityAt
 FROM ${metricSource}
 `;
@@ -254,7 +341,9 @@ FROM ${metricSource}
     await queryD1All<Record<string, unknown>>(
       env,
       sql,
-      [...visitSourceBindings(siteId, window), ...filter.bindings],
+      scopedDataset
+        ? scopedDataset.bindings.map((binding) => binding.value)
+        : [...visitSourceBindings(siteId, window), ...filter.bindings],
       diagnostics,
     )
   )[0];
@@ -263,7 +352,6 @@ FROM ${metricSource}
   const value = Number(raw);
   return Number.isSafeInteger(value) ? value : null;
 }
-
 export async function queryOverviewAggregate(
   env: Env,
   siteId: string,
@@ -271,7 +359,8 @@ export async function queryOverviewAggregate(
   filters: FilterDocument,
   diagnostics?: D1ReadDiagnostics,
 ): Promise<PreferredSourceResult<OverviewAggregateRow>> {
-  if (!hasFilterDocument(filters)) {
+  const scopedDataset = scopedDatasetFor(siteId, window, filters);
+  if (!hasFilterDocument(filters) && !scopedDataset) {
     const rollup = await queryOverviewForSitesFromHourlyRollups(
       env,
       [siteId],
@@ -295,7 +384,6 @@ export async function queryOverviewAggregate(
     approximateVisitors: false,
   };
 }
-
 export async function queryTrendAggregate(
   env: Env,
   siteId: string,
@@ -304,7 +392,8 @@ export async function queryTrendAggregate(
   filters: FilterDocument,
   diagnostics?: D1ReadDiagnostics,
 ): Promise<PreferredSourceResult<TrendAggregateRow[]>> {
-  if (!hasFilterDocument(filters)) {
+  const scopedDataset = scopedDatasetFor(siteId, window, filters);
+  if (!hasFilterDocument(filters) && !scopedDataset) {
     const rollup = await queryTrendForSitesFromHourlyRollups(
       env,
       [siteId],
@@ -335,7 +424,6 @@ export async function queryTrendAggregate(
     diagnosticSource: "raw",
   };
 }
-
 export async function buildOverviewClientDimensionTabs(
   env: Env,
   siteId: string,
@@ -351,7 +439,6 @@ export async function buildOverviewClientDimensionTabs(
     limit,
   );
 }
-
 export async function buildOverviewGeoDimensionTabs(
   env: Env,
   siteId: string,
@@ -361,25 +448,12 @@ export async function buildOverviewGeoDimensionTabs(
 ) {
   return queryOverviewGeoDimensionsFromD1(env, siteId, window, filters, limit);
 }
-
 export type OverviewPageTabKey =
-  | "path"
-  | "title"
-  | "hostname"
-  | "entry"
-  | "exit";
-
+  "path" | "title" | "hostname" | "entry" | "exit";
 export type OverviewSourceTabKey = "domain" | "link";
-
 export type OverviewClientTabKey = Exclude<
   ClientDimensionKey,
   "operatingSystem"
 >;
-
 export type OverviewGeoTabKey =
-  | "country"
-  | "region"
-  | "city"
-  | "continent"
-  | "timezone"
-  | "organization";
+  "country" | "region" | "city" | "continent" | "timezone" | "organization";
