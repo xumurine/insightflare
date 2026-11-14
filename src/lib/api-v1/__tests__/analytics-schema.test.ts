@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { apiV1RouteRegistry } from "@/lib/api-v1/application/route-registry";
+import { AnalyticsSchemaDataSchema } from "@/lib/api-v1/contract/wire";
 import {
   buildSiteAnalyticsSchema,
   buildTeamAnalyticsSchema,
-} from "@/lib/api-v1/analytics-schema";
-import { apiV1RouteRegistry } from "@/lib/api-v1/route-registry";
-import { AnalyticsSchemaDataSchema } from "@/lib/api-v1/wire";
-
+} from "@/lib/api-v1/schema/analytics";
 function expectedOperations(subject: "site" | "team", siteId?: string) {
   return apiV1RouteRegistry
     .filter(
@@ -23,7 +22,6 @@ function expectedOperations(subject: "site" | "team", siteId?: string) {
         : route.path,
     }));
 }
-
 describe("typed analytics schema catalog", () => {
   it("derives every exposed site analytics operation from the canonical registry", () => {
     const schema = buildSiteAnalyticsSchema("site/a", {
@@ -47,6 +45,47 @@ describe("typed analytics schema catalog", () => {
     });
     expect(schema.filters).toContain("page.path");
     expect(schema.operators).toContain("eq");
+    expect(schema.filterProtocol.fields).toContainEqual(
+      expect.objectContaining({
+        id: "session.views",
+        valueKind: "number",
+        group: "session",
+        nativeEntity: "session",
+        nullable: false,
+        suggestionMode: "none",
+      }),
+    );
+    expect(schema.filterProtocol.fields).toContainEqual(
+      expect.objectContaining({
+        id: "visitor.sessions",
+        group: "visitor",
+        nativeEntity: "visitor",
+      }),
+    );
+    expect(
+      schema.filterProtocol.fields.some((field) =>
+        Object.prototype.hasOwnProperty.call(field, "compilerStrategy"),
+      ),
+    ).toBe(false);
+    expect(schema.filterProtocol.json).toMatchObject({
+      documentVersion: 1,
+      operators: expect.arrayContaining(["eq", "startsWith"]),
+    });
+    expect(schema.filterProtocol.dsl).toMatchObject({
+      version: 1,
+      maxLength: 65_536,
+      operators: expect.arrayContaining(["eq", "startsWith"]),
+      examples: expect.arrayContaining(['page.path eq "/pricing"']),
+    });
+    expect(schema.filterProtocol.dsl.syntax.condition).toBe(
+      "<target-expression> <operator> <condition-value>",
+    );
+    expect(schema.filterProtocol.dsl.syntax).toMatchObject({
+      selector: expect.any(String),
+      reducer: expect.any(String),
+      temporal: expect.any(String),
+      relation: expect.any(String),
+    });
     expect(AnalyticsSchemaDataSchema.safeParse(schema).success).toBe(true);
   });
 
@@ -73,7 +112,6 @@ describe("typed analytics schema catalog", () => {
     }
   });
 });
-
 describe("team analytics schema", () => {
   it("derives exposed team operations without a caller-controlled team ID", () => {
     const schema = buildTeamAnalyticsSchema({

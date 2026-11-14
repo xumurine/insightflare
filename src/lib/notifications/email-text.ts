@@ -7,7 +7,7 @@ import {
   formatNotificationNumber,
 } from "./email-format";
 import { NOTIFICATION_EMAIL_MESSAGES } from "./email-i18n";
-import type { NotificationMessage } from "./message-store";
+import type { NotificationMessage } from "./message";
 
 interface RenderNotificationEmailTextInput {
   content: NotificationContent;
@@ -47,7 +47,7 @@ function formatLastSeen(
 }
 
 function usesFullwidthPunctuation(locale: Locale): boolean {
-  return locale === "zh" || locale === "ja";
+  return locale === "zh" || locale === "zh-tw" || locale === "ja";
 }
 
 function renderReportText(input: RenderNotificationEmailTextInput): string {

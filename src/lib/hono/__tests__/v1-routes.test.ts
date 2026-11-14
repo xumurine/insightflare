@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { handlePlannedResourceRoute } from "@/lib/api-v1/resource-handler";
-import type * as SiteListHandlerModule from "@/lib/api-v1/site-list-handler";
-import type * as ApiKeyAuthModule from "@/lib/edge/api-key-auth";
-import { authenticateApiKey } from "@/lib/edge/api-key-auth";
+import { handlePlannedResourceRoute } from "@/lib/api-v1";
+import type * as SiteListHandlerModule from "@/lib/api-v1/analytics/site-list";
+import type * as ApiKeyAuthModule from "@/lib/edge/auth/api-key-auth";
+import { authenticateApiKey } from "@/lib/edge/auth/api-key-auth";
 import { v1Routes } from "@/lib/hono/routes/v1";
 import type { AppEnv } from "@/lib/hono/types";
 
@@ -124,61 +124,62 @@ const typedReaderMock = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/lib/edge/api-key-auth", async (importOriginal) => ({
+vi.mock("@/lib/edge/auth/api-key-auth", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiKeyAuthModule>()),
   authenticateApiKey: vi.fn(),
 }));
 
-vi.mock("@/lib/api-v1/resource-handler", () => ({
+vi.mock("@/lib/api-v1/resources/handler", () => ({
   handlePlannedResourceRoute: vi.fn(),
 }));
 
-vi.mock("@/lib/api-v1/funnel-analysis-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/funnel-analysis", () => ({
   handlePlannedSiteFunnelAnalysis: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/overview-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/overview-handler", () => ({
   handlePlannedSiteOverview: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/site-breakdown-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/site-breakdown", () => ({
   handlePlannedSiteBreakdown: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/team-timeseries-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/team-timeseries", () => ({
   handlePlannedTeamTimeseries: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/team-overview-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/team-overview", () => ({
   handlePlannedTeamOverview: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/team-sites-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/team-sites", () => ({
   handlePlannedTeamSites: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/team-breakdown-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/team-breakdown", () => ({
   handleTeamBreakdown: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/comparison-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/comparison", () => ({
   handleSiteComparisonBreakdown: vi.fn(typedReaderMock.invoke),
   handleSiteComparison: vi.fn(typedReaderMock.invoke),
   handleTeamComparisonBreakdown: vi.fn(typedReaderMock.invoke),
   handleTeamComparison: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/site-cross-breakdown-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/site-cross-breakdown", () => ({
   handlePlannedSiteCrossBreakdown: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/timeseries-handler", () => ({
+vi.mock("@/lib/api-v1/analytics/timeseries-handler", () => ({
   handlePlannedSiteTimeseries: vi.fn(typedReaderMock.invoke),
 }));
 
-vi.mock("@/lib/api-v1/site-list-handler", async (importOriginal) => ({
+vi.mock("@/lib/api-v1/analytics/site-list", async (importOriginal) => ({
   ...(await importOriginal<typeof SiteListHandlerModule>()),
-  handlePlannedSitePages: vi.fn(typedReaderMock.invoke),
+  handlePlannedSitePages: (await importOriginal<typeof SiteListHandlerModule>())
+    .handlePlannedSitePages,
   handlePlannedSiteReferrers: vi.fn(typedReaderMock.invoke),
   handlePlannedSiteChannels: vi.fn(typedReaderMock.invoke),
   handlePlannedSiteFilterValues: vi.fn(typedReaderMock.invoke),
@@ -348,6 +349,33 @@ describe("Hono API v1 routes", () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "validation_failed" },
+    });
+  });
+
+  it("includes path, code, and message for a Zod-invalid site-list body", async () => {
+    const response = await createApp().fetch(
+      request("/api/v1/sites/site-1/analytics/pages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      error: {
+        code: "validation_failed",
+        issues: [
+          {
+            path: "/timeRange",
+            code: "invalid_type",
+            message: expect.any(String),
+          },
+        ],
+      },
     });
   });
 

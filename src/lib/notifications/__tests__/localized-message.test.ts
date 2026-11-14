@@ -5,9 +5,9 @@ import {
   formatNotificationNumber,
 } from "@/lib/notifications/email-format";
 import { renderNotificationPlainText } from "@/lib/notifications/email-text";
-import type { NotificationMessageDraft } from "@/lib/notifications/evaluator";
 import { buildLocalizedNotificationMessageFields } from "@/lib/notifications/localized-message";
-import type { NotificationMessage } from "@/lib/notifications/message-store";
+import type { NotificationMessageDraft } from "@/lib/notifications/message";
+import type { NotificationMessage } from "@/lib/notifications/message";
 
 function draft(
   input: Partial<NotificationMessageDraft>,
@@ -192,6 +192,8 @@ describe("notification plain text and email rendering", () => {
   it("formats notification numbers defensively", () => {
     expect(formatNotificationNumber(1234.9, "en")).toBe("1,234");
     expect(formatNotificationNumber(1234.9, "zh")).toBe("1,234");
+    expect(formatNotificationNumber(1234.9, "zh-tw")).toBe("1,234");
+    expect(formatNotificationNumber(1234.9, "ja")).toBe("1,234");
     expect(formatNotificationNumber("bad", "en")).toBe("0");
   });
 

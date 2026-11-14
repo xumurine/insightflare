@@ -1,15 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  RiCloseLine,
-  RiDeleteBinLine,
-  RiMailSendLine,
-  RiSave3Line,
-  RiSendPlane2Line,
-} from "@remixicon/react";
-import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
-
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -19,28 +9,38 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Button } from "@/components/ui/button";
+} from "@insightflare/ui/alert-dialog";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
+import { Button } from "@insightflare/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@insightflare/ui/card";
+import { Input } from "@insightflare/ui/input";
+import { Label } from "@insightflare/ui/label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
-import { requestAdminService } from "@/lib/admin-service-client";
+} from "@insightflare/ui/select";
+import { Spinner } from "@insightflare/ui/spinner";
+import {
+  RiCloseLine,
+  RiDeleteBinLine,
+  RiMailSendLine,
+  RiSave3Line,
+  RiSendPlane2Line,
+} from "@remixicon/react";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
+
 import type { SystemSettingsInitialData } from "@/lib/dashboard/management-data";
+import { requestAdminService } from "@/lib/dashboard-api/client/admin-service";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
 import type {
@@ -49,7 +49,6 @@ import type {
 } from "@/lib/notifications/email-config";
 
 import { SystemSettingsGuideDialog } from "./system-settings-guide-dialog";
-
 interface NotificationEmailSettingsClientProps {
   locale: Locale;
   messages: AppMessages;
@@ -57,18 +56,15 @@ interface NotificationEmailSettingsClientProps {
   showHeading?: boolean;
   initialData?: SystemSettingsInitialData | null;
 }
-
 interface TestEmailResponse {
   provider: "resend";
   messageId: string;
   durationMs: number;
 }
-
 type FormState = Pick<
   PublicNotificationEmailConfig,
   "enabled" | "provider" | "fromName" | "fromEmail" | "replyTo"
 >;
-
 function defaultConfig(): PublicNotificationEmailConfig {
   return {
     enabled: false,
@@ -83,7 +79,6 @@ function defaultConfig(): PublicNotificationEmailConfig {
     updatedAt: 0,
   };
 }
-
 function toFormState(config: PublicNotificationEmailConfig): FormState {
   return {
     enabled: config.enabled,
@@ -93,7 +88,6 @@ function toFormState(config: PublicNotificationEmailConfig): FormState {
     replyTo: config.replyTo,
   };
 }
-
 async function fetchEmailConfig(
   signal?: AbortSignal,
 ): Promise<PublicNotificationEmailConfig> {
@@ -102,7 +96,6 @@ async function fetchEmailConfig(
     { signal },
   );
 }
-
 async function saveEmailConfig(
   body: Record<string, unknown>,
 ): Promise<PublicNotificationEmailConfig> {
@@ -111,14 +104,12 @@ async function saveEmailConfig(
     { method: "PATCH", body },
   );
 }
-
 async function deleteEmailConfig(): Promise<PublicNotificationEmailConfig> {
   return requestAdminService<PublicNotificationEmailConfig>(
     "notification-email",
     { method: "DELETE" },
   );
 }
-
 async function sendTestEmail(to: string): Promise<TestEmailResponse> {
   const body = { to };
   return requestAdminService<TestEmailResponse>("notification-email/test", {
@@ -126,7 +117,6 @@ async function sendTestEmail(to: string): Promise<TestEmailResponse> {
     body,
   });
 }
-
 export function NotificationEmailSettingsClient({
   messages,
   currentUserEmail,
@@ -415,18 +405,21 @@ export function NotificationEmailSettingsClient({
                   void handleSendTest();
                 }}
               >
-                <AutoTransition className="inline-flex items-center gap-2">
+                <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
                   {testing ? (
                     <span
                       key="testing"
-                      className="inline-flex items-center gap-2"
+                      className="inline-flex items-center gap-[var(--button-content-gap)]"
                     >
-                      <Spinner className="size-4" />
+                      <Spinner data-icon="inline-start" />
                       {copy.testing}
                     </span>
                   ) : (
-                    <span key="test" className="inline-flex items-center gap-2">
-                      <RiSendPlane2Line className="size-4" />
+                    <span
+                      key="test"
+                      className="inline-flex items-center gap-[var(--button-content-gap)]"
+                    >
+                      <RiSendPlane2Line data-icon="inline-start" />
                       {copy.test}
                     </span>
                   )}
@@ -436,18 +429,21 @@ export function NotificationEmailSettingsClient({
 
             <div className="flex flex-wrap gap-2">
               <Button type="submit" disabled={loading || saving || !hasChanges}>
-                <AutoTransition className="inline-flex items-center gap-2">
+                <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
                   {saving ? (
                     <span
                       key="saving"
-                      className="inline-flex items-center gap-2"
+                      className="inline-flex items-center gap-[var(--button-content-gap)]"
                     >
-                      <Spinner className="size-4" />
+                      <Spinner data-icon="inline-start" />
                       {copy.saving}
                     </span>
                   ) : (
-                    <span key="save" className="inline-flex items-center gap-2">
-                      <RiSave3Line className="size-4" />
+                    <span
+                      key="save"
+                      className="inline-flex items-center gap-[var(--button-content-gap)]"
+                    >
+                      <RiSave3Line data-icon="inline-start" />
                       {copy.save}
                     </span>
                   )}
@@ -472,21 +468,21 @@ export function NotificationEmailSettingsClient({
                       config.updatedAt === 0
                     }
                   >
-                    <AutoTransition className="inline-flex items-center gap-2">
+                    <AutoTransition className="inline-flex items-center gap-[var(--button-content-gap)]">
                       {deletingConfig ? (
                         <span
                           key="deleting-config"
-                          className="inline-flex items-center gap-2"
+                          className="inline-flex items-center gap-[var(--button-content-gap)]"
                         >
-                          <Spinner className="size-4" />
+                          <Spinner data-icon="inline-start" />
                           {copy.deleting}
                         </span>
                       ) : (
                         <span
                           key="delete-config"
-                          className="inline-flex items-center gap-2"
+                          className="inline-flex items-center gap-[var(--button-content-gap)]"
                         >
-                          <RiDeleteBinLine className="size-4" />
+                          <RiDeleteBinLine data-icon="inline-start" />
                           {copy.delete}
                         </span>
                       )}

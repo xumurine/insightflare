@@ -1,11 +1,10 @@
 import type { AnalyticsProviderRegistry } from "@/lib/edge/analytics/application/provider-registry";
-import { typedQueryProvider } from "@/lib/edge/analytics/application/provider-registry";
+import { typedQueryProviderFor } from "@/lib/edge/analytics/application/provider-registry";
 import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
 import {
   mapEventAnalyticsContextCards,
   mapEventField,
   mapEventFieldValue,
-  mapEventRecord,
   mapEventSummaryCards,
   mapTabs,
 } from "@/lib/edge/analytics/providers/d1/internal/core";
@@ -14,62 +13,83 @@ import {
   queryEventAnalyticsContextCardsFromD1,
 } from "@/lib/edge/analytics/providers/d1/internal/events-context";
 import {
-  queryEventFieldsFromD1,
-  queryEventFieldValuesFromD1,
+  queryEventFieldsPageFromD1,
+  queryEventFieldValuesPageFromD1,
+} from "@/lib/edge/analytics/providers/d1/internal/events-fields";
+import {
+  decodeEventFieldCursor,
+  decodeEventFieldValueCursor,
 } from "@/lib/edge/analytics/providers/d1/internal/events-fields";
 import { queryEventTypeOverviewFromD1 } from "@/lib/edge/analytics/providers/d1/internal/events-overview";
+import { queryEventRecordDetailFromD1 } from "@/lib/edge/analytics/providers/d1/internal/events-records";
 import {
-  queryEventRecordDetailFromD1,
-  queryEventRecordPageFromD1,
-  serializeEventRecordCursor,
-} from "@/lib/edge/analytics/providers/d1/internal/events-records";
-import {
+  decodeEventTypeCursor,
   queryEventsSummaryFromD1,
-  queryEventTypeAggregate,
+  queryEventTypePageFromD1,
 } from "@/lib/edge/analytics/providers/d1/internal/events-summary";
 import {
   queryEventsTrendFromD1,
   queryEventTypeTrendFromD1,
 } from "@/lib/edge/analytics/providers/d1/internal/events-trend";
+import { readSiteEventRecords } from "@/lib/edge/analytics/providers/d1/operations/site-event-records";
+import { InvalidCursorError } from "@/lib/pagination";
 
 import {
   arrayField,
-  type D1SiteQueryRuntimeOptions,
+  type D1SiteRuntimeBindings,
   emptyEventContextCards,
   measured,
   numberField,
-  query,
   stringField,
   timeWindow,
 } from "./shared";
 
 export function registerEventProviders(
   registry: AnalyticsProviderRegistry,
-  options: D1SiteQueryRuntimeOptions,
+  options: D1SiteRuntimeBindings,
 ): void {
   registry
     .register(
       "event-types",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
+      typedQueryProviderFor("event-types", async (input) => {
+        const request = input;
+        const limit = numberField(request, "limit", 20);
+        const search = stringField(request, "search") || undefined;
+        const cursorText = stringField(request, "cursor") || null;
+        const window = timeWindow(request.time);
+        const filters = request.filters ?? EMPTY_FILTER_DOCUMENT;
+        const cursor = await decodeEventTypeCursor(
+          options.env,
+          options.siteId,
+          window,
+          filters,
+          search,
+          cursorText,
+          request.context.policy.audience,
+        );
+        if (cursorText && !cursor) throw new InvalidCursorError("event-types");
+        const page = await queryEventTypePageFromD1(
+          options.env,
+          options.siteId,
+          window,
+          filters,
+          limit,
+          search,
+          cursor,
+          request.context.policy.audience,
+        );
         return {
-          value: mapTabs(
-            await queryEventTypeAggregate(
-              options.env,
-              options.siteId,
-              timeWindow(request.time),
-              request.filters ?? EMPTY_FILTER_DOCUMENT,
-              numberField(request, "limit", 20),
-              stringField(request, "search") || undefined,
-            ),
-          ),
+          value: {
+            items: mapTabs([...page.items]),
+            pagination: page.pagination,
+          },
         };
       }),
     )
     .register(
       "event-summary",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
+      typedQueryProviderFor("event-summary", async (input) => {
+        const request = input;
         const data = await queryEventsSummaryFromD1(
           options.env,
           options.siteId,
@@ -94,9 +114,9 @@ export function registerEventProviders(
     )
     .register(
       "event-trend",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
-        const interval = request.interval as never;
+      typedQueryProviderFor("event-trend", async (input) => {
+        const request = input;
+        const interval = request.interval ?? "day";
         return {
           value: {
             interval,
@@ -115,92 +135,122 @@ export function registerEventProviders(
     )
     .register(
       "event-records",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
-        const page = await queryEventRecordPageFromD1(
-          options.env,
-          options.siteId,
-          timeWindow(request.time),
-          request.filters ?? EMPTY_FILTER_DOCUMENT,
-          {
-            pageSize: numberField(request, "pageSize", 80),
-            sort: request.sort as never,
+      typedQueryProviderFor("event-records", async (input) => {
+        const request = input;
+        return {
+          value: await readSiteEventRecords({
+            env: options.env,
+            siteId: options.siteId,
+            window: timeWindow(request.time),
+            filters: request.filters ?? EMPTY_FILTER_DOCUMENT,
+            audience: request.context.policy.audience,
+            sort: {
+              field: "occurredAt",
+              direction: request.sort?.direction ?? "desc",
+            },
             search: stringField(request, "search") || undefined,
             eventName: stringField(request, "eventName") || undefined,
-            cursor: (request.cursor as never) ?? null,
-          },
+            page: request.page ?? { limit: request.limit ?? 80, cursor: null },
+          }),
+        };
+      }),
+    )
+    .register(
+      "event-field-values",
+      typedQueryProviderFor("event-field-values", async (input) => {
+        const request = input;
+        const eventName = stringField(request, "eventName") || undefined;
+        const fieldPath = stringField(request, "fieldPath");
+        const fieldValueType = stringField(request, "fieldValueType");
+        const limit = numberField(request, "limit", 25);
+        const search = stringField(request, "search") || undefined;
+        const window = timeWindow(request.time);
+        const filters = request.filters ?? EMPTY_FILTER_DOCUMENT;
+        const cursorText = stringField(request, "cursor") || null;
+        const cursor = await decodeEventFieldValueCursor(
+          options.env,
+          options.siteId,
+          window,
+          filters,
+          eventName,
+          fieldPath,
+          fieldValueType,
+          search,
+          cursorText,
+          request.context.policy.audience,
+        );
+        if (cursorText && !cursor)
+          throw new InvalidCursorError("event-field-values");
+        const page = await queryEventFieldValuesPageFromD1(
+          options.env,
+          options.siteId,
+          window,
+          filters,
+          eventName,
+          fieldPath,
+          fieldValueType,
+          limit,
+          search,
+          cursor,
+          request.context.policy.audience,
         );
         return {
           value: {
-            data: page.rows.map(mapEventRecord),
-            meta: {
-              pageSize: numberField(request, "pageSize", 80),
-              returned: page.rows.length,
-              hasMore: page.nextCursor !== null,
-              nextCursor: page.nextCursor
-                ? serializeEventRecordCursor(page.nextCursor)
-                : null,
+            eventName,
+            fieldPath,
+            fieldValueType,
+            data: {
+              items: page.items.map(mapEventFieldValue),
+              pagination: page.pagination,
             },
           },
         };
       }),
     )
     .register(
-      "event-field-values",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
-        const eventName = stringField(request, "eventName") || undefined;
-        const fieldPath = stringField(request, "fieldPath");
-        const fieldValueType = stringField(request, "fieldValueType");
-        return {
-          value: {
-            fieldPath,
-            fieldValueType,
-            data: (
-              await queryEventFieldValuesFromD1(
-                options.env,
-                options.siteId,
-                timeWindow(request.time),
-                request.filters ?? EMPTY_FILTER_DOCUMENT,
-                eventName,
-                fieldPath,
-                fieldValueType,
-                numberField(request, "limit", 25),
-                stringField(request, "search") || undefined,
-              )
-            ).map(mapEventFieldValue),
-          },
-        };
-      }),
-    )
-    .register(
       "event-fields",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
+      typedQueryProviderFor("event-fields", async (input) => {
+        const request = input;
         const eventName = stringField(request, "eventName") || undefined;
+        const limit = numberField(request, "limit", 100);
+        const window = timeWindow(request.time);
+        const filters = request.filters ?? EMPTY_FILTER_DOCUMENT;
+        const cursorText = stringField(request, "cursor") || null;
+        const cursor = await decodeEventFieldCursor(
+          options.env,
+          options.siteId,
+          window,
+          filters,
+          eventName,
+          cursorText,
+          request.context.policy.audience,
+        );
+        if (cursorText && !cursor) throw new InvalidCursorError("event-fields");
+        const page = await queryEventFieldsPageFromD1(
+          options.env,
+          options.siteId,
+          window,
+          filters,
+          eventName,
+          limit,
+          cursor,
+          request.context.policy.audience,
+        );
         return {
           value: {
             eventName,
-            fields: (
-              await measured("event_type_fields", () =>
-                queryEventFieldsFromD1(
-                  options.env,
-                  options.siteId,
-                  timeWindow(request.time),
-                  request.filters ?? EMPTY_FILTER_DOCUMENT,
-                  eventName,
-                  numberField(request, "limit", 100),
-                ),
-              )
-            ).map(mapEventField),
+            data: {
+              items: page.items.map(mapEventField),
+              pagination: page.pagination,
+            },
           },
         };
       }),
     )
     .register(
       "event-context",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
+      typedQueryProviderFor("event-context", async (input) => {
+        const request = input;
         const eventName = stringField(request, "eventName");
         const selectedKeys = arrayField(request, "selectedKeys").filter(
           (key): key is (typeof EVENT_CONTEXT_CARD_KEYS)[number] =>
@@ -231,13 +281,12 @@ export function registerEventProviders(
     )
     .register(
       "event-type-detail",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
+      typedQueryProviderFor("event-type-detail", async (input) => {
+        const request = input;
         const eventName = stringField(request, "eventName");
         const includeContext = request.includeContext !== false;
         const includeBreakdowns = request.includeBreakdowns !== false;
-        const includeFields = request.includeFields !== false;
-        const [overview, trend, fields, cards] = await Promise.all([
+        const [overview, trend, cards] = await Promise.all([
           measured("event_type_detail.overview", () =>
             queryEventTypeOverviewFromD1(
               options.env,
@@ -253,23 +302,11 @@ export function registerEventProviders(
               options.env,
               options.siteId,
               timeWindow(request.time),
-              request.interval as never,
+              request.interval ?? "day",
               request.filters ?? EMPTY_FILTER_DOCUMENT,
               eventName,
             ),
           ),
-          includeFields
-            ? measured("event_type_detail.fields", () =>
-                queryEventFieldsFromD1(
-                  options.env,
-                  options.siteId,
-                  timeWindow(request.time),
-                  request.filters ?? EMPTY_FILTER_DOCUMENT,
-                  eventName,
-                  100,
-                ),
-              )
-            : Promise.resolve([]),
           includeContext
             ? measured("event_type_detail.context_cards", () =>
                 queryEventAnalyticsContextCardsFromD1(
@@ -297,15 +334,14 @@ export function registerEventProviders(
             cards: cards
               ? mapEventAnalyticsContextCards(cards)
               : emptyEventContextCards(),
-            fields: fields.map(mapEventField),
           },
         };
       }),
     )
     .register(
       "event-record-detail",
-      typedQueryProvider(async (input) => {
-        const request = query(input!);
+      typedQueryProviderFor("event-record-detail", async (input) => {
+        const request = input;
         return {
           value: await queryEventRecordDetailFromD1(
             options.env,

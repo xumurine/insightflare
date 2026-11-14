@@ -1,4 +1,14 @@
-import type { QueryOperation } from "@/lib/edge/analytics/contract";
+import type {
+  CanonicalQuery,
+  CanonicalResult,
+  QueryContext,
+  QueryOperation,
+  QueryTime,
+} from "@/lib/edge/analytics/contract";
+import type {
+  PerformanceQueryMode,
+  RealtimeQueryMode,
+} from "@/lib/edge/analytics/contract";
 
 import type { AnalyticsOperationId } from "./operation-registry";
 
@@ -25,6 +35,8 @@ export const API_V1_QUERY_OPERATION_MAP = {
   "site.analytics.filterValues": "filter-values",
   "site.analytics.retentionCohorts": "retention",
   "site.analytics.funnelAnalysis": "funnel-analysis",
+  "site.analytics.goalSummary": "goal-summary",
+  "site.analytics.goalTimeseries": "goal-timeseries",
   "site.analytics.performanceSummary": "performance",
   "site.analytics.performanceTimeseries": "performance",
   "site.analytics.performanceBreakdown": "performance",
@@ -41,20 +53,94 @@ export const API_V1_QUERY_OPERATION_MAP = {
   "site.analytics.sessionDetail": "session-detail",
   "site.analytics.visitorsSearch": "visitors",
   "site.analytics.sessionsSearch": "sessions",
-  "site.analytics.visitorEvents": "event-records",
-  "site.analytics.visitorSessions": "sessions",
-  "site.analytics.sessionEvents": "event-records",
+  "site.analytics.visitorEvents": "visitor-events",
+  "site.analytics.visitorSessions": "visitor-sessions",
+  "site.analytics.sessionEvents": "session-events",
   "site.analytics.realtimeSnapshot": "realtime",
   "site.analytics.realtimeActiveVisitors": "realtime",
   "site.analytics.realtimeEvents": "realtime",
   "site.analytics.realtimeSessions": "realtime",
 } as const satisfies Record<AnalyticsOperationId, QueryOperation>;
 
+/** Canonical operation mapping derived directly from the API operation table. */
+export type ApiV1CanonicalOperationMap = typeof API_V1_QUERY_OPERATION_MAP;
+export type ApiV1CanonicalOperation<Operation extends AnalyticsOperationId> =
+  ApiV1CanonicalOperationMap[Operation];
+export type ApiV1CanonicalQuery<Operation extends AnalyticsOperationId> =
+  CanonicalQuery<ApiV1CanonicalOperation<Operation>>;
+export type ApiV1CanonicalResult<Operation extends AnalyticsOperationId> =
+  CanonicalResult<ApiV1CanonicalOperation<Operation>>;
+
+type ApiV1QueryVariantMap = typeof API_V1_QUERY_VARIANT_MAP;
+export type ApiV1CanonicalMode<Operation extends AnalyticsOperationId> =
+  Operation extends keyof ApiV1QueryVariantMap
+    ? ApiV1QueryVariantMap[Operation]
+    : never;
+
+type DistributiveOmit<Value, Key extends PropertyKey> = Value extends unknown
+  ? Omit<Value, Key>
+  : never;
+
+/**
+ * The route-level query is the canonical operation query before the adapter
+ * binds request context/time and the API operation's canonical mode.
+ */
+export type ApiV1InvocationQuery<Operation extends AnalyticsOperationId> =
+  DistributiveOmit<
+    ApiV1CanonicalQuery<Operation>,
+    "context" | "time" | "mode"
+  > & {
+    readonly context?: QueryContext;
+    readonly time?: QueryTime;
+    readonly mode?: ApiV1CanonicalMode<Operation>;
+    readonly startMs?: number;
+    readonly endExclusiveMs?: number;
+    readonly timeZone?: string;
+    readonly siteId?: string;
+    readonly teamId?: string;
+    readonly allowedSiteIds?: readonly string[];
+    readonly window?: {
+      readonly startMs?: number;
+      readonly endExclusiveMs?: number;
+      readonly timeZone?: string;
+      readonly nowMs?: number;
+    };
+  };
+
+const API_V1_QUERY_VARIANT_MAP = {
+  "site.analytics.breakdown": "breakdown",
+  "team.analytics.breakdown": "breakdown",
+  "site.analytics.channels": "list",
+  "site.analytics.performanceSummary": "summary",
+  "site.analytics.performanceTimeseries": "timeseries",
+  "site.analytics.performanceBreakdown": "breakdown",
+  "site.analytics.realtimeSnapshot": "snapshot",
+  "site.analytics.realtimeActiveVisitors": "active-visitors",
+  "site.analytics.realtimeEvents": "events",
+  "site.analytics.realtimeSessions": "sessions",
+} as const satisfies Partial<
+  Record<
+    AnalyticsOperationId,
+    | Exclude<PerformanceQueryMode, "dashboard">
+    | RealtimeQueryMode
+    | "breakdown"
+    | "list"
+  >
+>;
+
 export type CanonicalQueryOperation =
   (typeof API_V1_QUERY_OPERATION_MAP)[AnalyticsOperationId];
 
-export function canonicalQueryOperationFor(
-  operation: AnalyticsOperationId,
-): CanonicalQueryOperation {
+export function canonicalQueryOperationFor<
+  Operation extends AnalyticsOperationId,
+>(operation: Operation): (typeof API_V1_QUERY_OPERATION_MAP)[Operation] {
   return API_V1_QUERY_OPERATION_MAP[operation];
+}
+
+export function canonicalQueryVariantFor<
+  Operation extends AnalyticsOperationId,
+>(operation: Operation): ApiV1CanonicalMode<Operation> | undefined {
+  return API_V1_QUERY_VARIANT_MAP[
+    operation as keyof typeof API_V1_QUERY_VARIANT_MAP
+  ] as ApiV1CanonicalMode<Operation> | undefined;
 }
