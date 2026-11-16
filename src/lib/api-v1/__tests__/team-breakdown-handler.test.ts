@@ -4,13 +4,12 @@ import { createTestProviderRegistry } from "@/lib/api-v1/__tests__/provider-regi
 import {
   handleTeamBreakdown,
   type TeamBreakdownReader,
-} from "@/lib/api-v1/team-breakdown-handler";
+} from "@/lib/api-v1/analytics/team-breakdown";
 import {
   AnalyticsBreakdownResponseSchema,
   ApiV1ErrorEnvelopeSchema,
-} from "@/lib/api-v1/wire";
-import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
-
+} from "@/lib/api-v1/contract/wire";
+import type { ApiKeyPrincipal } from "@/lib/edge/auth/api-key-auth";
 const principal: ApiKeyPrincipal = {
   keyId: "key-1",
   teamId: "team-1",
@@ -19,7 +18,6 @@ const principal: ApiKeyPrincipal = {
   siteIds: ["site-1"],
   status: "active",
 };
-
 function request(body: unknown = input, init: RequestInit = {}) {
   const method = init.method ?? "POST";
   return new Request(
@@ -34,7 +32,6 @@ function request(body: unknown = input, init: RequestInit = {}) {
     },
   );
 }
-
 const input = {
   timeRange: {
     kind: "absolute",
@@ -44,7 +41,6 @@ const input = {
   },
   limit: 20,
 };
-
 function reader() {
   return vi.fn<TeamBreakdownReader>().mockResolvedValue({
     items: [
@@ -58,7 +54,6 @@ function reader() {
     ],
   });
 }
-
 describe("team breakdown HTTP adapter", () => {
   it("uses principal-derived team access and serializes the typed envelope", async () => {
     const provider = reader();
@@ -159,6 +154,32 @@ describe("team breakdown HTTP adapter", () => {
       createTestProviderRegistry(provider),
     );
     expect(invalidFilter.status).toBe(400);
+
+    const dslFilter = await handleTeamBreakdown(
+      request({
+        ...input,
+        scope: "session",
+        filter: { type: "dsl", expression: 'geo.country eq "US"' },
+      }),
+      principal,
+      "page.path",
+      createTestProviderRegistry(provider),
+    );
+    expect(dslFilter.status).toBe(200);
+    expect(provider).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        scopePreference: "session",
+        filters: {
+          version: 1,
+          root: {
+            kind: "condition",
+            target: { kind: "field", field: "geo.country" },
+            operator: "eq",
+            value: "us",
+          },
+        },
+      }),
+    );
 
     const unrestricted = await handleTeamBreakdown(
       request(),

@@ -1,22 +1,23 @@
 import { Hono } from "hono";
 
-import { requireScope } from "@/lib/api-v1/auth-helpers";
-import { dispatchApiV1CoreRoute } from "@/lib/api-v1/core-dispatcher";
-import { TypedBatchRequestSchema } from "@/lib/api-v1/dto/batch";
 import {
   API_V1_BATCH_BODY_MAX_BYTES,
   API_V1_BATCH_ITEM_BODY_MAX_BYTES,
-  inspectJsonBudget,
-  readBoundedBody,
-  serializedUtf8ByteLength,
-} from "@/lib/api-v1/request-budget";
-import { handlePlannedResourceRoute } from "@/lib/api-v1/resource-handler";
-import {
+  dispatchApiV1CoreRoute,
   executeTypedBatch,
+  fromRequestBodyError,
+  fromZodIssues,
+  handlePlannedResourceRoute,
+  inspectJsonBudget,
+  jsonError,
+  jsonSuccess,
+  readBoundedBody,
+  requireScope,
+  serializedUtf8ByteLength,
+  TypedBatchRequestSchema,
   TypedBatchValidationError,
-} from "@/lib/api-v1/typed-batch";
-import { jsonError, jsonSuccess } from "@/lib/api-v1/wire-helpers";
-import type { ApiKeyPrincipal } from "@/lib/edge/api-key-auth";
+} from "@/lib/api-v1";
+import type { ApiKeyPrincipal } from "@/lib/edge/auth/api-key-auth";
 import { authenticateApiKeyMiddleware } from "@/lib/hono/middleware/api-key";
 import { registerV1CoreRoutes } from "@/lib/hono/routes/v1/core";
 import {
@@ -28,13 +29,10 @@ import { registerV1SiteAnalyticsRoutes } from "@/lib/hono/routes/v1/site-analyti
 import { registerV1TeamAnalyticsRoutes } from "@/lib/hono/routes/v1/team-analytics";
 import type { AppEnv } from "@/lib/hono/types";
 import { executionContext } from "@/lib/hono/utils/context";
-
 export const v1Routes = new Hono<AppEnv>();
-
 // Batch children are routed through the same Hono registration without a
 // second API-key lookup. The map is request-local and never crosses the edge.
 const internalBatchPrincipals = new WeakMap<Request, ApiKeyPrincipal>();
-
 async function dispatchTypedBatchRequest(
   request: Request,
   env: AppEnv["Bindings"],
@@ -53,7 +51,6 @@ async function dispatchTypedBatchRequest(
     internalBatchPrincipals.delete(routedRequest);
   }
 }
-
 v1Routes.get("/", (c) =>
   dispatchApiV1CoreRoute({
     routeId: "core.root",
@@ -70,7 +67,6 @@ v1Routes.use("/*", async (c, next) => {
   }
   return authenticateApiKeyMiddleware()(c, next);
 });
-
 registerV1CoreRoutes(v1Routes, principal);
 registerV1TeamAnalyticsRoutes(v1Routes, {
   resolvePrincipal: principal,
@@ -120,6 +116,7 @@ v1Routes.post("/batch", async (c) => {
       400,
       undefined,
       c.req.raw,
+      fromRequestBodyError(new Error("invalid_json")),
     );
   }
   let raw: unknown;
@@ -134,6 +131,7 @@ v1Routes.post("/batch", async (c) => {
       400,
       undefined,
       c.req.raw,
+      fromRequestBodyError(new Error("invalid_json")),
     );
   }
   const budget = inspectJsonBudget(raw);
@@ -154,6 +152,7 @@ v1Routes.post("/batch", async (c) => {
       422,
       undefined,
       c.req.raw,
+      fromZodIssues(parsed.error.issues),
     );
   }
   let itemBytes = 0;
@@ -348,6 +347,36 @@ v1Routes.all("/sites/:siteId/funnels/:funnelId", (c) =>
           : c.req.method === "DELETE"
             ? "funnels.delete"
             : "funnels.get",
+      allow: "GET, PATCH, DELETE",
+    }),
+  ),
+);
+v1Routes.all("/sites/:siteId/goals", (c) =>
+  withSiteId(c, (siteId) =>
+    handlePlannedResourceRoute({
+      request: c.req.raw,
+      env: c.env,
+      principal: principal(c),
+      siteId,
+      routeId: c.req.method === "POST" ? "goals.create" : "goals.list",
+      allow: "GET, POST",
+    }),
+  ),
+);
+v1Routes.all("/sites/:siteId/goals/:goalId", (c) =>
+  withSiteId(c, (siteId) =>
+    handlePlannedResourceRoute({
+      request: c.req.raw,
+      env: c.env,
+      principal: principal(c),
+      siteId,
+      goalId: c.req.param("goalId"),
+      routeId:
+        c.req.method === "PATCH"
+          ? "goals.update"
+          : c.req.method === "DELETE"
+            ? "goals.delete"
+            : "goals.get",
       allow: "GET, PATCH, DELETE",
     }),
   ),

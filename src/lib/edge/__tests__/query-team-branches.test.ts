@@ -1,18 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { executePrivateTeamDashboard } from "@/lib/edge/analytics/adapters/private";
-import {
-  badRequest,
-  parseWindow,
-  resolvePrivateTeam,
-} from "@/lib/edge/analytics/providers/d1/internal/core";
+import { executePrivateTeamDashboard } from "@/lib/edge/analytics/interfaces/dashboard/private";
+import { parseWindow } from "@/lib/edge/analytics/interfaces/dashboard/protocol/parsers";
+import { badRequest } from "@/lib/edge/analytics/interfaces/dashboard/protocol/responses";
 import { listTeamSites } from "@/lib/edge/analytics/providers/d1/internal/team";
-import type { EdgeSessionClaims } from "@/lib/edge/session-auth";
+import type { EdgeSessionClaims } from "@/lib/edge/auth/session-auth";
+import { resolvePrivateTeam } from "@/lib/edge/auth/site-access";
 import type { Env } from "@/lib/edge/types";
 
 const requireSessionMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/edge/session-auth", () => ({
+vi.mock("@/lib/edge/auth/session-auth", () => ({
   requireSession: requireSessionMock,
 }));
 
@@ -192,9 +190,9 @@ describe("edge team query low branch coverage", () => {
     });
     expect(calls[0]).toMatchObject({
       kind: "first",
-      bindings: ["user-1", "team-1"],
+      bindings: ["user-1", "team-1", 1],
     });
-    expect(calls[0].sql).toContain("LEFT JOIN team_members");
+    expect(calls[0].sql).toContain('FROM "team_members"');
   });
 
   it("passes through team not found responses before listing sites", async () => {
@@ -215,7 +213,7 @@ describe("edge team query low branch coverage", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       kind: "first",
-      bindings: ["missing-team"],
+      bindings: ["missing-team", 1],
     });
   });
 

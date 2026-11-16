@@ -1,27 +1,24 @@
 import handler from "@tanstack/react-start/server-entry";
 
-import { initializeE2eClock } from "@/lib/edge/e2e-clock";
-import { runHourlyAggregation } from "@/lib/edge/hourly-rollup";
-import { IngestDurableObject as BaseIngestDurableObject } from "@/lib/edge/ingest-do";
-import { instrumentEnv } from "@/lib/edge/observability-bindings";
+import { sweepIngestAlarms } from "@/lib/edge/ingest/alarm-sweep";
+import { IngestDurableObject as BaseIngestDurableObject } from "@/lib/edge/ingest/durable-object";
+import { instrumentEnv } from "@/lib/edge/observability/bindings";
 import {
   createInvocationLogger,
   errorLogData,
   runWithInvocationLogger,
-} from "@/lib/edge/observability-logger";
-import { getScheduledTaskDefinition } from "@/lib/edge/scheduled-task-registry";
-import { runScheduledTask } from "@/lib/edge/scheduled-task-runner";
+} from "@/lib/edge/observability/logger";
+import { initializeE2eClock } from "@/lib/edge/runtime/e2e-clock";
+import { framePolicy } from "@/lib/edge/runtime/frame-policy";
+import { dispatchInternalScheduledTasks } from "@/lib/edge/scheduled-tasks/dispatcher";
 import type { Env } from "@/lib/edge/types";
 import apiApp from "@/lib/hono/app";
 import { shouldUseHono } from "@/lib/hono/path-match";
-import { runNotificationTick } from "@/lib/notifications/notification-task";
 import { localeCookie, resolvePageRequest } from "@/middleware";
-
 export interface AppServerContext {
   env: Env;
   executionCtx: ExecutionContext;
 }
-
 declare module "@tanstack/react-router" {
   interface Register {
     server: {
@@ -29,14 +26,13 @@ declare module "@tanstack/react-router" {
     };
   }
 }
-
 export class IngestDurableObject extends BaseIngestDurableObject {}
-
 function withPageHeaders(
   response: Response,
   pathname: string,
   locale: string | null,
   demoMode: boolean,
+  e2eTestSiteURL?: string,
 ): Response {
   const headers = new Headers(response.headers);
   headers.set("x-pathname", pathname);
@@ -45,13 +41,23 @@ function withPageHeaders(
     "Strict-Transport-Security",
     "max-age=31536000; includeSubDomains",
   );
-  headers.set("X-Frame-Options", demoMode ? "SAMEORIGIN" : "DENY");
+  const frame = framePolicy(demoMode);
+  if (frame.frameOptions) headers.set("X-Frame-Options", frame.frameOptions);
+  else headers.delete("X-Frame-Options");
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set(
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), payment=()",
   );
+  const connectSources = ["'self'", "https:", "wss:"];
+  if (e2eTestSiteURL) {
+    try {
+      connectSources.push(new URL(e2eTestSiteURL).origin);
+    } catch {
+      // Keep the production CSP when the optional E2E URL is malformed.
+    }
+  }
   headers.set(
     "Content-Security-Policy",
     [
@@ -61,10 +67,10 @@ function withPageHeaders(
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https: wss:",
+      `connect-src ${connectSources.join(" ")}`,
       "worker-src 'self' blob:",
       "frame-src 'self' https:",
-      "frame-ancestors 'none'",
+      `frame-ancestors ${frame.frameAncestors}`,
       "base-uri 'self'",
       "form-action 'self'",
       "object-src 'none'",
@@ -76,25 +82,20 @@ function withPageHeaders(
     headers,
   });
 }
-
 function shouldSkipScheduledTasks(env: Env): boolean {
   return env.DISABLE_CRON_TASKS === "1" || env.DEMO_MODE === "1";
 }
-
 function isServerFunctionRequest(pathname: string): boolean {
   return pathname === "/_serverFn" || pathname.startsWith("/_serverFn/");
 }
-
 function pageRouteForLog(pathname: string): string {
   return isServerFunctionRequest(pathname) ? "server_function" : "page";
 }
-
 function markInternalPageRequest(request: Request): Request {
   const headers = new Headers(request.headers);
   headers.set("x-insightflare-internal-page-request", "1");
   return new Request(request, { headers });
 }
-
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     initializeE2eClock(env);
@@ -128,6 +129,7 @@ export default {
             pathname,
             null,
             env.DEMO_MODE === "1",
+            env.INSIGHTFLARE_E2E_TEST_SITE_URL,
           );
           logger.setRequest({
             route: pageRouteForLog(pathname),
@@ -154,6 +156,7 @@ export default {
                 .pathname,
               decision.locale,
               env.DEMO_MODE === "1",
+              env.INSIGHTFLARE_E2E_TEST_SITE_URL,
             )
           : withPageHeaders(
               await logger.measure("page.handler", async () =>
@@ -164,6 +167,7 @@ export default {
               pathname,
               decision.locale,
               env.DEMO_MODE === "1",
+              env.INSIGHTFLARE_E2E_TEST_SITE_URL,
             );
         logger.setRequest({
           route: pageRouteForLog(pathname),
@@ -204,45 +208,15 @@ export default {
       logger.emit();
       return;
     }
-    const task = getScheduledTaskDefinition("visit_hourly_rollup");
-    const notificationTask = getScheduledTaskDefinition("notification_tick");
     ctx.waitUntil(
       runWithInvocationLogger(logger, () =>
         Promise.all([
-          runScheduledTask(
+          dispatchInternalScheduledTasks(
             instrumentedEnv,
-            {
-              key: task?.key || "visit_hourly_rollup",
-              name: task?.name || "Hourly visit aggregation",
-              triggerType: "cron",
-            },
             controller.scheduledTime,
-            ({ logger: taskLogger }) =>
-              logger.measure("scheduled.hourly_rollup", () =>
-                runHourlyAggregation(
-                  instrumentedEnv,
-                  controller.scheduledTime,
-                  {
-                    logger: taskLogger,
-                  },
-                ),
-              ),
             logger,
           ),
-          runScheduledTask(
-            instrumentedEnv,
-            {
-              key: notificationTask?.key || "notification_tick",
-              name: notificationTask?.name || "Notification dispatch",
-              triggerType: "cron",
-            },
-            controller.scheduledTime,
-            (taskContext) =>
-              logger.measure("scheduled.notification_tick", () =>
-                runNotificationTick(taskContext),
-              ),
-            logger,
-          ),
+          sweepIngestAlarms(instrumentedEnv, logger),
         ])
           .then(() => logger.info("scheduled.completed"))
           .catch((error) => {

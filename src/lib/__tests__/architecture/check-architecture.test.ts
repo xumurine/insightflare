@@ -1,0 +1,562 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+import {
+  collectArchitectureViolations,
+  detectForbiddenPrefixFiles,
+  directD1AccessViolations,
+  isGeneratedFile,
+} from "../../../../scripts/check-architecture";
+const temporaryDirectories: string[] = [];
+function fixture(): string {
+  const root = mkdtempSync(
+    path.join(os.tmpdir(), "insightflare-architecture-"),
+  );
+  temporaryDirectories.push(root);
+  mkdirSync(path.join(root, "src/lib/edge/analytics/contract"), {
+    recursive: true,
+  });
+  mkdirSync(path.join(root, "src/lib/dashboard"), { recursive: true });
+  writeFileSync(
+    path.join(root, "src/lib/dashboard/runtime.ts"),
+    "export const runtime = true;\n",
+  );
+  return root;
+}
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0))
+    rmSync(directory, { recursive: true, force: true });
+});
+describe("architecture checker", () => {
+  it("keeps the Analytics engine independent from physical storage", () => {
+    const root = fixture();
+    mkdirSync(path.join(root, "src/lib/edge/analytics/engine"), {
+      recursive: true,
+    });
+    mkdirSync(path.join(root, "src/lib/db"), { recursive: true });
+    mkdirSync(path.join(root, "src/lib/edge/analytics/providers/d1"), {
+      recursive: true,
+    });
+    mkdirSync(path.join(root, "src/lib/edge/archive"), { recursive: true });
+    mkdirSync(path.join(root, "src/lib/filter-contract"), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(root, "src/lib/db/query.ts"),
+      "export const query = true;\n",
+    );
+    writeFileSync(
+      path.join(root, "src/lib/edge/analytics/providers/d1/reader.ts"),
+      "export const reader = true;\n",
+    );
+    writeFileSync(
+      path.join(root, "src/lib/edge/archive/reader.ts"),
+      "export const archive = true;\n",
+    );
+    writeFileSync(
+      path.join(root, "src/lib/filter-contract/types.ts"),
+      "export const filter = true;\n",
+    );
+    writeFileSync(
+      path.join(root, "src/lib/edge/analytics/engine/plan.ts"),
+      [
+        'import { query } from "@/lib/db/query";',
+        'import { reader } from "@/lib/edge/analytics/providers/d1/reader";',
+        'import { archive } from "@/lib/edge/archive/reader";',
+        'import type { D1Database } from "cloudflare:workers";',
+        'import { filter } from "@/lib/filter-contract/types";',
+        "export { query, reader, archive, filter, D1Database };",
+        "",
+      ].join("\n"),
+    );
+
+    expect(
+      collectArchitectureViolations(root)
+        .filter(({ source }) => source.endsWith("engine/plan.ts"))
+        .map(({ rule, specifier }) => ({ rule, specifier })),
+    ).toEqual([
+      {
+        rule: "analytics-engine-physical-isolation",
+        specifier: "@/lib/db/query",
+      },
+      {
+        rule: "analytics-engine-physical-isolation",
+        specifier: "@/lib/edge/analytics/providers/d1/reader",
+      },
+      {
+        rule: "analytics-engine-physical-isolation",
+        specifier: "@/lib/edge/archive/reader",
+      },
+      {
+        rule: "analytics-engine-physical-isolation",
+        specifier: "cloudflare:workers",
+      },
+    ]);
+  });
+
+  it("parses imports and re-exports and reports forbidden contract edges", () => {
+    const root = fixture();
+    writeFileSync(
+      path.join(root, "src/lib/edge/analytics/contract/query.ts"),
+      'import { runtime } from "@/lib/dashboard/runtime";\nexport { runtime } from "@/lib/dashboard/runtime";\n',
+    );
+
+    const violations = collectArchitectureViolations(root);
+
+    expect(violations).toHaveLength(2);
+    expect(violations.map(({ rule }) => rule)).toEqual([
+      "analytics-contract-direction",
+      "analytics-contract-direction",
+    ]);
+  });
+
+  it("enforces workspace UI package boundaries and public subpath imports", () => {
+    const root = fixture();
+    const files: Record<string, string> = {
+      "packages/ui/package.json": JSON.stringify({
+        name: "@insightflare/ui",
+        exports: {
+          "./components/*": "./src/components/*.tsx",
+          "./query/*": "./src/query/*.ts",
+        },
+      }),
+      "packages/product-ui/package.json": JSON.stringify({
+        name: "@insightflare/product-ui",
+        exports: { "./cards/*": "./src/cards/*.tsx" },
+      }),
+      "packages/ui/src/components/button.tsx":
+        "export const Button = () => null;\n",
+      "packages/ui/src/query/use-query.ts":
+        "export const useQuery = () => null;\n",
+      "src/lib/api-v1/client.ts": "export const client = true;\n",
+      "src/lib/edge/runtime/worker.ts": "export const runtime = true;\n",
+      "packages/product-ui/src/cards/site-card.tsx": [
+        'import { Button } from "@insightflare/ui/components/button";',
+        'import "@/lib/api-v1/client";',
+        'export { runtime } from "../../../../src/lib/edge/runtime/worker";',
+        'const load = () => import("@tanstack/react-query");',
+        'import { useQuery } from "@insightflare/ui/query/use-query";',
+        "export { Button, useQuery, load };",
+        "",
+      ].join("\n"),
+      "packages/ui/src/components/field.tsx": [
+        'import { runtime } from "../../../../src/lib/edge/runtime/worker";',
+        'import { ProductCard } from "@insightflare/product-ui/cards/site-card";',
+        'import { useQuery } from "@tanstack/react-query";',
+        "export { runtime, ProductCard, useQuery };",
+        "",
+      ].join("\n"),
+      "src/components/workspace-consumer.tsx": [
+        'import { Button } from "@insightflare/ui/components/button";',
+        'import { ProductCard } from "@insightflare/product-ui/cards/site-card";',
+        'import { PrivateButton } from "../../packages/ui/src/components/button";',
+        "export { Button, ProductCard, PrivateButton };",
+        "",
+      ].join("\n"),
+    };
+    for (const [relativePath, content] of Object.entries(files)) {
+      const absolutePath = path.join(root, relativePath);
+      mkdirSync(path.dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, content);
+    }
+
+    const violations = collectArchitectureViolations(root);
+    expect(
+      violations.map(({ rule, source, specifier, target }) => ({
+        rule,
+        source,
+        specifier,
+        target,
+      })),
+    ).toEqual([
+      {
+        rule: "product-ui-package-app-import",
+        source: "packages/product-ui/src/cards/site-card.tsx",
+        specifier: "@/lib/api-v1/client",
+        target: "src/lib/api-v1/client.ts",
+      },
+      {
+        rule: "product-ui-package-app-import",
+        source: "packages/product-ui/src/cards/site-card.tsx",
+        specifier: "../../../../src/lib/edge/runtime/worker",
+        target: "src/lib/edge/runtime/worker.ts",
+      },
+      {
+        rule: "product-ui-package-router-query-import",
+        source: "packages/product-ui/src/cards/site-card.tsx",
+        specifier: "@tanstack/react-query",
+        target: "__package__:@tanstack/react-query",
+      },
+      {
+        rule: "product-ui-package-app-feature-import",
+        source: "packages/product-ui/src/cards/site-card.tsx",
+        specifier: "@insightflare/ui/query/use-query",
+        target: "packages/ui/src/query/use-query.ts",
+      },
+      {
+        rule: "ui-package-app-import",
+        source: "packages/ui/src/components/field.tsx",
+        specifier: "../../../../src/lib/edge/runtime/worker",
+        target: "src/lib/edge/runtime/worker.ts",
+      },
+      {
+        rule: "ui-package-product-ui-import",
+        source: "packages/ui/src/components/field.tsx",
+        specifier: "@insightflare/product-ui/cards/site-card",
+        target: "packages/product-ui/src/cards/site-card.tsx",
+      },
+      {
+        rule: "ui-package-router-query-import",
+        source: "packages/ui/src/components/field.tsx",
+        specifier: "@tanstack/react-query",
+        target: "__package__:@tanstack/react-query",
+      },
+      {
+        rule: "app-package-source-import",
+        source: "src/components/workspace-consumer.tsx",
+        specifier: "../../packages/ui/src/components/button",
+        target: "packages/ui/src/components/button.tsx",
+      },
+    ]);
+  });
+
+  it("rejects Product UI imports of unexported UI subpaths", () => {
+    const root = fixture();
+    const files: Record<string, string> = {
+      "packages/ui/package.json": JSON.stringify({
+        name: "@insightflare/ui",
+        exports: { "./components/*": "./src/components/*.tsx" },
+      }),
+      "packages/ui/src/components/button.tsx":
+        "export const Button = () => null;\n",
+      "packages/product-ui/src/card.tsx": [
+        'import { Button } from "@insightflare/ui/private-button";',
+        'import { PrivateButton } from "../../ui/src/components/button";',
+        "export { Button, PrivateButton };",
+        "",
+      ].join("\n"),
+    };
+    for (const [relativePath, content] of Object.entries(files)) {
+      const absolutePath = path.join(root, relativePath);
+      mkdirSync(path.dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, content);
+    }
+
+    expect(
+      collectArchitectureViolations(root).map(({ rule, specifier }) => ({
+        rule,
+        specifier,
+      })),
+    ).toEqual([
+      {
+        rule: "product-ui-package-public-ui-subpath",
+        specifier: "@insightflare/ui/private-button",
+      },
+      {
+        rule: "product-ui-package-private-ui-import",
+        specifier: "../../ui/src/components/button",
+      },
+      {
+        rule: "product-ui-package-public-ui-subpath",
+        specifier: "../../ui/src/components/button",
+      },
+    ]);
+  });
+
+  it("limits raw database escape helpers to foundation and Analytics adapters", () => {
+    const root = fixture();
+    mkdirSync(path.join(root, "src/lib/db"), { recursive: true });
+    mkdirSync(path.join(root, "src/lib/edge/analytics/providers/d1"), {
+      recursive: true,
+    });
+    writeFileSync(
+      path.join(root, "src/lib/db/unsafe.ts"),
+      "export const unsafe = true;\n",
+    );
+    writeFileSync(
+      path.join(root, "src/lib/dashboard/report.ts"),
+      'import { unsafe } from "@/lib/db/unsafe";\nexport { unsafe };\n',
+    );
+    writeFileSync(
+      path.join(root, "src/lib/edge/analytics/providers/d1/reader.ts"),
+      'import { unsafe } from "@/lib/db/unsafe";\nexport { unsafe };\n',
+    );
+
+    expect(collectArchitectureViolations(root)).toMatchObject([
+      {
+        rule: "unsafe-database-import-boundary",
+        source: "src/lib/dashboard/report.ts",
+        specifier: "@/lib/db/unsafe",
+      },
+    ]);
+  });
+
+  it("forbids legacy database runtime references in converged DAL modules", () => {
+    const root = fixture();
+    const files: Record<string, string> = {
+      "src/lib/notifications/edge/rule-store.ts": [
+        'import { createDatabaseRuntime as runtime } from "@/lib/db/runtime";',
+        "type Statement = DatabaseStatement;",
+        "export { runtime, Statement };",
+        "",
+      ].join("\n"),
+      "src/lib/edge/analytics/interfaces/dashboard/saved-filters.ts":
+        "export const runtime = createDatabaseRuntime;\n",
+    };
+    for (const [relativePath, content] of Object.entries(files)) {
+      const absolutePath = path.join(root, relativePath);
+      mkdirSync(path.dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, content);
+    }
+
+    expect(
+      collectArchitectureViolations(root)
+        .filter(({ rule }) => rule === "typed-dal-runtime-forbidden")
+        .map(({ source, specifier }) => ({ source, specifier })),
+    ).toEqual([
+      {
+        source: "src/lib/edge/analytics/interfaces/dashboard/saved-filters.ts",
+        specifier: "createDatabaseRuntime",
+      },
+      {
+        source: "src/lib/notifications/edge/rule-store.ts",
+        specifier: "createDatabaseRuntime",
+      },
+      {
+        source: "src/lib/notifications/edge/rule-store.ts",
+        specifier: "DatabaseStatement",
+      },
+    ]);
+  });
+
+  it("keeps Analytics contracts and shared domains out of runtime modules", () => {
+    const root = fixture();
+    const files: Record<string, string> = {
+      "src/lib/edge/runtime/worker.ts": "export const worker = true;\n",
+      "src/lib/edge/types.ts": "export interface Env {}\n",
+      "src/lib/edge/analytics/contract/runtime-edge.ts":
+        'import { worker } from "@/lib/edge/runtime/worker";\nexport { worker };\n',
+      "src/lib/filter-contract/filter.ts":
+        'import { worker } from "@/lib/edge/runtime/worker";\nexport { worker };\n',
+      "src/lib/notifications/message.ts":
+        'import { useState } from "react";\nexport { useState };\n',
+      "src/lib/notifications/edge/store.ts":
+        'import type { Env } from "@/lib/edge/types";\nexport type { Env };\n',
+    };
+    for (const [relativePath, content] of Object.entries(files)) {
+      const absolutePath = path.join(root, relativePath);
+      mkdirSync(path.dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, content);
+    }
+
+    expect(
+      collectArchitectureViolations(root).map(({ rule, source }) => ({
+        rule,
+        source,
+      })),
+    ).toEqual([
+      {
+        rule: "analytics-contract-direction",
+        source: "src/lib/edge/analytics/contract/runtime-edge.ts",
+      },
+      {
+        rule: "shared-domain-runtime-isolation",
+        source: "src/lib/filter-contract/filter.ts",
+      },
+      {
+        rule: "shared-domain-runtime-isolation",
+        source: "src/lib/notifications/message.ts",
+      },
+    ]);
+  });
+
+  it("ignores generated source and recognizes only new top-level prefix files", () => {
+    expect(isGeneratedFile("src/lib/generated/client.ts", "export {}")).toBe(
+      true,
+    );
+    expect(
+      isGeneratedFile("src/routeTree.gen.ts", "// automatically generated"),
+    ).toBe(true);
+    expect(
+      isGeneratedFile(
+        "src/lib/api-v1/generated-client/index.ts",
+        "/* Generated from ApiV1RouteRegistry. */",
+      ),
+    ).toBe(true);
+    expect(
+      detectForbiddenPrefixFiles([
+        "src/lib/admin-users.ts",
+        "src/lib/admin-sites.ts",
+        "src/lib/admin-roles.ts",
+        "src/lib/admin/users.ts",
+        "src/lib/dashboard/client/data/index.ts",
+        "src/lib/dashboard/client-data.ts",
+        "src/lib/dashboard/client-state.ts",
+        "src/lib/dashboard/client-query.ts",
+        "src/lib/dashboard/server-pages.ts",
+        "src/lib/edge/admin-users.ts",
+        "src/lib/edge/admin-teams.ts",
+        "src/lib/edge/admin-sites.ts",
+        "src/lib/edge/admin/users.ts",
+      ]),
+    ).toEqual([
+      "src/lib/admin-roles.ts",
+      "src/lib/admin-sites.ts",
+      "src/lib/admin-users.ts",
+      "src/lib/dashboard/client-data.ts",
+      "src/lib/dashboard/client-query.ts",
+      "src/lib/dashboard/client-state.ts",
+      "src/lib/edge/admin-sites.ts",
+      "src/lib/edge/admin-teams.ts",
+      "src/lib/edge/admin-users.ts",
+    ]);
+  });
+
+  it("checks dynamic imports and unresolved project aliases", () => {
+    const root = fixture();
+    writeFileSync(
+      path.join(root, "src/lib/edge/analytics/contract/query.ts"),
+      'export const load = () => import("@/lib/dashboard/missing");\n',
+    );
+
+    const violations = collectArchitectureViolations(root);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toMatchObject({
+      rule: "unresolved-internal-import",
+      specifier: "@/lib/dashboard/missing",
+    });
+  });
+
+  it("enforces Dashboard, Tracker, Edge, and Analytics runtime boundaries", () => {
+    const root = fixture();
+    const files: Record<string, string> = {
+      "src/lib/edge/analytics/providers/d1/reader.ts":
+        "export const read = true;\n",
+      "src/lib/edge/runtime/worker.ts": "export const worker = true;\n",
+      "src/lib/edge/observability/logger.ts": "export const logger = true;\n",
+      "src/lib/analytics/query.ts": "export const query = true;\n",
+      "src/components/dashboard/shell/page.tsx": "export const page = true;\n",
+      "src/lib/dashboard/query.ts":
+        'import { read } from "@/lib/edge/analytics/providers/d1/reader";\nexport { read };\n',
+      "src/lib/edge/analytics/application/service.ts":
+        'import { Hono } from "hono";\nimport { logger } from "@/lib/edge/observability/logger";\nimport { cache } from "./cache";\nexport const service = [Hono, logger, cache];\n',
+      "src/lib/edge/analytics/application/cache.ts":
+        "export const cache = true;\n",
+      "src/lib/edge/collector/endpoint.ts":
+        'import { jsx } from "react/jsx-runtime";\nexport { jsx };\n',
+      "src/lib/notifications/edge/worker.ts":
+        'import { jsx } from "react/jsx-runtime";\nexport { jsx };\n',
+      "src/tracker/runtime.ts": [
+        'import "react";',
+        'import "@tanstack/react-router";',
+        'import { worker } from "@/lib/edge/runtime/worker";',
+        'import { page } from "@/components/dashboard/shell/page";',
+        "export { worker, page };",
+        "",
+      ].join("\n"),
+    };
+    for (const [relativePath, content] of Object.entries(files)) {
+      const absolutePath = path.join(root, relativePath);
+      mkdirSync(path.dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, content);
+    }
+
+    const violations = collectArchitectureViolations(root);
+
+    expect(violations.map(({ rule }) => rule)).toEqual([
+      "dashboard-concrete-provider",
+      "analytics-application-direction",
+      "analytics-application-direction",
+      "edge-ui-isolation",
+      "edge-ui-isolation",
+      "tracker-runtime-isolation",
+      "tracker-runtime-isolation",
+      "tracker-runtime-isolation",
+      "tracker-runtime-isolation",
+    ]);
+  });
+
+  it("skips generated files when scanning forbidden imports", () => {
+    const root = fixture();
+    const generatedPath = path.join(
+      root,
+      "src/lib/edge/analytics/contract/query.generated.ts",
+    );
+    writeFileSync(
+      generatedPath,
+      'import { runtime } from "@/lib/dashboard/runtime";\nexport { runtime };\n',
+    );
+
+    expect(collectArchitectureViolations(root)).toEqual([]);
+  });
+
+  it("requires exact exceptions for demo-build dynamic imports", () => {
+    const root = fixture();
+    const files: Record<string, string> = {
+      "src/lib/demo/data/site-profiles.ts": "export const profiles = [];\n",
+      "src/lib/demo/admin/service.ts": "export const execute = () => null;\n",
+      "src/lib/edge/auth/site-access.ts":
+        'const isDemoBuild = true;\nexport const load = () => isDemoBuild ? import("@/lib/demo/data/site-profiles") : null;\n',
+      "src/lib/edge/admin/service/index.ts":
+        'export const dispatch = () => import("@/lib/demo/admin/service");\n',
+      "src/lib/edge/admin/reports.ts":
+        'export const load = () => import("@/lib/demo/data/site-profiles");\n',
+    };
+    for (const [relativePath, content] of Object.entries(files)) {
+      const absolutePath = path.join(root, relativePath);
+      mkdirSync(path.dirname(absolutePath), { recursive: true });
+      writeFileSync(absolutePath, content);
+    }
+
+    expect(collectArchitectureViolations(root)).toMatchObject([
+      {
+        rule: "production-demo-isolation",
+        source: "src/lib/edge/admin/reports.ts",
+        specifier: "@/lib/demo/data/site-profiles",
+      },
+    ]);
+  });
+
+  it("forbids direct D1 access through DB properties and local aliases", () => {
+    const root = fixture();
+    const sourcePath = path.join(root, "src/lib/edge/direct-d1.ts");
+    mkdirSync(path.dirname(sourcePath), { recursive: true });
+    writeFileSync(
+      sourcePath,
+      [
+        "export function run(env: { DB: D1Database }) {",
+        "  const database = env.DB;",
+        "  const alias = database;",
+        '  alias.prepare("SELECT 1");',
+        "  env.DB.batch([]);",
+        '  env["DB"].exec("SELECT 1");',
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    expect(directD1AccessViolations(root)).toMatchObject([
+      {
+        rule: "direct-d1-access-forbidden",
+        source: "src/lib/edge/direct-d1.ts",
+        message: expect.stringContaining("3 direct D1 access(es)"),
+      },
+    ]);
+  });
+
+  it("allows DatabaseRuntime internals and Durable Object SQLite access", () => {
+    const root = fixture();
+    const runtimePath = path.join(root, "src/lib/db/d1-runtime.ts");
+    const durableObjectPath = path.join(root, "src/lib/edge/ingest/storage.ts");
+    mkdirSync(path.dirname(runtimePath), { recursive: true });
+    mkdirSync(path.dirname(durableObjectPath), { recursive: true });
+    writeFileSync(runtimePath, 'database.prepare("SELECT 1");\n');
+    writeFileSync(durableObjectPath, 'state.storage.sql.exec("SELECT 1");\n');
+
+    expect(directD1AccessViolations(root)).toEqual([]);
+  });
+});

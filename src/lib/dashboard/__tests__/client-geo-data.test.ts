@@ -3,10 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchOverviewGeoDimensionTab,
   fetchOverviewGeoPoints,
-} from "@/lib/dashboard/client-geo-data";
+} from "@/lib/dashboard/client/data/geo";
 import { dashboardFilterDocumentFromPresentation } from "@/lib/dashboard/filter-state";
 import type { TimeWindow } from "@/lib/dashboard/query-state";
-
 describe("dashboard client geo data helpers", () => {
   const realFetch = globalThis.fetch;
   const realDemoMode = process.env.VITE_DEMO_MODE;
@@ -31,6 +30,21 @@ describe("dashboard client geo data helpers", () => {
   function jsonResponse(body: unknown): Response {
     return new Response(JSON.stringify(body), {
       headers: { "content-type": "application/json" },
+    });
+  }
+
+  function geoTabResponse(items: unknown[]): Response {
+    return jsonResponse({
+      ok: true,
+      data: {
+        items,
+        pagination: {
+          limit: 100,
+          returned: items.length,
+          hasMore: false,
+          nextCursor: null,
+        },
+      },
     });
   }
 
@@ -141,51 +155,42 @@ describe("dashboard client geo data helpers", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
-        jsonResponse({
-          ok: true,
-          data: [
-            {
-              value: "",
-              label: "  United States  ",
-              views: "11",
-              sessions: "5",
-              visitors: "3",
-            },
-          ],
-        }),
+        geoTabResponse([
+          {
+            value: "",
+            label: "  United States  ",
+            views: "11",
+            sessions: "5",
+            visitors: "3",
+          },
+        ]),
       )
       .mockResolvedValueOnce(
-        jsonResponse({
-          ok: true,
-          data: [
-            {
-              value: "US::CA::California",
-              label: "United States :: CA :: California",
-            },
-            {
-              value: "raw-region",
-              label: " ",
-              views: "2",
-            },
-          ],
-        }),
+        geoTabResponse([
+          {
+            value: "US::CA::California",
+            label: "United States :: CA :: California",
+          },
+          {
+            value: "raw-region",
+            label: " ",
+            views: "2",
+          },
+        ]),
       )
       .mockResolvedValueOnce(
-        jsonResponse({
-          ok: true,
-          data: [
-            {
-              value: "US::CA::California::San Francisco",
-              label: "United States :: CA :: California :: San Francisco",
-              sessions: "4",
-            },
-            {
-              value: "raw-city",
-              label: "",
-              visitors: "6",
-            },
-          ],
-        }),
+        geoTabResponse([
+          {
+            value: "US::CA::California::San Francisco",
+            label: "United States :: CA :: California :: San Francisco",
+            sessions: "4",
+          },
+          {
+            value: "raw-city",
+            label: "",
+            visitors: "6",
+          },
+        ]),
       );
     globalThis.fetch = fetchMock;
 
@@ -246,5 +251,62 @@ describe("dashboard client geo data helpers", () => {
     await expect(
       fetchOverviewGeoDimensionTab("geo-fallback", window, "timezone"),
     ).resolves.toEqual([]);
+  });
+
+  it("reads paginated dimension responses from the overview contract", async () => {
+    delete process.env.VITE_DEMO_MODE;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        data: {
+          items: [
+            {
+              value: "US",
+              label: "United States",
+              views: "12",
+              sessions: "7",
+              visitors: "5",
+            },
+          ],
+          pagination: {
+            limit: 100,
+            returned: 1,
+            hasMore: false,
+            nextCursor: null,
+          },
+        },
+      }),
+    );
+
+    await expect(
+      fetchOverviewGeoDimensionTab("geo-paginated", window, "country"),
+    ).resolves.toEqual([
+      {
+        value: "US",
+        label: "United States",
+        views: 12,
+        sessions: 7,
+        visitors: 5,
+      },
+    ]);
+  });
+
+  it("rejects legacy array dimension responses instead of masking the contract mismatch", async () => {
+    delete process.env.VITE_DEMO_MODE;
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        data: [
+          {
+            value: "US",
+            label: "United States",
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      fetchOverviewGeoDimensionTab("geo-legacy", window, "country"),
+    ).rejects.toThrow("pagination_contract_violation");
   });
 });

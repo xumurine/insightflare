@@ -1,16 +1,14 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 
+import { withDashboardCache } from "@/lib/edge/analytics/composition/dashboard-cache";
+import { resolveTeamDashboardScope } from "@/lib/edge/analytics/composition/ssr-query-runtime";
 import {
   executePrivateQuery,
   executePrivateTeamDashboard,
-} from "@/lib/edge/analytics/adapters/private";
-import {
-  DASHBOARD_QUERY_PATHS,
-  notAllowed,
-} from "@/lib/edge/analytics/composition/query-protocol";
-import { resolveTeamDashboardScope } from "@/lib/edge/analytics/composition/ssr-query-runtime";
-import { withDashboardCache } from "@/lib/edge/dashboard-cache";
+} from "@/lib/edge/analytics/interfaces/dashboard/private";
+import { notAllowed } from "@/lib/edge/analytics/interfaces/dashboard/protocol/responses";
+import { DASHBOARD_QUERY_PATHS } from "@/lib/edge/analytics/interfaces/dashboard/protocol/router";
 import { dashboardCacheMiddleware } from "@/lib/hono/middleware/dashboard-cache";
 import {
   requireMethodMiddleware,
@@ -19,10 +17,10 @@ import {
 import { resolvePrivateSiteMiddleware } from "@/lib/hono/middleware/site";
 import type { AppEnv } from "@/lib/hono/types";
 import { executionContext, requestUrl } from "@/lib/hono/utils/context";
-
+import { forb } from "@/lib/response";
 const FUNNEL_PATH = "funnels";
+const GOAL_PATH = "goals";
 const TEAM_DASHBOARD_PATH = "team-dashboard";
-
 function privateQuery(pathname: string) {
   return (c: Context<AppEnv>) => {
     const site = c.get("privateSite");
@@ -39,9 +37,7 @@ function privateQuery(pathname: string) {
     });
   };
 }
-
 export const privateQueryRoutes = new Hono<AppEnv>();
-
 privateQueryRoutes.all("/team-dashboard", async (c) => {
   if (c.req.raw.method !== "GET") return notAllowed();
   const session = c.get("session");
@@ -73,22 +69,52 @@ privateQueryRoutes.all("/team-dashboard", async (c) => {
         tenantId: team.teamId,
         route: "team-dashboard",
         audienceId: session.userId,
+        allowedSiteIds: team.allowedSiteIds,
       },
       request: c.req.raw,
     },
   );
 });
-
 privateQueryRoutes.use(
   `/${FUNNEL_PATH}`,
-  requireMethodsMiddleware(["GET", "POST", "DELETE"]),
+  requireMethodsMiddleware(["GET", "POST", "PATCH", "DELETE"]),
 );
 privateQueryRoutes.all(
   `/${FUNNEL_PATH}`,
   resolvePrivateSiteMiddleware(),
-  privateQuery(FUNNEL_PATH),
+  async (c) => {
+    const method = c.req.raw.method;
+    const site = c.get("privateSite");
+    if (method !== "GET" && !site?.canManage) {
+      return forb(
+        "Funnel mutations require team owner or admin access",
+        undefined,
+        c.req.raw,
+      );
+    }
+    return privateQuery(FUNNEL_PATH)(c);
+  },
 );
-
+privateQueryRoutes.use(
+  `/${GOAL_PATH}`,
+  requireMethodsMiddleware(["GET", "POST", "PATCH", "DELETE"]),
+);
+privateQueryRoutes.all(
+  `/${GOAL_PATH}`,
+  resolvePrivateSiteMiddleware(),
+  async (c) => {
+    const method = c.req.raw.method;
+    const site = c.get("privateSite");
+    if (method !== "GET" && !site?.canManage) {
+      return forb(
+        "Goal mutations require team owner or admin access",
+        undefined,
+        c.req.raw,
+      );
+    }
+    return privateQuery(GOAL_PATH)(c);
+  },
+);
 for (const path of DASHBOARD_QUERY_PATHS) {
   if (path === FUNNEL_PATH || path === TEAM_DASHBOARD_PATH) continue;
   privateQueryRoutes.use(`/${path}`, requireMethodMiddleware("GET"));
@@ -99,7 +125,6 @@ for (const path of DASHBOARD_QUERY_PATHS) {
     privateQuery(path),
   );
 }
-
 privateQueryRoutes.use("/*", requireMethodMiddleware("GET"));
 privateQueryRoutes.all(
   "/*",
