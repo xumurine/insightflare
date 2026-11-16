@@ -1,41 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { withDashboardCache } from "@/lib/edge/analytics/composition/dashboard-cache";
 import {
   geoTabLabel,
   mapEventField,
   mapGeoRowsToFilterOptions,
 } from "@/lib/edge/analytics/providers/d1/internal/core-mappers";
-import {
-  customEventJsonTypeCode,
-  customEventJsonTypeLabel,
-  parseEventRecordSort,
-  parseFilterOptionKey,
-  parseListSearch,
-  parseSessionListSort,
-} from "@/lib/edge/analytics/providers/d1/internal/core-parsers";
-import { withDashboardCache } from "@/lib/edge/dashboard-cache";
-import { insertVisit } from "@/lib/edge/ingest-buffer-store";
-import { flushCustomEventRowIndividually } from "@/lib/edge/ingest-custom-event-flush";
-import { flushPendingToD1 } from "@/lib/edge/ingest-flush";
-import type { IngestFlushContext } from "@/lib/edge/ingest-flush-types";
+import { insertVisit } from "@/lib/edge/ingest/buffer-store";
+import { flushCustomEventRowIndividually } from "@/lib/edge/ingest/custom-event-flush";
+import { flushPendingToD1 } from "@/lib/edge/ingest/flush";
+import type { IngestFlushContext } from "@/lib/edge/ingest/flush-types";
 import type {
   BufferedCustomEventRow,
   BufferedVisitRow,
-} from "@/lib/edge/ingest-types";
+} from "@/lib/edge/ingest/types";
 import {
   readSiteScriptSettings,
   readSiteTrackingConfig,
-} from "@/lib/edge/site-settings-store";
+} from "@/lib/edge/sites/settings-store";
 import type { Env, NormalizedPageview } from "@/lib/edge/types";
-
 type SqlBinding = string | number | null;
-
 const NOW = Date.UTC(2026, 4, 25, 12, 0, 0);
-
 function envWithKv(kv: Partial<KVNamespace>): Env {
   return { SITE_SETTINGS_KV: kv as KVNamespace } as Env;
 }
-
 function pageview(overrides: Partial<NormalizedPageview> = {}) {
   return {
     kind: "pageview",
@@ -84,7 +72,6 @@ function pageview(overrides: Partial<NormalizedPageview> = {}) {
     ...overrides,
   } satisfies NormalizedPageview;
 }
-
 function bufferedVisit(
   overrides: Partial<BufferedVisitRow> = {},
 ): BufferedVisitRow {
@@ -143,12 +130,14 @@ function bufferedVisit(
     perfInpMs: null,
     dirty: 1,
     flushAttempts: 0,
+    flushDueAt: NOW,
+    nextDueAt: NOW,
+    bufferRevision: 1,
     createdAt: Math.floor((NOW - 31 * 60 * 1000) / 1000),
     updatedAt: Math.floor((NOW - 30 * 60 * 1000) / 1000),
     ...overrides,
   };
 }
-
 function bufferedCustomEvent(
   overrides: Partial<BufferedCustomEventRow> = {},
 ): BufferedCustomEventRow {
@@ -164,11 +153,13 @@ function bufferedCustomEvent(
     userId: "",
     dirty: 1,
     flushAttempts: 0,
+    flushDueAt: NOW,
+    nextDueAt: NOW,
+    bufferRevision: 1,
     createdAt: Math.floor(NOW / 1000),
     ...overrides,
   };
 }
-
 function flushContext(
   visitRows: BufferedVisitRow[] = [],
   eventRows: BufferedCustomEventRow[] = [],
@@ -198,7 +189,6 @@ function flushContext(
     pushRealtimeRecord: vi.fn(async () => undefined),
   };
 }
-
 describe("edge cache fallback coverage", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW });
@@ -282,7 +272,6 @@ describe("edge cache fallback coverage", () => {
     expect(kv.get).toHaveBeenCalledTimes(2);
   });
 });
-
 describe("edge ingest flush edge coverage", () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW });
@@ -337,28 +326,40 @@ describe("edge ingest flush edge coverage", () => {
     ).resolves.toBe(false);
 
     expect(context.sqlRun).toHaveBeenCalledWith(
-      "DELETE FROM buffered_custom_events WHERE event_id IN (?)",
+      "UPDATE buffered_custom_events SET flush_attempts = ?, last_flush_error = ?, flush_due_at = ?, next_due_at = ? WHERE event_id = ? AND buffer_revision = ? AND flush_attempts = ? AND last_flush_error IS ?",
+      1,
+      "Failed to resolve custom event name dictionary id",
+      NOW + 60_000,
+      NOW + 60_000,
       "event-1",
+      1,
+      0,
+      null,
     );
-    expect(observability.increment).toHaveBeenCalledWith("failedStatements", 1);
     expect(observability.error).toHaveBeenCalledWith(
       "do.flush.custom_event_failed",
     );
   });
 
-  it("deletes old flushed visits using startedAt when ended timestamps are absent", async () => {
+  it("schedules old flushed visits using startedAt when ended timestamps are absent", async () => {
     const context = flushContext([bufferedVisit()], []);
 
     await flushPendingToD1(context);
 
     expect(context.env.DB.batch).toHaveBeenCalledTimes(1);
     expect(context.sqlRun).toHaveBeenCalledWith(
-      "DELETE FROM buffered_visits WHERE visit_id IN (?)",
+      expect.stringContaining("UPDATE buffered_visits"),
       "visit-1",
+      1,
+    );
+    expect(context.sqlRun).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO ingest_schema_metadata"),
+      "buffered_visits_cleanup_due_at",
+      1,
+      expect.any(Number),
     );
   });
 });
-
 describe("edge query parser and mapper edge coverage", () => {
   function url(params: Record<string, string>) {
     const parsed = new URL("https://edge.test/query");

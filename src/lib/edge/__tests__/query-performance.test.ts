@@ -2,9 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { handlePerformanceContract as handlePerformance } from "@/lib/edge/analytics/composition/protocol/analysis-contract-adapter";
 import type { FilterDocument } from "@/lib/edge/analytics/contract";
 import { EMPTY_FILTER_DOCUMENT } from "@/lib/edge/analytics/contract";
+import { handlePerformanceContract as handlePerformance } from "@/lib/edge/analytics/interfaces/dashboard/protocol/analysis";
 import type { QueryWindow } from "@/lib/edge/analytics/providers/d1/internal/core";
 import {
   queryAllPerformanceTrendsFromD1,
@@ -17,12 +17,10 @@ import type { Env } from "@/lib/edge/types";
 
 import { filterFixture } from "./filter-fixtures";
 import { installVisitSiteIdentityFixture } from "./site-identity-fixture";
-
 interface PreparedQuery {
   sql: string;
   bindings: Array<string | number | null>;
 }
-
 function createD1Env(rowSets: Record<string, unknown>[][] = []) {
   const calls: PreparedQuery[] = [];
   const prepare = vi.fn((sql: string) => {
@@ -44,10 +42,8 @@ function createD1Env(rowSets: Record<string, unknown>[][] = []) {
     prepare,
   };
 }
-
 type D1Row = Record<string, unknown>;
 type Binding = string | number | null;
-
 class SqliteStatement {
   constructor(
     private readonly database: DatabaseSync,
@@ -64,7 +60,6 @@ class SqliteStatement {
     };
   }
 }
-
 class SqliteD1Database {
   readonly database = new DatabaseSync(":memory:");
   readonly calls: PreparedQuery[] = [];
@@ -82,7 +77,6 @@ class SqliteD1Database {
     this.database.close();
   }
 }
-
 function createSqlitePerformanceEnv(): { env: Env; d1: SqliteD1Database } {
   const d1 = new SqliteD1Database();
   d1.database.exec(`
@@ -100,7 +94,8 @@ function createSqlitePerformanceEnv(): { env: Env; d1: SqliteD1Database } {
       longitude REAL, postal_code TEXT, metro_code TEXT, timezone TEXT,
       as_organization TEXT, ua_raw TEXT, browser TEXT, browser_version TEXT,
       os TEXT, os_version TEXT, device_type TEXT, screen_width INTEGER,
-      screen_height INTEGER, language TEXT, perf_ttfb_ms REAL,
+      screen_height INTEGER, language TEXT, user_id TEXT, user_name TEXT,
+      perf_ttfb_ms REAL,
       perf_fcp_ms REAL, perf_lcp_ms REAL, perf_cls REAL, perf_inp_ms REAL,
       ae_synced_at INTEGER
     );
@@ -108,6 +103,27 @@ function createSqlitePerformanceEnv(): { env: Env; d1: SqliteD1Database } {
       ON visits(site_id, started_at);
   `);
   installVisitSiteIdentityFixture(d1.database);
+  d1.database.exec(`
+    CREATE TABLE custom_event_names (
+      id INTEGER PRIMARY KEY,
+      site_id TEXT NOT NULL,
+      name TEXT NOT NULL
+    );
+    CREATE TABLE custom_events (
+      event_pk INTEGER PRIMARY KEY,
+      event_id TEXT NOT NULL,
+      site_id TEXT NOT NULL,
+      site_pk INTEGER NOT NULL DEFAULT 1,
+      visit_id TEXT NOT NULL,
+      event_name_id INTEGER NOT NULL,
+      occurred_at INTEGER NOT NULL,
+      received_at INTEGER NOT NULL,
+      sequence INTEGER NOT NULL,
+      node_count INTEGER NOT NULL,
+      value_count INTEGER NOT NULL,
+      ae_synced_at INTEGER
+    );
+  `);
   return {
     env: {
       DB: d1 as unknown as D1Database,
@@ -117,7 +133,6 @@ function createSqlitePerformanceEnv(): { env: Env; d1: SqliteD1Database } {
     d1,
   };
 }
-
 const siteId = "site-1";
 const window: QueryWindow = {
   startMs: Date.UTC(2026, 0, 2, 1, 30),
@@ -126,7 +141,6 @@ const window: QueryWindow = {
   timeZone: "UTC",
 };
 const visitBindings = [siteId, window.startMs, window.endExclusiveMs];
-
 describe("edge query performance D1 helpers", () => {
   it("maps metric summaries, leaves missing metrics empty, and binds filters", async () => {
     const { env, calls } = createD1Env([
@@ -189,6 +203,11 @@ describe("edge query performance D1 helpers", () => {
     expect(calls[0]?.sql).toContain("perf_cls AS metricValue");
     expect(calls[0]?.bindings).toEqual([
       ...visitBindings,
+      "desktop",
+      "us",
+      "example.com",
+      window.startMs,
+      window.endExclusiveMs,
       "desktop",
       "us",
       "example.com",
@@ -294,7 +313,13 @@ describe("edge query performance D1 helpers", () => {
     expect(calls[0]?.sql).toContain("perf_lcp_ms AS metricValue");
     expect(calls[0]?.sql).toContain("perf_lcp_ms IS NOT NULL");
     expect(calls[0]?.sql).toContain("ORDER BY thresholds.bucket ASC");
-    expect(calls[0]?.bindings).toEqual([...visitBindings, "/pricing"]);
+    expect(calls[0]?.bindings).toEqual([
+      ...visitBindings,
+      "/pricing",
+      window.startMs,
+      window.endExclusiveMs,
+      "/pricing",
+    ]);
   });
 
   it("normalizes sparse metric trend rows", async () => {
@@ -370,7 +395,13 @@ describe("edge query performance D1 helpers", () => {
     expect(calls[0]?.sql).toContain("PARTITION BY metric, bucket");
     expect(calls[0]?.sql).toContain("'ttfb' AS metric");
     expect(calls[0]?.sql).toContain("'inp' AS metric");
-    expect(calls[0]?.bindings).toEqual([...visitBindings, "us"]);
+    expect(calls[0]?.bindings).toEqual([
+      ...visitBindings,
+      "us",
+      window.startMs,
+      window.endExclusiveMs,
+      "us",
+    ]);
     expect(result.lcp).toEqual([
       {
         bucket: 0,
@@ -462,7 +493,14 @@ describe("edge query performance D1 helpers", () => {
     });
     expect(calls[0]?.sql).toContain("path_views AS");
     expect(calls[0]?.sql).toContain("LIMIT ?");
-    expect(calls[0]?.bindings).toEqual([...visitBindings, "Chrome", 2]);
+    expect(calls[0]?.bindings).toEqual([
+      ...visitBindings,
+      "Chrome",
+      window.startMs,
+      window.endExclusiveMs,
+      "Chrome",
+      2,
+    ]);
   });
 
   it("normalizes sparse route metric rows", async () => {
@@ -607,7 +645,15 @@ describe("edge query performance D1 helpers", () => {
     });
     expect(calls[0]?.sql).toContain("country_views AS");
     expect(calls[0]?.sql).toContain("UPPER(TRIM(COALESCE(country, '')))");
-    expect(calls[0]?.bindings).toEqual([...visitBindings, "na", "Example ISP"]);
+    expect(calls[0]?.bindings).toEqual([
+      ...visitBindings,
+      "na",
+      "Example ISP",
+      window.startMs,
+      window.endExclusiveMs,
+      "na",
+      "Example ISP",
+    ]);
   });
 
   it("normalizes sparse country metric rows", async () => {

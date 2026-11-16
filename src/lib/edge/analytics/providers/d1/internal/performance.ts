@@ -4,6 +4,7 @@ import type {
   FilterDocument,
   Interval,
   PerformanceCountryRow,
+  PerformanceDashboardResult,
   PerformanceMetricKey,
   PerformanceRouteRow,
   PerformanceSummaryRow,
@@ -26,7 +27,39 @@ import {
   timeBucketTimestamp,
   visitSourceBindings,
 } from "./core";
+import { scopedDatasetFor } from "./scoped-dataset";
+interface PerformanceVisitSource {
+  readonly ctes: string;
+  readonly relation: string;
+  readonly bindings: Array<string | number | null>;
+  readonly filterClause: string;
+  readonly filterBindings: Array<string | number>;
+}
+function performanceVisitSource(
+  siteId: string,
+  window: QueryWindow,
+  filters: FilterDocument,
+): PerformanceVisitSource {
+  const scopedDataset = scopedDatasetFor(siteId, window, filters);
+  if (scopedDataset) {
+    return {
+      ctes: scopedDataset.ctes,
+      relation: scopedDataset.visitRelation,
+      bindings: scopedDataset.bindings.map(({ value }) => value),
+      filterClause: "",
+      filterBindings: [],
+    };
+  }
 
+  const filter = buildVisitFilterSql(filters, "visit_source", { window });
+  return {
+    ctes: buildVisitSourceCte(),
+    relation: "visit_source",
+    bindings: visitSourceBindings(siteId, window),
+    filterClause: filter.clause,
+    filterBindings: filter.bindings,
+  };
+}
 function performanceMetricVisitsSql(
   source: string,
   dimensions: string[] = [],
@@ -40,13 +73,11 @@ function performanceMetricVisitsSql(
   WHERE ${column} IS NOT NULL`;
   }).join("\n  UNION ALL\n  ");
 }
-
 function performanceMetricPresenceSql(): string {
   return PERFORMANCE_METRIC_KEYS.map(
     (metric) => `${PERFORMANCE_METRIC_COLUMNS[metric]} IS NOT NULL`,
   ).join(" OR ");
 }
-
 function emptyPerformanceSummaries(): Record<
   PerformanceMetricKey,
   PerformanceSummaryRow
@@ -59,7 +90,6 @@ function emptyPerformanceSummaries(): Record<
     inp: { avg: null, p50: null, p75: null, p95: null, samples: 0 },
   };
 }
-
 function mapPerformanceSummaries(
   rows: Record<string, unknown>[],
 ): Record<PerformanceMetricKey, PerformanceSummaryRow> {
@@ -77,14 +107,12 @@ function mapPerformanceSummaries(
   }
   return summaries;
 }
-
 function emptyPerformanceTrends(): Record<
   PerformanceMetricKey,
   PerformanceTrendPointRow[]
 > {
   return { ttfb: [], fcp: [], lcp: [], cls: [], inp: [] };
 }
-
 function mapPerformanceTrends(
   rows: Record<string, unknown>[],
   buckets: ReturnType<typeof buildTimeBuckets>,
@@ -106,7 +134,6 @@ function mapPerformanceTrends(
   }
   return trends;
 }
-
 function mapPerformanceRoutes(
   rows: Record<string, unknown>[],
 ): PerformanceRouteRow[] {
@@ -131,7 +158,6 @@ function mapPerformanceRoutes(
   }
   return [...byPath.values()];
 }
-
 function mapPerformanceCountries(
   rows: Record<string, unknown>[],
 ): PerformanceCountryRow[] {
@@ -158,17 +184,16 @@ function mapPerformanceCountries(
   }
   return [...byCountry.values()];
 }
-
 export async function queryPerformanceSummariesFromD1(
   env: Env,
   siteId: string,
   window: QueryWindow,
   filters: FilterDocument,
 ): Promise<Record<PerformanceMetricKey, PerformanceSummaryRow>> {
-  const filter = buildVisitFilterSql(filters);
+  const source = performanceVisitSource(siteId, window, filters);
   const sql = `
 WITH
-${buildVisitSourceCte()},
+${source.ctes},
 filtered_visits AS MATERIALIZED (
   SELECT
     perf_ttfb_ms,
@@ -176,8 +201,8 @@ filtered_visits AS MATERIALIZED (
     perf_lcp_ms,
     perf_cls,
     perf_inp_ms
-  FROM visit_source
-  ${filter.clause}
+  FROM ${source.relation}
+  ${source.filterClause}
 ),
 metric_visits AS (
   ${performanceMetricVisitsSql("filtered_visits")}
@@ -214,12 +239,11 @@ JOIN ordered_values ordered
 GROUP BY thresholds.metric, thresholds.sampleCount, thresholds.avgValue
 `;
   const rows = await queryD1All<Record<string, unknown>>(env, sql, [
-    ...visitSourceBindings(siteId, window),
-    ...filter.bindings,
+    ...source.bindings,
+    ...source.filterBindings,
   ]);
   return mapPerformanceSummaries(rows);
 }
-
 export async function queryPerformanceTrendFromD1(
   env: Env,
   siteId: string,
@@ -228,21 +252,21 @@ export async function queryPerformanceTrendFromD1(
   filters: FilterDocument,
   metric: PerformanceMetricKey,
 ): Promise<PerformanceTrendPointRow[]> {
-  const filter = buildVisitFilterSql(filters);
+  const source = performanceVisitSource(siteId, window, filters);
   const buckets = buildTimeBuckets(window, interval);
   const bucket = timeBucketCase(buckets, "started_at");
   const column = performanceMetricColumn(metric);
-  const filteredClause = appendSqlConditions(filter.clause, [
+  const filteredClause = appendSqlConditions(source.filterClause, [
     `${column} IS NOT NULL`,
   ]);
   const sql = `
 WITH
-${buildVisitSourceCte()},
+${source.ctes},
 metric_visits AS (
   SELECT
     ${bucket.sql} AS bucket,
     ${column} AS metricValue
-  FROM visit_source
+  FROM ${source.relation}
   ${filteredClause}
 ),
 ordered_values AS (
@@ -279,9 +303,9 @@ ORDER BY thresholds.bucket ASC
 `;
   return (
     await queryD1All<Record<string, unknown>>(env, sql, [
-      ...visitSourceBindings(siteId, window),
+      ...source.bindings,
       ...bucket.bindings,
-      ...filter.bindings,
+      ...source.filterBindings,
     ])
   ).map((row) => ({
     bucket: Number(row.bucket ?? 0),
@@ -293,7 +317,6 @@ ORDER BY thresholds.bucket ASC
     samples: Number(row.samples ?? 0),
   }));
 }
-
 export async function queryAllPerformanceTrendsFromD1(
   env: Env,
   siteId: string,
@@ -301,12 +324,12 @@ export async function queryAllPerformanceTrendsFromD1(
   interval: Interval,
   filters: FilterDocument,
 ): Promise<Record<PerformanceMetricKey, PerformanceTrendPointRow[]>> {
-  const filter = buildVisitFilterSql(filters);
+  const source = performanceVisitSource(siteId, window, filters);
   const buckets = buildTimeBuckets(window, interval);
   const bucket = timeBucketCase(buckets, "started_at");
   const sql = `
 WITH
-${buildVisitSourceCte()},
+${source.ctes},
 bucketed_visits AS MATERIALIZED (
   SELECT
     ${bucket.sql} AS bucket,
@@ -315,8 +338,8 @@ bucketed_visits AS MATERIALIZED (
     perf_lcp_ms,
     perf_cls,
     perf_inp_ms
-  FROM visit_source
-  ${filter.clause}
+  FROM ${source.relation}
+  ${source.filterClause}
 ),
 metric_visits AS (
   ${performanceMetricVisitsSql("bucketed_visits", ["bucket"])}
@@ -365,13 +388,12 @@ GROUP BY
 ORDER BY thresholds.metric ASC, thresholds.bucket ASC
 `;
   const rows = await queryD1All<Record<string, unknown>>(env, sql, [
-    ...visitSourceBindings(siteId, window),
+    ...source.bindings,
     ...bucket.bindings,
-    ...filter.bindings,
+    ...source.filterBindings,
   ]);
   return mapPerformanceTrends(rows, buckets);
 }
-
 export async function queryPerformanceRoutesFromD1(
   env: Env,
   siteId: string,
@@ -379,11 +401,11 @@ export async function queryPerformanceRoutesFromD1(
   filters: FilterDocument,
   limit: number,
 ): Promise<PerformanceRouteRow[]> {
-  const filter = buildVisitFilterSql(filters);
+  const source = performanceVisitSource(siteId, window, filters);
   const pathExpr = "COALESCE(NULLIF(trim(pathname), ''), '/')";
   const sql = `
 WITH
-${buildVisitSourceCte()},
+${source.ctes},
 filtered_visits AS MATERIALIZED (
   SELECT
     ${pathExpr} AS pathname,
@@ -392,8 +414,8 @@ filtered_visits AS MATERIALIZED (
     perf_lcp_ms,
     perf_cls,
     perf_inp_ms
-  FROM visit_source
-  ${filter.clause}
+  FROM ${source.relation}
+  ${source.filterClause}
 ),
 path_views AS (
   SELECT
@@ -456,24 +478,23 @@ GROUP BY
 ORDER BY path_views.views DESC, thresholds.pathname ASC, thresholds.metric ASC
 `;
   const rows = await queryD1All<Record<string, unknown>>(env, sql, [
-    ...visitSourceBindings(siteId, window),
-    ...filter.bindings,
+    ...source.bindings,
+    ...source.filterBindings,
     limit,
   ]);
   return mapPerformanceRoutes(rows);
 }
-
 export async function queryPerformanceCountriesFromD1(
   env: Env,
   siteId: string,
   window: QueryWindow,
   filters: FilterDocument,
 ): Promise<PerformanceCountryRow[]> {
-  const filter = buildVisitFilterSql(filters);
+  const source = performanceVisitSource(siteId, window, filters);
   const countryExpr = "UPPER(TRIM(COALESCE(country, '')))";
   const sql = `
 WITH
-${buildVisitSourceCte()},
+${source.ctes},
 filtered_visits AS MATERIALIZED (
   SELECT
     ${countryExpr} AS country,
@@ -482,8 +503,8 @@ filtered_visits AS MATERIALIZED (
     perf_lcp_ms,
     perf_cls,
     perf_inp_ms
-  FROM visit_source
-  ${filter.clause}
+  FROM ${source.relation}
+  ${source.filterClause}
 ),
 country_views AS (
   SELECT
@@ -545,12 +566,11 @@ GROUP BY
 ORDER BY country_views.views DESC, thresholds.country ASC, thresholds.metric ASC
 `;
   const rows = await queryD1All<Record<string, unknown>>(env, sql, [
-    ...visitSourceBindings(siteId, window),
-    ...filter.bindings,
+    ...source.bindings,
+    ...source.filterBindings,
   ]);
   return mapPerformanceCountries(rows);
 }
-
 export async function queryPerformanceDashboardFromD1(
   env: Env,
   siteId: string,
@@ -558,20 +578,15 @@ export async function queryPerformanceDashboardFromD1(
   interval: Interval,
   filters: FilterDocument,
   routeLimit: number,
-): Promise<{
-  summaries: Record<PerformanceMetricKey, PerformanceSummaryRow>;
-  trends: Record<PerformanceMetricKey, PerformanceTrendPointRow[]>;
-  routes: PerformanceRouteRow[];
-  countries: PerformanceCountryRow[];
-}> {
-  const filter = buildVisitFilterSql(filters);
+): Promise<PerformanceDashboardResult> {
+  const source = performanceVisitSource(siteId, window, filters);
   const buckets = buildTimeBuckets(window, interval);
   const bucket = timeBucketCase(buckets, "started_at");
   const pathExpr = "COALESCE(NULLIF(trim(pathname), ''), '/')";
   const countryExpr = "UPPER(TRIM(COALESCE(country, '')))";
   const sql = `
 WITH
-${buildVisitSourceCte()},
+${source.ctes},
 filtered_visits AS MATERIALIZED (
   SELECT
     ${bucket.sql} AS bucket,
@@ -582,8 +597,8 @@ filtered_visits AS MATERIALIZED (
     perf_lcp_ms,
     perf_cls,
     perf_inp_ms
-  FROM visit_source
-  ${filter.clause}
+  FROM ${source.relation}
+  ${source.filterClause}
 ),
 performance_visits AS MATERIALIZED (
   SELECT
@@ -864,9 +879,9 @@ FROM tagged_rows
 ORDER BY rowType ASC, metric ASC, bucket ASC, pathname ASC, country ASC
 `;
   const rows = await queryD1All<Record<string, unknown>>(env, sql, [
-    ...visitSourceBindings(siteId, window),
+    ...source.bindings,
     ...bucket.bindings,
-    ...filter.bindings,
+    ...source.filterBindings,
     routeLimit,
   ]);
   return {

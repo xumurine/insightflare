@@ -4,11 +4,14 @@ import { createFlowContext } from "../support/flow-context";
 import { registerAccountTopologyScenarios } from "./account-topology";
 import { registerAnalyticsArchiveScenarios } from "./analytics-archive";
 import { registerBootstrapScenarios } from "./bootstrap";
+import { registerLayerSystemScenarios } from "./layer-system";
+import { registerNonFunnelCoverageScenarios } from "./non-funnel-coverage";
 import { registerNotificationScenarios } from "./notifications";
 import { registerPlatformIntegrationScenarios } from "./platform-integrations";
 import { registerSystemLifecycleScenarios } from "./system-lifecycle";
 import { registerTeamSiteManagementScenarios } from "./team-site-management";
 import { registerTrackingRealtimeScenarios } from "./tracking-realtime";
+import { registerUiGalleryScenarios } from "./ui-gallery";
 
 // Playwright schedules files independently. This is intentionally the only
 // registered E2E graph, so the stateful scenarios always run in this order.
@@ -22,5 +25,8 @@ test.describe.serial("InsightFlare E2E", () => {
   registerAnalyticsArchiveScenarios(context);
   registerNotificationScenarios(context);
   registerPlatformIntegrationScenarios(context);
+  registerNonFunnelCoverageScenarios(context);
   registerSystemLifecycleScenarios(context);
+  registerLayerSystemScenarios(context);
+  registerUiGalleryScenarios();
 });

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
+import { AutoResizer } from "@insightflare/ui/auto-resizer";
+import { AutoTransition } from "@insightflare/ui/auto-transition";
+import { Button } from "@insightflare/ui/button";
+import { Input } from "@insightflare/ui/input";
+import { Label } from "@insightflare/ui/label";
+import { Spinner } from "@insightflare/ui/spinner";
 import { RiCloseLine, RiLoginBoxLine, RiSave3Line } from "@remixicon/react";
 import { toast } from "sonner";
 
-import { AutoResizer } from "@/components/ui/auto-resizer";
-import { AutoTransition } from "@/components/ui/auto-transition";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
 import { shortDateTime } from "@/lib/dashboard/format";
 import type { Locale } from "@/lib/i18n/config";
 import type { AppMessages } from "@/lib/i18n/messages";
@@ -171,7 +171,7 @@ export function ResetPasswordLinkForm({
             </div>
             <Button asChild variant="outline" className="w-full">
               <Link href={`/${locale}/login`}>
-                <RiLoginBoxLine className="size-4" />
+                <RiLoginBoxLine data-icon="inline-start" />
                 {copy.signIn}
               </Link>
             </Button>
@@ -234,17 +234,17 @@ export function ResetPasswordLinkForm({
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
               <AutoTransition
-                className="inline-flex items-center gap-2"
+                className="inline-flex items-center gap-[var(--button-content-gap)]"
                 transitionKey={submitting ? "submitting" : "idle"}
               >
                 {submitting ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Spinner className="size-4" />
+                  <span className="inline-flex items-center gap-[var(--button-content-gap)]">
+                    <Spinner data-icon="inline-start" />
                     {copy.resetting}
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-2">
-                    <RiSave3Line className="size-4" />
+                  <span className="inline-flex items-center gap-[var(--button-content-gap)]">
+                    <RiSave3Line data-icon="inline-start" />
                     {copy.reset}
                   </span>
                 )}

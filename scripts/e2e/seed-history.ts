@@ -3,30 +3,25 @@ import {
   VISIT_D1_COLUMNS,
   type VisitBindingRow,
   visitBindings,
-} from "../../src/lib/edge/ingest-sql";
-
+} from "../../src/lib/edge/ingest/sql";
 const DAY_MS = 24 * 60 * 60 * 1000;
-
 export interface HistorySeedInput {
   nowMs: number;
   runId: string;
   siteId: string;
 }
-
 export interface HistorySeedManifest {
   fromMs: number;
   pages: Record<string, number>;
   totalVisits: number;
   toMs: number;
 }
-
 function sqlLiteral(value: SqlBinding): string {
   if (value === null) return "NULL";
   if (typeof value === "number")
     return Number.isFinite(value) ? String(value) : "NULL";
   return `'${value.replaceAll("'", "''")}'`;
 }
-
 function visitRow(input: HistorySeedInput, index: number): VisitBindingRow {
   const pages = ["/", "/pricing", "/docs", "/checkout"] as const;
   const countries = ["CN", "US", "JP", "DE"] as const;
@@ -100,7 +95,6 @@ function visitRow(input: HistorySeedInput, index: number): VisitBindingRow {
     visitId: `${input.runId}-history-visit-${index}`,
   };
 }
-
 export function buildHistorySeed(input: HistorySeedInput): {
   manifest: HistorySeedManifest;
   sql: string;
@@ -110,16 +104,19 @@ export function buildHistorySeed(input: HistorySeedInput): {
   );
   const pages: Record<string, number> = {};
   for (const row of rows) pages[row.pathname] = (pages[row.pathname] || 0) + 1;
-  const sql = rows
-    .map(
-      (row) =>
-        `INSERT INTO visits (${VISIT_D1_COLUMNS.join(", ")}) VALUES (${visitBindings(
-          row,
-        )
-          .map(sqlLiteral)
-          .join(", ")});`,
-    )
-    .join("\n");
+  const sitePkSql = `(SELECT site_pk FROM site_identities WHERE site_id = ${sqlLiteral(
+    input.siteId,
+  )})`;
+  const sql = [
+    `INSERT OR IGNORE INTO site_identities (site_id) VALUES (${sqlLiteral(input.siteId)});`,
+    ...rows.map((row) => {
+      const bindings = visitBindings(row);
+      const values = VISIT_D1_COLUMNS.map((column, index) =>
+        column === "site_pk" ? sitePkSql : sqlLiteral(bindings[index]),
+      );
+      return `INSERT INTO visits (${VISIT_D1_COLUMNS.join(", ")}) VALUES (${values.join(", ")});`;
+    }),
+  ].join("\n");
   return {
     manifest: {
       fromMs: Math.min(...rows.map((row) => row.startedAt)),
